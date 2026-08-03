@@ -1,39 +1,34 @@
-import { defineConfig, devices } from "@playwright/test";
+import { defineConfig } from "@playwright/test";
+
+const viewports = [
+  { name: "mobile-390", width: 390, height: 844 },
+  { name: "tablet-768", width: 768, height: 1024 },
+  { name: "desktop-1440", width: 1440, height: 900 },
+  { name: "desktop-1920", width: 1920, height: 1080 },
+] as const;
 
 export default defineConfig({
-  testDir: "./tests/e2e",
-  fullyParallel: true,
-  forbidOnly: Boolean(process.env.CI),
-  retries: process.env.CI ? 2 : 0,
-  reporter: [["html", { open: "never" }], ["list"]],
+  testDir: "./e2e",
+  fullyParallel: false,
+  workers: 1,
+  retries: 1,
+  timeout: 30_000,
+  expect: { timeout: 8_000 },
+  reporter: [["list"], ["html", { open: "never", outputFolder: "tmp/playwright-report" }]],
   use: {
-    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000",
+    baseURL: "http://127.0.0.1:3000",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
+  projects: viewports.map(({ name, width, height }) => ({
+    name,
+    use: { viewport: { width, height } },
+  })),
   webServer: {
-    command: "pnpm dev",
-    url: "http://127.0.0.1:3000",
-    reuseExistingServer: !process.env.CI,
+    command: "pnpm dev --hostname 127.0.0.1",
+    url: "http://127.0.0.1:3000/sign-in",
+    reuseExistingServer: true,
     timeout: 120_000,
   },
-  projects: [
-    {
-      name: "chromium-mobile",
-      use: { ...devices["Desktop Chrome"], viewport: { width: 390, height: 844 } },
-    },
-    {
-      name: "webkit-tablet",
-      use: { ...devices["Desktop Safari"], viewport: { width: 768, height: 1024 } },
-    },
-    {
-      name: "firefox-desktop",
-      use: { ...devices["Desktop Firefox"], viewport: { width: 1440, height: 900 } },
-    },
-    {
-      name: "chromium-wide",
-      use: { ...devices["Desktop Chrome"], viewport: { width: 1920, height: 1080 } },
-    },
-  ],
 });

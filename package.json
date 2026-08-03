@@ -16,16 +16,24 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
+    "worker:dev": "./node_modules/inngest-cli/bin/inngest dev --no-discovery -u http://127.0.0.1:3000/api/inngest",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx scripts/migrate.ts",
+    "db:migrate": "npx --yes supabase@latest migration up --local",
     "db:seed": "tsx scripts/seed.ts",
+    "db:fixture": "NODE_OPTIONS=--conditions=react-server tsx scripts/seed-browser-fixture.ts",
+    "db:owner": "tsx scripts/create-local-owner.ts",
+    "env:local": "tsx scripts/configure-local-env.ts",
+    "smoke:openai": "tsx scripts/smoke-openai.ts",
+    "smoke:connectors": "tsx scripts/smoke-connectors.ts",
+    "smoke:slack": "tsx scripts/smoke-slack.ts",
+    "smoke:discovery": "tsx scripts/smoke-discovery.ts",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build"
   },
   "dependencies": {
     "@date-fns/tz": "^1.4.1",
     "@sentry/nextjs": "^10.32.1",
-    "@supabase/ssr": "^0.12.4",
-    "@supabase/supabase-js": "^2.112.0",
+    "@supabase/ssr": "0.12.4",
+    "@supabase/supabase-js": "2.111.0",
     "cheerio": "^1.1.2",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
@@ -53,9 +61,11 @@
     "@types/react-dom": "^19.2.3",
     "@types/sanitize-html": "^2.16.0",
     "@vitest/coverage-v8": "^4.1.10",
+    "dotenv": "^17.2.3",
     "drizzle-kit": "^0.31.8",
     "eslint": "^9.39.2",
     "eslint-config-next": "16.2.12",
+    "inngest-cli": "1.40.0",
     "jsdom": "^27.4.0",
     "prettier": "^3.7.4",
     "tailwindcss": "^4.1.18",
@@ -64,7 +74,7 @@
     "vitest": "^4.1.10"
   },
   "engines": {
-    "node": ">=20.20.0"
+    "node": ">=22.0.0 <25"
   },
   "packageManager": "pnpm@11.9.0"
 }
