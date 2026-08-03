@@ -100,8 +100,9 @@ failure recovery.
   candidates. Sentry is optional; Vercel, Inngest, and database diagnostics remain available if it
   is disabled.
 
-Production creation/deployment is currently gated by the external account items recorded in
-`PLAN.md`; unrelated existing projects are deliberately not reused.
+The dedicated production Supabase project and private GitHub history are provisioned. Web
+deployment is gated only by the external Vercel credential item recorded in `PLAN.md`; unrelated
+existing projects are deliberately not reused.
 
 ## Configuration
 

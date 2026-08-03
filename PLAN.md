@@ -1,26 +1,26 @@
 # FirstSeen implementation plan and evidence
 
-Approved 2026-08-03. The implementation is complete locally; production bootstrap is held only by
-the external account blockers below. This file records objective evidence rather than anticipated
-progress.
+Approved 2026-08-03. The implementation and dedicated production database foundation are complete;
+production deployment is held only by the remaining external account blockers below. This file
+records objective evidence rather than anticipated progress.
 
-|   # | Milestone                                         | Status                                | Exit evidence                                                                                                                  |
-| --: | ------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-|   1 | Project foundation and living specification       | Complete                              | Clean Next/TypeScript/pnpm foundation, Git main history, living docs                                                           |
-|   2 | Local workflow and dedicated service projects     | Complete locally / production blocked | Node 22, locked dependencies, local Supabase/Inngest/app verified; private GitHub repo created; unrelated projects not reused  |
-|   3 | Database, authentication, authorization, and RLS  | Complete                              | 33 typed tables including security counters, migrations/seed, Auth, owner checks, RLS/grants integration tests                 |
-|   4 | Candidate profile and deterministic eligibility   | Complete                              | Resume-derived seed; full-time/experience/clearance/Public Trust/sponsorship/location/role tests                               |
-|   5 | Connector platform and compliant network layer    | Complete                              | Contract, safe HTTP/SSRF, pagination, conditions, retries/pacing/confidence/unsupported diagnostics                            |
-|   6 | Official ATS and employer connectors              | Complete                              | Greenhouse/Lever/Ashby live smokes; JSON-LD contract tests; gated providers documented                                         |
-|   7 | Broad discovery and company expansion             | Complete                              | Brave/Adzuna live smokes, sensor-only promotion, quotas/usage, promising-company promotion                                     |
-|   8 | Canonicalization, change detection, and lifecycle | Complete                              | Identity/fingerprints, snapshots/material hash, unchanged fast path, closure/reopen/stale DB tests                             |
-|   9 | AI extraction, evaluation, and budget controls    | Complete                              | Responses structured output, schema/evidence/prompt-injection defense, changed-only calls, $25 breaker, live smoke             |
-|  10 | Explainable ranking, recommendations, and actions | Complete                              | Ten dimensions, bands/urgency/freshness, optimistic queue actions/history/audit, Apply lifecycle guards                        |
-|  11 | Durable scheduled workflow                        | Complete                              | Five registered functions, stable identity/retries/concurrency/dead letters; real changed scan recovered after partial failure |
-|  12 | Slack alerts and morning digest                   | Complete                              | Block Kit, exact Eastern time, quiet defer, idempotency/retry; labelled real setup check succeeded                             |
-|  13 | Responsive portal                                 | Complete                              | All routes/actions/states, four viewport Playwright matrix and Axe checks passed, live console/network inspection clean        |
-|  14 | Security, privacy, observability, and recovery    | Complete                              | Rate limits, validation, SSRF, CSP/headers, safe logs/export/delete, operations diagnostics, optional redacted Sentry          |
-|  15 | Integrated QA, production deployment, and soak    | QA complete / deployment blocked      | Local release gate complete; cloud project creation and soak require external account remediation                              |
+|   # | Milestone                                         | Status                           | Exit evidence                                                                                                                  |
+| --: | ------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+|   1 | Project foundation and living specification       | Complete                         | Clean Next/TypeScript/pnpm foundation, Git main history, living docs                                                           |
+|   2 | Local workflow and dedicated service projects     | Complete                         | Node 22, local stack verified, private GitHub history published, dedicated empty Supabase project provisioned                  |
+|   3 | Database, authentication, authorization, and RLS  | Complete                         | 33 typed tables including security counters, migrations/seed, Auth, owner checks, RLS/grants integration tests                 |
+|   4 | Candidate profile and deterministic eligibility   | Complete                         | Resume-derived seed; full-time/experience/clearance/Public Trust/sponsorship/location/role tests                               |
+|   5 | Connector platform and compliant network layer    | Complete                         | Contract, safe HTTP/SSRF, pagination, conditions, retries/pacing/confidence/unsupported diagnostics                            |
+|   6 | Official ATS and employer connectors              | Complete                         | Greenhouse/Lever/Ashby live smokes; JSON-LD contract tests; gated providers documented                                         |
+|   7 | Broad discovery and company expansion             | Complete                         | Brave/Adzuna live smokes, sensor-only promotion, quotas/usage, promising-company promotion                                     |
+|   8 | Canonicalization, change detection, and lifecycle | Complete                         | Identity/fingerprints, snapshots/material hash, unchanged fast path, closure/reopen/stale DB tests                             |
+|   9 | AI extraction, evaluation, and budget controls    | Complete                         | Responses structured output, schema/evidence/prompt-injection defense, changed-only calls, $25 breaker, live smoke             |
+|  10 | Explainable ranking, recommendations, and actions | Complete                         | Ten dimensions, bands/urgency/freshness, optimistic queue actions/history/audit, Apply lifecycle guards                        |
+|  11 | Durable scheduled workflow                        | Complete                         | Five registered functions, stable identity/retries/concurrency/dead letters; real changed scan recovered after partial failure |
+|  12 | Slack alerts and morning digest                   | Complete                         | Block Kit, exact Eastern time, quiet defer, idempotency/retry; labelled real setup check succeeded                             |
+|  13 | Responsive portal                                 | Complete                         | All routes/actions/states, four viewport Playwright matrix and Axe checks passed, live console/network inspection clean        |
+|  14 | Security, privacy, observability, and recovery    | Complete                         | Rate limits, validation, SSRF, CSP/headers, safe logs/export/delete, operations diagnostics, optional redacted Sentry          |
+|  15 | Integrated QA, production deployment, and soak    | QA complete / deployment blocked | Release gate and database bootstrap complete; Vercel deployment and production soak remain                                     |
 
 ## Implemented milestones
 
@@ -49,6 +49,13 @@ progress.
 - The attached resume was extracted and visually inspected before implementing the candidate seed.
 - Local Supabase Docker services run with all migrations and seed applied. Local owner credentials
   are generated without output and stored in macOS Keychain.
+- A separate FirstSeen Supabase Free project was created only after its empty public schema was
+  verified. Four migrations produced 33 public tables, all 33 have RLS enabled, and exactly one
+  owner, candidate profile, and preference record were created. The unrelated ProofCheck project
+  was queried read-only and received no FirstSeen tables, migrations, Auth changes, or data writes.
+- The dedicated repository deploy key has repository-only read/write access. All three local
+  commits were published to private GitHub `main`, and the remote head was verified byte-for-byte
+  against the local commit.
 - Auth/RLS tests prove owner access, cross-user denial, and anon denial. Database suites prove
   idempotent ingest/material snapshots, closure/reopening, status history, stale urgency, and closed
   queue behavior.
@@ -68,25 +75,17 @@ progress.
 - Live authenticated portal inspection found expected heading/cards, no horizontal overflow, and no
   browser console errors/warnings. Responsive screenshots were visually inspected.
 
-## External production blockers
+## Remaining external production blockers
 
 These are genuine provider/account blockers, not unresolved engineering choices:
 
-1. Supabase organization `fqxvmdywjouliysvbdyl` already uses both active Free projects. FirstSeen
-   requires its own project; pause/delete one existing project or upgrade the organization to Pro.
-2. Private GitHub repository `ilan0/firstseen-job-discovery` has been created and configured as the
-   local `origin`. The supplied fine-grained token is not authorized for this new repo and push
-   receives HTTP 403; no account SSH key exists. A dedicated least-privilege deploy key was
-   generated locally, but GitHub is waiting for the owner's six-digit privileged-action
-   verification before accepting its public key. Complete that confirmation to allow publication.
-3. The prior Vercel token appeared in a CLI response and is considered compromised. Revoke/rotate
+1. The prior Vercel token appeared in a CLI response and is considered compromised. Revoke/rotate
    it before any deployment and update the ignored secrets file or authenticate the Vercel CLI.
-4. Optional Sentry has an auth token but no DSN/project configuration. Deployment can proceed with
+2. Optional Sentry has an auth token but no DSN/project configuration. Deployment can proceed with
    Vercel/Inngest/database diagnostics; Sentry may be enabled after a project is created.
 
-No production project, migration, repository publication, or deployment has been claimed while
-these blockers remain. After remediation: create the dedicated Supabase project, apply migrations
-and seed/owner, create/link GitHub and Vercel projects, configure encrypted environment variables,
+No production web deployment or production-soak claim is made while these blockers remain. After
+Vercel remediation: create/link the Vercel project, configure encrypted environment variables,
 sync/register Inngest, verify Slack, run production provider/browser/security smoke tests, inspect
 all telemetry/state, soak scheduled scans/digest for 24 hours, and record final rollback/backup
 evidence.

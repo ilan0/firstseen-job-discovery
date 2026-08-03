@@ -66,8 +66,9 @@ caught and fixed the same class of raw SQL timestamp binding in security throttl
 
 ## Remaining production validation
 
-No production claim is made yet. Dedicated Supabase/GitHub/Vercel creation is externally blocked as
-recorded in `PLAN.md`. Once those accounts are remediated, the release still requires cloud
+No production web-deployment claim is made yet. Dedicated Supabase and GitHub provisioning are
+complete; Vercel deployment remains externally blocked as recorded in `PLAN.md`. Once that account
+is remediated, the release still requires cloud
 migrations/RLS verification, encrypted environment review, Inngest sync, authenticated production
 browser/provider/Slack checks, telemetry/database inspection, backup and rollback rehearsal, and a
 24-hour scheduled-scan/digest soak. These results must be appended rather than inferred from local
