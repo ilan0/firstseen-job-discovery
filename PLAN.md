@@ -7,7 +7,7 @@ progress.
 |   # | Milestone                                         | Status                                | Exit evidence                                                                                                                  |
 | --: | ------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 |   1 | Project foundation and living specification       | Complete                              | Clean Next/TypeScript/pnpm foundation, Git main history, living docs                                                           |
-|   2 | Local workflow and dedicated service projects     | Complete locally / production blocked | Node 22, locked dependencies, local Supabase/Inngest/app verified; unrelated cloud projects not reused                         |
+|   2 | Local workflow and dedicated service projects     | Complete locally / production blocked | Node 22, locked dependencies, local Supabase/Inngest/app verified; private GitHub repo created; unrelated projects not reused  |
 |   3 | Database, authentication, authorization, and RLS  | Complete                              | 33 typed tables including security counters, migrations/seed, Auth, owner checks, RLS/grants integration tests                 |
 |   4 | Candidate profile and deterministic eligibility   | Complete                              | Resume-derived seed; full-time/experience/clearance/Public Trust/sponsorship/location/role tests                               |
 |   5 | Connector platform and compliant network layer    | Complete                              | Contract, safe HTTP/SSRF, pagination, conditions, retries/pacing/confidence/unsupported diagnostics                            |
@@ -74,9 +74,11 @@ These are genuine provider/account blockers, not unresolved engineering choices:
 
 1. Supabase organization `fqxvmdywjouliysvbdyl` already uses both active Free projects. FirstSeen
    requires its own project; pause/delete one existing project or upgrade the organization to Pro.
-2. The existing GitHub fine-grained token can access repositories but receives HTTP 403 when
-   creating `firstseen-job-discovery`. Create the empty repository manually or provide a token with
-   repository-creation permission.
+2. Private GitHub repository `ilan0/firstseen-job-discovery` has been created and configured as the
+   local `origin`. The supplied fine-grained token is not authorized for this new repo and push
+   receives HTTP 403; no account SSH key exists. A dedicated least-privilege deploy key was
+   generated locally, but GitHub is waiting for the owner's six-digit privileged-action
+   verification before accepting its public key. Complete that confirmation to allow publication.
 3. The prior Vercel token appeared in a CLI response and is considered compromised. Revoke/rotate
    it before any deployment and update the ignored secrets file or authenticate the Vercel CLI.
 4. Optional Sentry has an auth token but no DSN/project configuration. Deployment can proceed with
