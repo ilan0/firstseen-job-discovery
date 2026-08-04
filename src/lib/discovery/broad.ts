@@ -37,29 +37,51 @@ async function sensorRequestAllowed(userId: string, provider: "brave" | "adzuna"
   return Number(usage?.requests ?? 0) < MONTHLY_SENSOR_REQUEST_LIMIT;
 }
 
-async function recordSensorRequest(options: {
+function sensorRequestKey(options: {
+  provider: "brave" | "adzuna";
+  rotation: number;
+  query: unknown;
+}) {
+  const queryHash = createHash("sha256").update(JSON.stringify(options.query)).digest("hex");
+  return `sensor:${options.provider}:${options.rotation}:${queryHash}`;
+}
+
+async function claimSensorRequest(options: {
   userId: string;
   provider: "brave" | "adzuna";
   rotation: number;
   query: unknown;
-  resultCount: number;
-  errorCode: string | null;
 }) {
-  const queryHash = createHash("sha256").update(JSON.stringify(options.query)).digest("hex");
-  await db
+  const [claim] = await db
     .insert(usageCostLedger)
     .values({
       userId: options.userId,
       provider: options.provider,
       operation: "broad_discovery_search",
-      idempotencyKey: `sensor:${options.provider}:${options.rotation}:${queryHash}`,
+      idempotencyKey: sensorRequestKey(options),
       units: "1",
       unitName: "request",
       estimatedCostUsd: options.provider === "brave" ? "0.005" : "0",
-      reservationStatus: "settled",
-      metadata: { resultCount: options.resultCount, errorCode: options.errorCode },
+      reservationStatus: "reserved",
+      metadata: { rotation: options.rotation },
     })
-    .onConflictDoNothing();
+    .onConflictDoNothing()
+    .returning({ id: usageCostLedger.id });
+  return claim?.id ?? null;
+}
+
+async function settleSensorRequest(
+  id: string,
+  options: { resultCount: number; errorCode: string | null },
+) {
+  await db
+    .update(usageCostLedger)
+    .set({
+      reservationStatus: "settled",
+      metadata: options,
+      updatedAt: new Date(),
+    })
+    .where(eq(usageCostLedger.id, id));
 }
 
 function normalize(value: string) {
@@ -184,6 +206,15 @@ export async function discoverBroadSources(
         errors.push(`${sensor.kind}:MONTHLY_REQUEST_LIMIT`);
         continue;
       }
+      const claimId = await claimSensorRequest({
+        userId,
+        provider: sensor.kind,
+        rotation,
+        query,
+      });
+      // The same rotation may be delivered twice or manually requested again.
+      // Only the durable claimant is allowed to incur an external API request.
+      if (!claimId) continue;
       let resultCount = 0;
       let errorCode: string | null = null;
       try {
@@ -194,14 +225,7 @@ export async function discoverBroadSources(
         errorCode = error instanceof Error ? error.name : "ERROR";
         errors.push(`${sensor.kind}:${errorCode}`);
       } finally {
-        await recordSensorRequest({
-          userId,
-          provider: sensor.kind,
-          rotation,
-          query,
-          resultCount,
-          errorCode,
-        });
+        await settleSensorRequest(claimId, { resultCount, errorCode });
       }
     }
   const unique = new Map(candidates.map((candidate) => [candidate.discoveredUrl, candidate]));
