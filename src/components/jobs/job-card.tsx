@@ -44,6 +44,14 @@ function timeAgo(date: Date): string {
   return hours < 1 ? "just now" : hours < 24 ? `${hours}h ago` : `${Math.round(hours / 24)}d ago`;
 }
 
+const freshnessLabels: Record<JobCardProps["job"]["freshnessBand"], string> = {
+  hot: "Fresh <6h",
+  very_fresh: "Fresh today",
+  current: "Current",
+  aging: "Aging",
+  stale: "Stale",
+};
+
 function Action({
   jobId,
   rowVersion,
@@ -95,8 +103,11 @@ export function JobCard({ job }: JobCardProps) {
         <span className="inline-flex items-center gap-1 text-[var(--muted)]">
           <Clock3 aria-hidden="true" size={13} /> Seen {timeAgo(job.firstSeenAt)}
         </span>
-        <span className="rounded-full bg-[var(--paper)] px-2.5 py-1 text-[var(--muted)]">
-          {job.freshnessBand.replaceAll("_", " ")}
+        <span
+          className="rounded-full bg-[var(--paper)] px-2.5 py-1 text-[var(--muted)]"
+          title={`Freshness based on ${job.freshnessBasis === "posted_at" ? "the official posting time" : "FirstSeen verification"}`}
+        >
+          {freshnessLabels[job.freshnessBand]}
         </span>
       </div>
       <div className="mt-4 flex items-start justify-between gap-4">

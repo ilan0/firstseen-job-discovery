@@ -63,7 +63,7 @@ export function QueueList({ jobs, status }: { jobs: Jobs; status: QueueStatus })
           value={band}
         >
           <option value="all">All match types</option>
-          <option value="hot">Hot / new</option>
+          <option value="hot">Hot matches</option>
           <option value="strong">Strong</option>
           <option value="possible">Possible</option>
           <option value="review">Review</option>
