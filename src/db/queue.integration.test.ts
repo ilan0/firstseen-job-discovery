@@ -112,6 +112,23 @@ describe.runIf(enabled)("queue lifecycle and dynamic freshness", () => {
       ranking_version: RANKING_VERSION,
     });
     if (recommendation.error) throw recommendation.error;
+    const dimensions = await admin.from("ranking_dimensions").insert(
+      [
+        ["required_experience_alignment", 70],
+        ["source_confidence", 95],
+        ["referral_advantage", 100],
+      ].map(([dimension, value]) => ({
+        user_id: user.id,
+        job_id: jobId,
+        snapshot_id: ingest.snapshotId,
+        dimension,
+        value,
+        confidence: 95,
+        explanation: `${dimension} integration fixture.`,
+        ranking_version: RANKING_VERSION,
+      })),
+    );
+    if (dimensions.error) throw dimensions.error;
     const queued = await admin.from("queue_states").insert({
       user_id: user.id,
       job_id: jobId,
@@ -128,7 +145,9 @@ describe.runIf(enabled)("queue lifecycle and dynamic freshness", () => {
     const { listQueue } = await import("@/lib/jobs/queue");
     const active = await listQueue(user.id, "active");
     expect(active).toHaveLength(1);
-    expect(active[0]).toMatchObject({ jobId, freshnessBand: "stale", urgency: 25 });
+    expect(active[0]).toMatchObject({ jobId, freshnessBand: "stale", urgency: 52 });
+    const { getJobDetail } = await import("@/lib/jobs/queue");
+    expect((await getJobDetail(user.id, jobId))?.urgency).toBe(52);
     expect(await listQueue(user.id, "active", { postedWithin: "7d" })).toHaveLength(0);
     expect(await listQueue(user.id, "active", { postedWithin: "all" })).toHaveLength(1);
 

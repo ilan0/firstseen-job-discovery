@@ -24,6 +24,10 @@ changes require unit and database regression tests.
 AI cannot change lifecycle, deduplication, queue state transitions, hard exclusion semantics, or
 notification idempotency.
 
+Freshness-sensitive display fields are projected from the current clock. Stored recommendation
+history remains immutable, while a stale Hot label is demoted and freshness, competition proxy,
+urgency, headline, and routing explanation are recomputed together on feed/detail reads.
+
 Routine extraction receives no candidate profile, contact/referral PII, resume, application state,
 or notification device data. Its cache identity includes snapshot, model, schema, prompt hash, and
 reasoning configuration. Provider calls and persistence use separate durable steps so replay can

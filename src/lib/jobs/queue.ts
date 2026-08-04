@@ -27,7 +27,7 @@ import {
   type PostedWindow,
 } from "@/domain/jobs";
 import { ELIGIBILITY_RULE_VERSION } from "@/domain/eligibility";
-import { RANKING_VERSION } from "@/domain/ranking";
+import { projectTemporalRecommendation, RANKING_VERSION } from "@/domain/ranking";
 import { recommendContact } from "@/domain/relationships/best-contact";
 
 export type QueueStatus = "active" | "saved" | "applied" | "dismissed";
@@ -47,6 +47,12 @@ type QueueCursor = {
   urgency: number;
   id: string;
 };
+
+function stringReasons(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((reason): reason is string => typeof reason === "string")
+    : [];
+}
 
 function parseCursor(value: string | undefined, sort: FeedSort): QueueCursor | null {
   if (!value || value.length > 800) return null;
@@ -166,6 +172,7 @@ export async function listQueuePage(userId: string, status: QueueStatus, input: 
       snapshotFacts: jobDescriptionSnapshots.normalizedFacts,
       snapshotCapturedAt: jobDescriptionSnapshots.capturedAt,
       materialChangeReasons: jobDescriptionSnapshots.materialChangeReasons,
+      recommendationSnapshotId: recommendations.snapshotId,
       eligibilityRuleVersion: eligibilityDecisions.ruleVersion,
       rankingVersion: recommendations.rankingVersion,
       sourceKind: careerSources.connectorKind,
@@ -194,16 +201,51 @@ export async function listQueuePage(userId: string, status: QueueStatus, input: 
   if (!rows.length) return { items: [], nextCursor: null };
   const pageSize = status === "active" ? 60 : 100;
   const pageRows = rows.slice(0, pageSize);
-  const referralRows = await db
-    .select({ companyId: referrals.companyId })
-    .from(referrals)
-    .where(
-      and(
-        eq(referrals.userId, userId),
-        inArray(referrals.status, ["available", "requested", "submitted"]),
+  const [referralRows, queueDimensionRows] = await Promise.all([
+    db
+      .select({ companyId: referrals.companyId })
+      .from(referrals)
+      .where(
+        and(
+          eq(referrals.userId, userId),
+          inArray(referrals.status, ["available", "requested", "submitted"]),
+        ),
       ),
-    );
+    db
+      .select({
+        jobId: rankingDimensions.jobId,
+        snapshotId: rankingDimensions.snapshotId,
+        rankingVersion: rankingDimensions.rankingVersion,
+        dimension: rankingDimensions.dimension,
+        value: rankingDimensions.value,
+        confidence: rankingDimensions.confidence,
+        explanation: rankingDimensions.explanation,
+      })
+      .from(rankingDimensions)
+      .where(
+        and(
+          eq(rankingDimensions.userId, userId),
+          inArray(
+            rankingDimensions.jobId,
+            pageRows.map((row) => row.jobId),
+          ),
+          inArray(
+            rankingDimensions.snapshotId,
+            pageRows.flatMap((row) =>
+              row.recommendationSnapshotId ? [row.recommendationSnapshotId] : [],
+            ),
+          ),
+        ),
+      ),
+  ]);
   const referredCompanies = new Set(referralRows.map((row) => row.companyId));
+  const dimensionsByRecommendation = new Map<string, typeof queueDimensionRows>();
+  for (const dimension of queueDimensionRows) {
+    const key = `${dimension.jobId}:${dimension.snapshotId}:${dimension.rankingVersion}`;
+    const existing = dimensionsByRecommendation.get(key) ?? [];
+    existing.push(dimension);
+    dimensionsByRecommendation.set(key, existing);
+  }
   const items = pageRows
     .map((row) => {
       const currentFreshness = freshness(
@@ -218,6 +260,19 @@ export async function listQueuePage(userId: string, status: QueueStatus, input: 
         workArrangement?: { value?: unknown };
       } | null;
       const snapshotFacts = row.snapshotFacts as { salary?: unknown } | null;
+      const dimensions = row.recommendationSnapshotId
+        ? (dimensionsByRecommendation.get(
+            `${row.jobId}:${row.recommendationSnapshotId}:${row.rankingVersion}`,
+          ) ?? [])
+        : [];
+      const temporal = projectTemporalRecommendation({
+        band: row.band,
+        urgency: row.urgency,
+        headline: row.headline,
+        routingReasons: stringReasons(row.routingReasons),
+        dimensions,
+        freshness: currentFreshness,
+      });
       const locations = Array.isArray(eligibilityFacts?.locations?.value)
         ? eligibilityFacts.locations.value.filter(
             (location): location is string => typeof location === "string" && Boolean(location),
@@ -227,7 +282,11 @@ export async function listQueuePage(userId: string, status: QueueStatus, input: 
         ...row,
         eligibilityFacts: undefined,
         snapshotFacts: undefined,
-        urgency: row.urgency === null ? null : Math.min(row.urgency, currentFreshness.value),
+        recommendationSnapshotId: undefined,
+        band: temporal.band,
+        urgency: temporal.urgency,
+        headline: temporal.headline,
+        routingReasons: temporal.routingReasons,
         freshnessBand: currentFreshness.band,
         freshnessBasis: currentFreshness.basis,
         freshnessAgeHours: currentFreshness.ageHours,
@@ -475,10 +534,22 @@ export async function getJobDetail(userId: string, jobId: string) {
     job.firstSeenAt,
     job.reopenedAt,
   );
+  const temporal = projectTemporalRecommendation({
+    band: job.band,
+    urgency: job.urgency,
+    headline: job.headline,
+    routingReasons: stringReasons(job.routingReasons),
+    dimensions,
+    freshness: currentFreshness,
+  });
   return {
     ...job,
+    band: temporal.band,
+    urgency: temporal.urgency,
+    headline: temporal.headline,
+    routingReasons: temporal.routingReasons,
     freshness: currentFreshness,
-    dimensions,
+    dimensions: temporal.dimensions,
     referrals: referralRows,
     recommendedContact,
     pendingApplicationSession: pendingApplicationSession ?? null,

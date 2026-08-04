@@ -22,7 +22,7 @@ physical-device work.
 |  10 | Mobile detail and Simplify handoff              | Complete locally | Deep-link recovery, mobile action parity, referral/application packet context, Continue Later/Desktop behavior; physical extension/device checks pending                                      |
 |  11 | Shared AI extraction and escalation             | Complete locally | Explicit Luna, strict evidence, durable paid-call steps, selective capped Terra, current pricing, cost/budget ledgers and regression evaluator; 300-item corpus remains a human-labeling gate |
 |  12 | Invite-only multi-user foundations              | Complete locally | Individual email route/onboarding and per-user runtime preferences implemented behind disabled flags; custom SMTP/public signup remain out of scope                                           |
-|  13 | Integrated local certification                  | Complete         | From-zero migration/bootstrap, 383 tests, strengthened coverage floor, focused suites, zero-vulnerability audit, build, and retry-free four-viewport browser suite pass                       |
+|  13 | Integrated local certification                  | Complete         | From-zero migration/bootstrap, 386 tests, strengthened coverage floor, focused suites, zero-vulnerability audit, build, and retry-free four-viewport browser suite pass                       |
 |  14 | Production rollout and seven-day soak           | Pending rollout  | Isolated backup restore passes; requires safe FirstSeen-only deployment, Web Push/iPhone acceptance, then seven consecutive scheduled days                                                    |
 |  15 | Final evidence audit                            | Pending          | Runs after the soak; current documentation intentionally lists remaining blind spots                                                                                                          |
 
@@ -112,18 +112,28 @@ physical-device work.
     downstream database failure reuses the accepted response instead of repeating paid work. A
     stable client request trace is attached to each validation attempt, and usage from every
     accepted validation response is included in cost accounting.
+17. Feed cards and job details project freshness-sensitive rank fields at read time. A previously
+    Hot recommendation automatically becomes Strong after the 24-hour freshness boundary, while
+    freshness, competition proxy, urgency, headline, and routing explanation age together without a
+    source rescan or rewriting stored recommendation history.
+18. Synthetic browser-fixture sources are explicitly network-disabled. Manual and scheduled local
+    scans record an observable successful skip instead of contacting invented ATS tenants, creating
+    false source failures, or producing dead letters.
 
 ## Local release evidence
 
 - A clean `supabase db reset --local` applied every migration through
   `20260804162800_notification_preference_integrity.sql`; `pnpm db:bootstrap` then created the local owner,
   database-backed candidate profile/preferences, and browser fixture from zero.
-- Formatting, zero-warning lint, strict types, all 383 tests in 63 files, coverage, focused
+- Formatting, zero-warning lint, strict types, all 386 tests in 65 files, coverage, focused
   connector/evaluation/worker/PWA/security/load suites, zero-vulnerability audit, and optimized
   build pass.
-- Coverage: 88.52% statements, 77.98% branches, 90.19% functions, and 90.19% lines. Configuration
+- Coverage: 89.31% statements, 78.43% branches, 90.44% functions, and 91.02% lines. Configuration
   now enforces at least the prior-release baseline (87.15/77.45/88.98/89.21) so future expansion
   cannot silently lower it.
+- A real local Next.js/Inngest run exercised both manual and scheduled synthetic source scans. Each
+  completed as a zero-observation `network_disabled` success with zero active source errors and zero
+  unresolved dead letters.
 - Playwright: 17 passed and three intentional viewport-independent skips in approximately three
   minutes, with retries disabled at 390×844, 768×1024, 1440×900, and 1920×1080. Console, page,
   unexpected response, persistence, application, relationship, and Axe observers remained clean.

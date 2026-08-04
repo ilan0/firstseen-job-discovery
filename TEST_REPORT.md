@@ -11,8 +11,8 @@ local Supabase PostgreSQL/Auth in Docker, Next.js 16.2.12, React 19.2.8, and Inn
 | Lint                    | `pnpm lint`                                  | Pass; zero warnings                                                |
 | Strict TypeScript       | `pnpm typecheck`                             | Pass                                                               |
 | Unit/component/contract | `pnpm test`                                  | Pass                                                               |
-| PostgreSQL/Auth/RLS     | `RUN_DATABASE_TESTS=true pnpm test`          | 383 passed in 63 files                                             |
-| Coverage                | `RUN_DATABASE_TESTS=true pnpm test:coverage` | 88.52% statements, 77.98% branches, 90.19% functions, 90.19% lines |
+| PostgreSQL/Auth/RLS     | `RUN_DATABASE_TESTS=true pnpm test`          | 386 passed in 65 files                                             |
+| Coverage                | `RUN_DATABASE_TESTS=true pnpm test:coverage` | 89.31% statements, 78.43% branches, 90.44% functions, 91.02% lines |
 | Dependency security     | `pnpm audit --audit-level=low`               | Pass; zero known vulnerabilities                                   |
 | Production compile      | `pnpm build`                                 | Pass; 20 routes plus Proxy                                         |
 | Real browser/Axe        | `pnpm test:e2e`                              | 17 passed, 3 intentional skips; retries disabled                   |
@@ -28,6 +28,13 @@ tests.
 - Freshness boundaries at 6h, 24h, 72h, 7d, and 30d; all-window parsing; official-date default
   sorting; detection/urgency sorting; dynamic aging; ancient newly detected jobs; malformed/future
   date fallback; reliable reopening; material-update distinction; server URL persistence.
+- Read-time ranking projection keeps freshness, Hot-to-Strong demotion, competition proxy, urgency,
+  headline, and routing explanation synchronized as time passes without rewriting history. Queue
+  cards batch-load the same stored dimensions used by details; their projected urgency values are
+  covered by a database equality regression.
+- Browser-fixture source policy rejects non-boolean disable flags. Real local Next.js/Inngest manual
+  and scheduled scans of both fixture sources completed as observable `network_disabled` successes,
+  with zero active source errors and zero unresolved dead letters.
 - Independent interest/referral/scope combinations; 15/60/240-minute cadence; recent-viable Warm
   promotion; stale/ineligible/Review rejection; sticky quarantine; adaptive Cold-only slowdown.
 - Full-time, required versus preferred experience, two-year maximum, clearance/Public Trust,

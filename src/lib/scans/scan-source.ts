@@ -27,6 +27,7 @@ import { analyzeAndRankListing } from "@/lib/jobs/analyze-and-rank";
 import { ingestListing } from "@/lib/jobs/ingest";
 import { discoverAllPages } from "./discover-pages";
 import { observationStorage } from "./observation-storage";
+import { isSourceNetworkDisabled } from "./source-policy";
 
 export type StoredSource = {
   id: string;
@@ -39,6 +40,7 @@ export type StoredSource = {
   tenantId: string | null;
   etag: string | null;
   lastModified: string | null;
+  networkDisabled?: boolean;
 };
 
 export async function loadActiveSources(
@@ -57,6 +59,7 @@ export async function loadActiveSources(
       tenantId: connectorRegistrations.externalTenantId,
       etag: connectorRegistrations.etag,
       lastModified: connectorRegistrations.lastModified,
+      publicConfig: careerSources.publicConfig,
     })
     .from(careerSources)
     .innerJoin(companies, eq(careerSources.companyId, companies.id))
@@ -69,7 +72,11 @@ export async function loadActiveSources(
         ...(companyId ? [eq(companies.id, companyId)] : []),
       ),
     );
-  return rows.map((row) => ({ ...row, companyDomain: row.companyDomain ?? row.companyName }));
+  return rows.map(({ publicConfig, ...row }) => ({
+    ...row,
+    companyDomain: row.companyDomain ?? row.companyName,
+    networkDisabled: isSourceNetworkDisabled(publicConfig),
+  }));
 }
 
 function sourceInput(source: StoredSource): ConnectorSource {

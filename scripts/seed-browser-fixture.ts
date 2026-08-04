@@ -43,6 +43,7 @@ const source = await admin
     base_url: "https://jobs.lever.co/firstseen-qa",
     normalized_url: "https://jobs.lever.co/firstseen-qa",
     parsing_confidence: 95,
+    public_config: { fixture: "browser", networkDisabled: true },
   })
   .select("id")
   .single();
@@ -90,6 +91,7 @@ const discoveredSource = await admin.from("career_sources").insert({
   base_url: "https://jobs.ashbyhq.com/firstseen-qa-discovery",
   normalized_url: "https://jobs.ashbyhq.com/firstseen-qa-discovery",
   parsing_confidence: 90,
+  public_config: { fixture: "browser", networkDisabled: true },
 });
 if (discoveredSource.error) throw discoveredSource.error;
 const discoveredWatch = await admin.from("watchlists").insert({

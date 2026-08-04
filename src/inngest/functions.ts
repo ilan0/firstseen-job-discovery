@@ -532,6 +532,47 @@ export const sourceScan = inngest.createFunction(
       if (!activeSource) throw new Error("Active source not found");
       return activeSource;
     });
+    if (source.networkDisabled) {
+      const skipped = { skipped: true, reason: "network_disabled" } as const;
+      await step.run("record-network-disabled-source", async () => {
+        const now = new Date();
+        await db.transaction(async (tx) => {
+          await tx
+            .update(scanSourceRuns)
+            .set({
+              status: "succeeded",
+              finishedAt: now,
+              observationCount: 0,
+              metrics: skipped,
+              updatedAt: now,
+            })
+            .where(eq(scanSourceRuns.id, started.sourceRunId));
+          await tx
+            .update(scanRuns)
+            .set({ status: "succeeded", finishedAt: now, summary: skipped, updatedAt: now })
+            .where(eq(scanRuns.id, started.runId));
+          await tx
+            .update(workerAttempts)
+            .set({ status: "succeeded", finishedAt: now, metrics: skipped, updatedAt: now })
+            .where(
+              and(
+                eq(workerAttempts.eventId, event.id ?? idempotencyKey),
+                eq(workerAttempts.stepName, "scan"),
+              ),
+            );
+          await tx
+            .update(careerSources)
+            .set({
+              lastAttemptAt: now,
+              lastSuccessAt: now,
+              lastErrorCode: null,
+              updatedAt: now,
+            })
+            .where(eq(careerSources.id, source.id));
+        });
+      });
+      return skipped;
+    }
     const observedAt = new Date(data.scheduledFor);
     const staged = await step.run("discover-and-stage", async () => {
       try {
