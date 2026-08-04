@@ -24,6 +24,8 @@ test("access-code gate fails safely and sign-out returns to it", async ({ page }
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(page.getByLabel("Access code", { exact: true })).toBeVisible();
   await expect(page).toHaveURL(/\/sign-in(?:\?.*)?$/);
+  await page.goto("/sign-in?next=/%252f%252fevil.example");
+  await expect(page.locator('input[name="next"]')).toHaveValue("/");
   expect(failures).toEqual([]);
 });
 

@@ -4,6 +4,7 @@ import { currentOwner } from "@/lib/auth/owner";
 import { SignInForm } from "./sign-in-form";
 import { EmailSignInForm } from "./email-sign-in-form";
 import { rolloutFlags } from "@/config/rollout";
+import { safeAppPath } from "@/lib/security/app-path";
 
 export const metadata: Metadata = { title: "Sign in" };
 
@@ -16,8 +17,7 @@ export default async function SignInPage({
   const flags = rolloutFlags();
   const params = await searchParams;
   const requestedNext = Array.isArray(params.next) ? params.next[0] : params.next;
-  const next =
-    requestedNext?.startsWith("/") && !requestedNext.startsWith("//") ? requestedNext : "/";
+  const next = safeAppPath(requestedNext) ?? "/";
 
   return (
     <main className="grid min-h-screen place-items-center px-5 py-10">

@@ -6,6 +6,7 @@ import { z } from "zod";
 import { verifyAccessCode } from "@/lib/auth/access-code";
 import { serverEnv } from "@/lib/env/server";
 import { clearRateLimit, consumeRateLimit } from "@/lib/security/rate-limit";
+import { safeAppPath } from "@/lib/security/app-path";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -14,7 +15,8 @@ export type SignInState = { error?: string };
 const safeNext = z
   .string()
   .max(2_000)
-  .refine((value) => value.startsWith("/") && !value.startsWith("//"));
+  .refine((value) => safeAppPath(value) !== null)
+  .transform((value) => safeAppPath(value)!);
 const credentialsSchema = z.object({
   code: z.string().regex(/^\d{4}$/),
   next: safeNext.default("/"),
