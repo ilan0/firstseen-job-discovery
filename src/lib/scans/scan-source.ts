@@ -22,6 +22,7 @@ import { RANKING_VERSION } from "@/domain/ranking";
 import { analyzeAndRankListing } from "@/lib/jobs/analyze-and-rank";
 import { ingestListing } from "@/lib/jobs/ingest";
 import { discoverAllPages } from "./discover-pages";
+import { observationStorage } from "./observation-storage";
 
 export type StoredSource = {
   id: string;
@@ -93,23 +94,6 @@ const stagedListingSchema = z.object({
   salaryText: z.string().nullable(),
   sourceConfidence: z.enum(["low", "medium", "high"]),
 });
-
-function stagedPayload(listing: NormalizedListing) {
-  return {
-    externalId: listing.externalId,
-    requisitionId: listing.requisitionId,
-    title: listing.title,
-    officialUrl: listing.officialUrl,
-    applyUrl: listing.applyUrl,
-    locations: listing.locations,
-    workplaceType: listing.workplaceType,
-    employmentType: listing.employmentType,
-    postedAt: listing.postedAt,
-    postedAtConfidence: listing.postedAtConfidence,
-    salaryText: listing.salaryText,
-    sourceConfidence: listing.sourceConfidence,
-  };
-}
 
 function stagingHash(listing: NormalizedListing) {
   return `discovery:${createHash("sha256")
@@ -223,6 +207,7 @@ export async function stageStoredSource(
     const unchanged =
       existingHashes.get(normalizedUrl) === materialHash(listing) &&
       processingIsCurrent.has(normalizedUrl);
+    const storage = observationStorage(listing, unchanged);
     return {
       userId: source.userId,
       scanSourceRunId: scanSourceRunId ?? null,
@@ -233,9 +218,9 @@ export async function stageStoredSource(
       status: unchanged ? ("unchanged" as const) : ("discovered" as const),
       contentType: "application/normalized+json",
       contentHash: unchanged ? materialHash(listing) : stagingHash(listing),
-      responseMetadata: listing.rawMetadata,
-      normalizedPayload: stagedPayload(listing),
-      sanitizedBody: listing.descriptionText.slice(0, 100_000),
+      // Unchanged observations are useful scan evidence, but duplicating every
+      // full description several times per day would waste database storage.
+      ...storage,
       expiresAt: new Date(observedAt.getTime() + 30 * 86_400_000),
     };
   });
