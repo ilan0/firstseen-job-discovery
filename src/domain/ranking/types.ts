@@ -30,6 +30,9 @@ export type RankingInput = {
   preferredSkills: string[];
   candidateSkills: string[];
   rolePriorities?: Array<{ family: RoleFamily; priority: number }>;
+  idealRequiredYearsMax?: number;
+  eligibleRequiredYearsMax?: number;
+  monthsFullTimeExperience?: number;
   postedAt: Date | null;
   firstSeenAt: Date;
   reopenedAt?: Date | null;

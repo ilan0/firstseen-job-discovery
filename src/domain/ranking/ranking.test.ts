@@ -97,6 +97,28 @@ describe("explainable deterministic ranking", () => {
     expect(role).toMatchObject({ value: 35 });
   });
 
+  it("uses persisted experience thresholds instead of fixed one/two-year ranking assumptions", () => {
+    const title = "Software Engineer";
+    const value = input("Full-time role requiring 3 years of experience in Miami.");
+    value.eligibility = evaluateEligibility(
+      extractDeterministicFacts({
+        title,
+        description: "Full-time role requiring 3 years of experience in Miami.",
+        employmentType: "Full-time",
+        locations: ["Miami, FL"],
+      }),
+      { eligibleRequiredYearsMax: 4 },
+    );
+    const experience = rankJob({
+      ...value,
+      idealRequiredYearsMax: 3,
+      eligibleRequiredYearsMax: 4,
+      monthsFullTimeExperience: 30,
+    }).dimensions.find((item) => item.dimension === "required_experience_alignment");
+    expect(experience).toMatchObject({ value: 100 });
+    expect(experience?.explanation).toContain("configured ideal maximum of 3");
+  });
+
   it("matches category-equivalent skills and excludes eligibility conditions from skills fit", () => {
     const value = input("Full-time role requiring 0-1 years of experience in Miami.");
     value.requiredSkills = [

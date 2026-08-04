@@ -6,7 +6,7 @@ import type {
   Recommendation,
 } from "./types";
 
-export const RANKING_VERSION = "2026-08-04.2";
+export const RANKING_VERSION = "2026-08-04.3";
 
 const advancedTitlePattern =
   /\b(?:senior|sr\.?|staff|principal|lead|manager|director|head|architect|intermediate)\b/i;
@@ -125,19 +125,24 @@ function experienceDimension(input: RankingInput): RankingDimensionResult {
     );
   }
   const minimum = Math.max(...required.map((item) => item.minimumYears));
-  if (minimum <= 1) {
+  const idealMaximum = input.idealRequiredYearsMax ?? 1;
+  const eligibleMaximum = input.eligibleRequiredYearsMax ?? 2;
+  const experienceYears = Math.max(0, input.monthsFullTimeExperience ?? 0) / 12;
+  if (minimum <= idealMaximum) {
     return dimension(
       "required_experience_alignment",
       100,
       95,
-      `The highest explicit minimum is ${minimum} year${minimum === 1 ? "" : "s"}.`,
+      `The highest explicit minimum is ${minimum} year${minimum === 1 ? "" : "s"}, within the configured ideal maximum of ${idealMaximum}.`,
     );
   }
   return dimension(
     "required_experience_alignment",
-    minimum <= 2 ? 65 : 0,
+    minimum <= eligibleMaximum ? 65 : 0,
     95,
-    `The highest explicit minimum is ${minimum} years.`,
+    minimum <= eligibleMaximum
+      ? `The ${minimum}-year minimum is above the configured ideal but within the eligible maximum of ${eligibleMaximum}; the profile records ${experienceYears.toFixed(1)} years of full-time experience.`
+      : `The ${minimum}-year minimum exceeds the configured eligible maximum of ${eligibleMaximum}.`,
   );
 }
 
