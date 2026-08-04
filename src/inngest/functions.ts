@@ -17,6 +17,7 @@ import {
   scanRuns,
   scanSourceRuns,
   securityRateLimits,
+  storageCleanupRecords,
   watchlists,
   workerAttempts,
 } from "@/db/schema";
@@ -29,6 +30,7 @@ import {
 } from "@/lib/notifications/orchestrate";
 import { retryFailedNotifications } from "@/lib/notifications/slack";
 import { deliverDueWebPush } from "@/lib/notifications/web-push";
+import { processStorageCleanupRecords } from "@/lib/maintenance/storage-cleanup";
 import {
   finalizeStagedSource,
   loadActiveSources,
@@ -576,8 +578,11 @@ export const userNotificationDelivery = inngest.createFunction(
 
 export const cleanupSchedule = inngest.createFunction(
   { id: "retention-cleanup", triggers: [{ cron: "43 3 * * *" }], retries: 2 },
-  async ({ step }) =>
-    step.run("cleanup-expired-records", async () => {
+  async ({ step }) => {
+    const privateStorage = await step.run("cleanup-private-storage", () =>
+      processStorageCleanupRecords(),
+    );
+    return step.run("cleanup-expired-records", async () => {
       const observations = await db
         .delete(rawObservations)
         .where(lte(rawObservations.expiresAt, new Date()))
@@ -595,12 +600,24 @@ export const cleanupSchedule = inngest.createFunction(
           ),
         )
         .returning({ id: globalOutboxEvents.id });
+      const storageOutbox = await db
+        .delete(storageCleanupRecords)
+        .where(
+          and(
+            eq(storageCleanupRecords.status, "cleaned"),
+            lt(storageCleanupRecords.cleanedAt, new Date(Date.now() - 30 * 86_400_000)),
+          ),
+        )
+        .returning({ id: storageCleanupRecords.id });
       return {
+        privateStorage,
         observationsDeleted: observations.length,
         rateLimitsDeleted: rateLimits.length,
         globalOutboxDeleted: globalOutbox.length,
+        storageOutboxDeleted: storageOutbox.length,
       };
-    }),
+    });
+  },
 );
 
 export const functions = [

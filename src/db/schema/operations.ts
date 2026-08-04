@@ -225,3 +225,30 @@ export const securityRateLimits = pgTable(
     check("security_rate_limits_count_positive", sql`${table.requestCount} > 0`),
   ],
 );
+
+// Service-only outbox for private objects that must be removed after account
+// deletion even when the external storage provider is temporarily unavailable.
+export const storageCleanupRecords = pgTable(
+  "storage_cleanup_records",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    bucket: text("bucket").notNull(),
+    objectPath: text("object_path").notNull(),
+    reason: text("reason").notNull(),
+    status: text("status").default("waiting").notNull(),
+    attemptCount: integer("attempt_count").default(0).notNull(),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).defaultNow().notNull(),
+    lastErrorCode: text("last_error_code"),
+    cleanedAt: timestamp("cleaned_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("storage_cleanup_bucket_path_unique").on(table.bucket, table.objectPath),
+    index("storage_cleanup_due_idx").on(table.status, table.nextAttemptAt),
+    check("storage_cleanup_attempts_nonnegative", sql`${table.attemptCount} >= 0`),
+    check(
+      "storage_cleanup_status_valid",
+      sql`${table.status} in ('waiting', 'pending', 'processing', 'failed', 'cleaned')`,
+    ),
+  ],
+);

@@ -1,14 +1,20 @@
 "use server";
-import { eq, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/db/client";
-import { candidateProfiles, resumeVersions, searchPreferences } from "@/db/schema";
+import {
+  candidateProfiles,
+  resumeVersions,
+  searchPreferences,
+  storageCleanupRecords,
+} from "@/db/schema";
 import { requireOwner } from "@/lib/auth/owner";
 import { RESUME_BUCKET } from "@/domain/applications/resume";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { processStorageCleanupRecords } from "@/lib/maintenance/storage-cleanup";
 const schema = z.object({
   digestEnabled: z.enum(["on"]).optional(),
   alertsEnabled: z.enum(["on"]).optional(),
@@ -157,10 +163,37 @@ export async function deleteAccount(formData: FormData) {
     .select({ path: resumeVersions.storagePath })
     .from(resumeVersions)
     .where(eq(resumeVersions.userId, owner.id));
+  const cleanupRecords = resumePaths.length
+    ? await db
+        .insert(storageCleanupRecords)
+        .values(
+          resumePaths.map((resume) => ({
+            bucket: RESUME_BUCKET,
+            objectPath: resume.path,
+            reason: "account_deletion",
+            status: "waiting",
+          })),
+        )
+        .onConflictDoUpdate({
+          target: [storageCleanupRecords.bucket, storageCleanupRecords.objectPath],
+          set: { status: "waiting", lastErrorCode: null, updatedAt: new Date() },
+        })
+        .returning({ id: storageCleanupRecords.id })
+    : [];
+  const cleanupIds = cleanupRecords.map((record) => record.id);
   const { error } = await admin.auth.admin.deleteUser(owner.id);
-  if (error) throw new Error("Account deletion failed. No data was intentionally removed.");
-  if (resumePaths.length)
-    await admin.storage.from(RESUME_BUCKET).remove(resumePaths.map((resume) => resume.path));
+  if (error) {
+    if (cleanupIds.length)
+      await db.delete(storageCleanupRecords).where(inArray(storageCleanupRecords.id, cleanupIds));
+    throw new Error("Account deletion failed. No data was intentionally removed.");
+  }
+  if (cleanupIds.length) {
+    await db
+      .update(storageCleanupRecords)
+      .set({ status: "pending", nextAttemptAt: new Date(), updatedAt: new Date() })
+      .where(inArray(storageCleanupRecords.id, cleanupIds));
+    await processStorageCleanupRecords({ ids: cleanupIds });
+  }
   const session = await createSupabaseServerClient();
   await session.auth.signOut();
   redirect("/sign-in?deleted=1");
