@@ -1,9 +1,10 @@
 "use server";
 
+import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/db/client";
-import { candidateProfiles, searchPreferences } from "@/db/schema";
+import { accountAccess, candidateProfiles, searchPreferences } from "@/db/schema";
 import { requireOwner } from "@/lib/auth/owner";
 
 const schema = z.object({
@@ -57,6 +58,15 @@ export async function completeOnboarding(formData: FormData) {
         { family: "customer_facing", priority: 8 },
       ],
     });
+    await tx
+      .update(accountAccess)
+      .set({
+        status: "active",
+        activatedAt: new Date(),
+        onboardingCompletedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(accountAccess.userId, user.id));
   });
   redirect("/settings?saved=profile");
 }

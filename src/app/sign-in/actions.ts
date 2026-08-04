@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { z } from "zod";
 import { verifyAccessCode } from "@/lib/auth/access-code";
+import { isInvitedEmail } from "@/lib/auth/account-access";
 import { serverEnv } from "@/lib/env/server";
 import { clearRateLimit, consumeRateLimit } from "@/lib/security/rate-limit";
 import { safeAppPath } from "@/lib/security/app-path";
@@ -95,6 +96,8 @@ export async function requestEmailSignIn(
     blockMinutes: 60,
   });
   if (!rate.allowed) return { error: "Too many email-link requests. Try again later." };
+  if (!(await isInvitedEmail(parsed.data.email)))
+    return { error: "This address is not invited or email delivery is unavailable." };
   const supabase = await createSupabaseServerClient();
   const appUrl = new URL(serverEnv().NEXT_PUBLIC_APP_URL);
   appUrl.pathname = "/auth/callback";

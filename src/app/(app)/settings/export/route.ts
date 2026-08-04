@@ -3,6 +3,7 @@ import { db } from "@/db/client";
 import { requireOwner } from "@/lib/auth/owner";
 
 const userOwnedTables = [
+  "account_access",
   "candidate_profiles",
   "search_preferences",
   "companies",

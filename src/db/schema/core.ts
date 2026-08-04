@@ -16,6 +16,32 @@ const timestamps = {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 };
 
+export const accountAccess = pgTable(
+  "account_access",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id").notNull().unique(),
+    email: text("email").notNull().unique(),
+    status: text("status").default("invited").notNull(),
+    role: text("role").default("member").notNull(),
+    invitedAt: timestamp("invited_at", { withTimezone: true }).defaultNow().notNull(),
+    activatedAt: timestamp("activated_at", { withTimezone: true }),
+    onboardingCompletedAt: timestamp("onboarding_completed_at", { withTimezone: true }),
+    privacyVersion: text("privacy_version"),
+    termsVersion: text("terms_version"),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    check("account_access_email_lowercase", sql`${table.email} = lower(${table.email})`),
+    check(
+      "account_access_status_valid",
+      sql`${table.status} in ('invited', 'active', 'suspended')`,
+    ),
+    check("account_access_role_valid", sql`${table.role} in ('owner', 'admin', 'member')`),
+  ],
+);
+
 export const candidateProfiles = pgTable(
   "candidate_profiles",
   {

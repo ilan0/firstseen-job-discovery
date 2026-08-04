@@ -37,7 +37,7 @@ try {
         join pg_namespace n on n.oid = c.relnamespace
         where n.nspname = 'public'
           and c.relname = any(array[
-            'user_company_follows', 'user_job_eligibility', 'user_job_ranking_dimensions',
+            'account_access', 'user_company_follows', 'user_job_eligibility', 'user_job_ranking_dimensions',
             'user_recommendations', 'contacts', 'contact_methods', 'contact_company_links',
             'contact_interactions', 'relationship_reminders', 'referral_requests',
             'resume_versions', 'application_packet_entries', 'application_sessions',
@@ -77,7 +77,7 @@ try {
       ) as identity_indexes_present,
       exists(
         select 1 from supabase_migrations.schema_migrations
-        where version = '20260804162600'
+        where version = '20260804162700'
       ) as latest_migration_present
   `;
 
