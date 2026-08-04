@@ -1,5 +1,6 @@
 import { isIP } from "node:net";
 import { lookup } from "node:dns/promises";
+import { Agent } from "undici";
 import { ConnectorError } from "./errors";
 
 export type SafeRequestOptions = {
@@ -24,6 +25,13 @@ export type SafeResponse = {
 
 export type SafeGet = typeof safeGet;
 
+type ResolvedAddress = { address: string; family: number };
+
+export type SafeUrlResolution = {
+  url: URL;
+  addresses: ResolvedAddress[];
+};
+
 function ipv4Parts(address: string): number[] | null {
   const parts = address.split(".").map(Number);
   return parts.length === 4 &&
@@ -33,8 +41,15 @@ function ipv4Parts(address: string): number[] | null {
 }
 
 export function isPublicIp(address: string): boolean {
-  const mapped = address.toLowerCase().match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/)?.[1];
+  const lowerAddress = address.toLowerCase();
+  const mapped = lowerAddress.match(/^::(?:ffff:)?(\d+\.\d+\.\d+\.\d+)$/)?.[1];
   if (mapped) return isPublicIp(mapped);
+  const mappedHex = lowerAddress.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  if (mappedHex) {
+    const high = Number.parseInt(mappedHex[1]!, 16);
+    const low = Number.parseInt(mappedHex[2]!, 16);
+    return isPublicIp(`${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`);
+  }
   const parts = ipv4Parts(address);
   if (parts) {
     const [a, b, c] = parts;
@@ -47,6 +62,7 @@ export function isPublicIp(address: string): boolean {
       (a === 172 && b! >= 16 && b! <= 31) ||
       (a === 192 && b === 0 && (c === 0 || c === 2)) ||
       (a === 192 && b === 168) ||
+      (a === 192 && b === 88 && c === 99) ||
       (a === 198 && (b === 18 || b === 19)) ||
       (a === 198 && b === 51 && c === 100) ||
       (a === 203 && b === 0 && c === 113) ||
@@ -56,25 +72,28 @@ export function isPublicIp(address: string): boolean {
     return true;
   }
 
-  const normalized = address.toLowerCase();
+  const normalized = lowerAddress;
   if (isIP(normalized) !== 6) return false;
+  // Public connector traffic has no reason to use transition, local-use, or
+  // protocol-assignment space. Restrict IPv6 to global unicast (2000::/3),
+  // then exclude the special-purpose ranges that sit inside that block.
+  const [firstPart, secondPart] = normalized.split(":", 2);
+  const firstHextet = Number.parseInt(firstPart!, 16);
+  const secondHextet = Number.parseInt(secondPart || "0", 16);
+  if (firstHextet < 0x2000 || firstHextet > 0x3fff) return false;
   return !(
-    normalized === "::" ||
-    normalized === "::1" ||
-    normalized.startsWith("fc") ||
-    normalized.startsWith("fd") ||
-    normalized.startsWith("fe8") ||
-    normalized.startsWith("fe9") ||
-    normalized.startsWith("fea") ||
-    normalized.startsWith("feb") ||
-    normalized.startsWith("2001:db8")
+    // IETF protocol assignments include Teredo and benchmarking addresses.
+    (firstHextet === 0x2001 && secondHextet < 0x200) ||
+    normalized.startsWith("2001:db8") ||
+    normalized.startsWith("2002:") ||
+    normalized.startsWith("3fff:")
   );
 }
 
-export async function assertSafeUrl(
+export async function resolveSafeUrl(
   value: string,
   options: Pick<SafeRequestOptions, "allowedHosts" | "allowHttpForTests"> = {},
-): Promise<URL> {
+): Promise<SafeUrlResolution> {
   let url: URL;
   try {
     url = new URL(value);
@@ -98,8 +117,9 @@ export async function assertSafeUrl(
     throw new ConnectorError("PRIVATE_HOST", "Private source hosts are not permitted.", false);
   }
 
-  const addresses = isIP(hostname)
-    ? [{ address: hostname }]
+  const literalFamily = isIP(hostname);
+  const addresses = literalFamily
+    ? [{ address: hostname, family: literalFamily }]
     : await lookup(hostname, { all: true, verbatim: true }).catch(() => {
         throw new ConnectorError("DNS_FAILED", "The source hostname could not be resolved.", true);
       });
@@ -110,7 +130,59 @@ export async function assertSafeUrl(
       false,
     );
   }
-  return url;
+  return { url, addresses };
+}
+
+export async function assertSafeUrl(
+  value: string,
+  options: Pick<SafeRequestOptions, "allowedHosts" | "allowHttpForTests"> = {},
+): Promise<URL> {
+  return (await resolveSafeUrl(value, options)).url;
+}
+
+type PinnedFetchResult = {
+  response: Response;
+  release(): Promise<void>;
+};
+
+/**
+ * Connect to an address from the same DNS answer that passed the public-IP
+ * check. TLS and the Host header still use the original hostname. This closes
+ * the validate-then-resolve-again window used by DNS-rebinding attacks.
+ */
+export async function fetchPinnedResolution(
+  resolution: SafeUrlResolution,
+  init: RequestInit,
+): Promise<PinnedFetchResult> {
+  let addressIndex = 0;
+  const dispatcher = new Agent({
+    connect: {
+      lookup: (_hostname, lookupOptions, callback) => {
+        if (lookupOptions.all) {
+          callback(null, resolution.addresses);
+          return;
+        }
+        const address = resolution.addresses[addressIndex++ % resolution.addresses.length]!;
+        callback(null, address.address, address.family);
+      },
+    },
+  });
+  try {
+    const pinnedFetch = fetch as (
+      input: URL,
+      init: RequestInit & { dispatcher: Agent },
+    ) => Promise<Response>;
+    const response = await pinnedFetch(resolution.url, { ...init, dispatcher });
+    return {
+      response,
+      release: async () => {
+        await dispatcher.close();
+      },
+    };
+  } catch (error) {
+    await dispatcher.close().catch(() => undefined);
+    throw error;
+  }
 }
 
 async function readBoundedBody(response: Response, maximumBytes: number): Promise<Uint8Array> {
@@ -181,7 +253,8 @@ export async function safeGet(
   const visited = new Set<string>();
 
   for (let redirect = 0; redirect <= maximumRedirects; redirect += 1) {
-    const url = await assertSafeUrl(current, options);
+    const resolution = await resolveSafeUrl(current, options);
+    const url = resolution.url;
     const normalizedUrl = url.toString();
     if (visited.has(normalizedUrl)) {
       throw new ConnectorError("REDIRECT_LOOP", "The source returned a redirect loop.", false);
@@ -191,9 +264,10 @@ export async function safeGet(
     const signal = options.signal
       ? AbortSignal.any([options.signal, timeoutSignal])
       : timeoutSignal;
-    let response: Response;
+    let response: Response | undefined;
+    let release: () => Promise<void> = async () => undefined;
     try {
-      response = await fetch(url, {
+      const fetched = await fetchPinnedResolution(resolution, {
         method: "GET",
         headers: {
           accept: "application/json, application/ld+json, text/html;q=0.9, */*;q=0.5",
@@ -203,6 +277,8 @@ export async function safeGet(
         redirect: "manual",
         signal,
       });
+      response = fetched.response;
+      release = fetched.release;
     } catch (error) {
       const timedOut = error instanceof Error && error.name === "TimeoutError";
       throw new ConnectorError(
@@ -211,53 +287,57 @@ export async function safeGet(
         true,
       );
     }
-
-    if ([301, 302, 303, 307, 308].includes(response.status)) {
-      const location = response.headers.get("location");
-      if (!location)
+    try {
+      if ([301, 302, 303, 307, 308].includes(response.status)) {
+        const location = response.headers.get("location");
+        if (!location)
+          throw new ConnectorError(
+            "INVALID_REDIRECT",
+            "The source returned an invalid redirect.",
+            false,
+          );
+        if (redirect === maximumRedirects) {
+          throw new ConnectorError(
+            "TOO_MANY_REDIRECTS",
+            "The source redirected too many times.",
+            false,
+          );
+        }
+        current = new URL(location, url).toString();
+        continue;
+      }
+      if (response.status === 429 || response.status >= 500) {
         throw new ConnectorError(
-          "INVALID_REDIRECT",
-          "The source returned an invalid redirect.",
-          false,
-        );
-      if (redirect === maximumRedirects) {
-        throw new ConnectorError(
-          "TOO_MANY_REDIRECTS",
-          "The source redirected too many times.",
-          false,
+          response.status === 429 ? "SOURCE_RATE_LIMITED" : "SOURCE_UNAVAILABLE",
+          response.status === 429
+            ? "The source rate limit was reached."
+            : "The source is temporarily unavailable.",
+          true,
+          response.status,
         );
       }
-      current = new URL(location, url).toString();
-      continue;
-    }
-    if (response.status === 429 || response.status >= 500) {
-      throw new ConnectorError(
-        response.status === 429 ? "SOURCE_RATE_LIMITED" : "SOURCE_UNAVAILABLE",
-        response.status === 429
-          ? "The source rate limit was reached."
-          : "The source is temporarily unavailable.",
-        true,
-        response.status,
-      );
-    }
 
-    assertAllowedContentType(response, allowedContentTypes);
-    const body = await readBoundedBody(response, maximumBytes);
-    const decoder = new TextDecoder("utf-8", { fatal: false });
-    return {
-      status: response.status,
-      url: url.toString(),
-      headers: response.headers,
-      body,
-      text: () => decoder.decode(body),
-      json: <T>() => {
-        try {
-          return JSON.parse(decoder.decode(body)) as T;
-        } catch {
-          throw new ConnectorError("INVALID_JSON", "The source returned invalid JSON.", false);
-        }
-      },
-    };
+      assertAllowedContentType(response, allowedContentTypes);
+      const body = await readBoundedBody(response, maximumBytes);
+      const decoder = new TextDecoder("utf-8", { fatal: false });
+      return {
+        status: response.status,
+        url: url.toString(),
+        headers: response.headers,
+        body,
+        text: () => decoder.decode(body),
+        json: <T>() => {
+          try {
+            return JSON.parse(decoder.decode(body)) as T;
+          } catch {
+            throw new ConnectorError("INVALID_JSON", "The source returned invalid JSON.", false);
+          }
+        },
+      };
+    } finally {
+      await response.body?.cancel().catch(() => undefined);
+      await release();
+    }
   }
   throw new ConnectorError("REDIRECT_FAILED", "The source redirect failed.", false);
 }

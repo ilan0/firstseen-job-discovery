@@ -11,7 +11,7 @@ physical-device work.
 | --: | ----------------------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 |   0 | Baseline/compliance containment                 | Complete locally | Brave result fields removed from persistence; Adzuna promotion disabled by provider policy; backup/token discrepancies documented                                          |
 |   1 | Policy, contracts, and benchmark foundation     | Complete locally | Versioned provider capabilities/licenses and minimized URL-hash coverage benchmarks implemented; no fabricated independent recall claim                                    |
-|   2 | Detection, redirects, authority, query overhaul | Complete locally | Twelve stable role/location cohorts; SSRF-safe redirect and organization-authority contracts; custom JSON-LD independently verified                                        |
+|   2 | Detection, redirects, authority, query overhaul | Complete locally | Twelve stable cohorts; DNS-pinned, per-hop SSRF-safe redirects; organization authority contracts; custom JSON-LD independently verified                                   |
 |   3 | Public ATS connectors                           | Complete locally | Greenhouse, Lever, Ashby, Recruitee, and Pinpoint contract and live bounded smoke checks pass                                                                              |
 |   4 | Reviewed structured/licensed sensor foundation  | Partial          | Reviewed JSON-LD/RSS/Atom/sitemap contracts implemented; licensed-vendor bakeoff awaits a user-authorized account/contract                                                 |
 |   5 | Shared supply and private overlays              | Complete locally | Additive global schema, conservative backfill, dual write, global scheduler/outbox/fan-out, database-driven profiles, and SQL indexes tested behind disabled flags         |
@@ -75,6 +75,13 @@ physical-device work.
    stale-policy recommendations during rollout instead of exposing them before source refresh.
    Explicit unsupported-country remote restrictions are hard exclusions; ambiguous US restrictions
    still route Review.
+8. Connector and redirect requests pin each connection to the same public DNS answer that passed
+   validation, then resolve and validate again at every redirect hop. IPv4/IPv6 private,
+   transition, protocol-assignment, documentation, multicast, non-default-port, credentialed,
+   oversized, and missing/unsupported-content-type destinations fail closed. A DNS-rebinding
+   regression test proves that a second-hop private answer is rejected before another request.
+9. Legacy CRM company identity prefers an attached verified global source, then an exact canonical
+   domain. It never merges unrelated organizations solely because their normalized names match.
 
 ## Local release evidence
 

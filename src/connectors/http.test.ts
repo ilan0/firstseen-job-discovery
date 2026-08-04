@@ -10,14 +10,22 @@ afterEach(() => {
 describe("safe connector HTTP", () => {
   it.each([
     ["::ffff:127.0.0.1", false],
+    ["::ffff:7f00:1", false],
     ["::ffff:8.8.8.8", true],
     ["0.1.2.3", false],
     ["100.127.0.1", false],
     ["172.31.255.255", false],
     ["198.18.0.1", false],
+    ["192.88.99.1", false],
     ["224.0.0.1", false],
     ["not-an-ip", false],
     ["2001:4860:4860::8888", true],
+    ["64:ff9b::8.8.8.8", false],
+    ["100::1", false],
+    ["2001::1", false],
+    ["2002:0808:0808::1", false],
+    ["ff02::1", false],
+    ["3fff::1", false],
   ])("classifies %s as public=%s", (address, expected) => {
     expect(isPublicIp(address)).toBe(expected);
   });
@@ -36,6 +44,7 @@ describe("safe connector HTTP", () => {
   it("reads bounded responses and exposes safe text and JSON helpers", async () => {
     const fetcher = vi.fn(async (_input: URL, init?: RequestInit) => {
       expect(init?.redirect).toBe("manual");
+      expect(init).toHaveProperty("dispatcher");
       expect(new Headers(init?.headers).get("user-agent")).toContain("FirstSeen");
       expect(new Headers(init?.headers).get("x-test")).toBe("yes");
       return new Response('{"jobs":2}', {

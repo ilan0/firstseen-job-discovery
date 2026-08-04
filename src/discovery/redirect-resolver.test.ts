@@ -1,9 +1,18 @@
 // @vitest-environment node
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const dns = vi.hoisted(() => ({ lookup: vi.fn() }));
+vi.mock("node:dns/promises", () => ({ lookup: dns.lookup }));
+
 import { resolveSafeRedirect } from "./redirect-resolver";
 
 describe("safe discovery redirect resolution", () => {
+  beforeEach(() => {
+    dns.lookup.mockReset();
+    dns.lookup.mockResolvedValue([{ address: "8.8.8.8", family: 4 }]);
+  });
+
   it("revalidates each hop and returns the final official URL without retaining a body", async () => {
     const fetcher = vi
       .fn<typeof fetch>()
@@ -35,6 +44,25 @@ describe("safe discovery redirect resolution", () => {
     ["https://user:pass@8.8.8.8/jobs", "UNSAFE_URL"],
   ])("rejects unsafe destination %s", async (url, code) => {
     await expect(resolveSafeRedirect(url)).rejects.toMatchObject({ code });
+  });
+
+  it("re-resolves every hop and rejects DNS rebinding before the next request", async () => {
+    dns.lookup
+      .mockResolvedValueOnce([{ address: "8.8.8.8", family: 4 }])
+      .mockResolvedValueOnce([{ address: "127.0.0.1", family: 4 }]);
+    const fetcher = vi.fn(
+      async () =>
+        new Response(null, {
+          status: 302,
+          headers: { location: "https://sensor.example/official" },
+        }),
+    );
+
+    await expect(
+      resolveSafeRedirect("https://sensor.example/start", { fetcher }),
+    ).rejects.toMatchObject({ code: "PRIVATE_ADDRESS" });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(dns.lookup).toHaveBeenCalledTimes(2);
   });
 
   it("rejects loops, excessive hops, oversized redirect bodies, and unsafe content", async () => {
@@ -76,6 +104,12 @@ describe("safe discovery redirect resolution", () => {
               headers: { "content-type": "application/octet-stream" },
             }),
         ),
+      }),
+    ).rejects.toMatchObject({ code: "UNSUPPORTED_CONTENT_TYPE" });
+
+    await expect(
+      resolveSafeRedirect("https://8.8.8.8/start", {
+        fetcher: vi.fn(async () => new Response(null, { status: 204 })),
       }),
     ).rejects.toMatchObject({ code: "UNSUPPORTED_CONTENT_TYPE" });
   });

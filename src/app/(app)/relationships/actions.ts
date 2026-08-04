@@ -1,16 +1,19 @@
 "use server";
 
 import { TZDate } from "@date-fns/tz";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/db/client";
 import {
   companies,
+  careerSources,
   contactCompanyLinks,
   contactInteractions,
   contactMethods,
   contacts,
+  globalCareerSources,
+  organizationDomains,
   organizations,
   referrals,
   referralRequests,
@@ -61,6 +64,7 @@ async function ownedCompany(ownerId: string, companyId: string) {
       id: companies.id,
       organizationId: companies.organizationId,
       name: companies.name,
+      domain: companies.domain,
       normalizedName: companies.normalizedName,
     })
     .from(companies)
@@ -69,18 +73,51 @@ async function ownedCompany(ownerId: string, companyId: string) {
   if (!company) throw new Error("Company not found.");
   if (company.organizationId) return { id: company.id, organizationId: company.organizationId };
   return db.transaction(async (tx) => {
-    const [knownOrganization] = await tx
-      .select({ id: organizations.id })
-      .from(organizations)
-      .where(eq(organizations.normalizedName, company.normalizedName))
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtext(${`legacy-company-organization:${company.id}`}))`,
+    );
+    const [sourceOrganization] = await tx
+      .select({ id: globalCareerSources.organizationId })
+      .from(careerSources)
+      .innerJoin(globalCareerSources, eq(careerSources.globalSourceId, globalCareerSources.id))
+      .where(and(eq(careerSources.companyId, company.id), isNotNull(careerSources.globalSourceId)))
       .limit(1);
+    const canonicalDomain = company.domain?.toLowerCase().replace(/^www\./, "") ?? null;
+    if (!sourceOrganization && canonicalDomain)
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtext(${`organization:${canonicalDomain}`}))`,
+      );
+    const [domainOrganization] =
+      !sourceOrganization && canonicalDomain
+        ? await tx
+            .select({ id: organizationDomains.organizationId })
+            .from(organizationDomains)
+            .where(eq(organizationDomains.domain, canonicalDomain))
+            .limit(1)
+        : [];
+    const knownOrganization = sourceOrganization ?? domainOrganization;
     const [organization] = knownOrganization
       ? [knownOrganization]
       : await tx
           .insert(organizations)
-          .values({ name: company.name, normalizedName: company.normalizedName })
+          .values({
+            name: company.name,
+            normalizedName: company.normalizedName,
+            canonicalDomain,
+          })
           .returning({ id: organizations.id });
     if (!organization) throw new Error("Company organization could not be created.");
+    if (!knownOrganization && canonicalDomain)
+      await tx
+        .insert(organizationDomains)
+        .values({
+          organizationId: organization.id,
+          domain: canonicalDomain,
+          authorityConfidence: 60,
+          verifiedAt: new Date(),
+          evidence: { source: "legacy_company_domain" },
+        })
+        .onConflictDoNothing();
     await tx
       .update(companies)
       .set({ organizationId: organization.id, updatedAt: new Date() })
