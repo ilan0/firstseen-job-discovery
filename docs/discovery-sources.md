@@ -85,6 +85,10 @@ Required behavior:
   because a 304 contains no descriptions to evaluate.
 - Per-request timeout, safe retry classification, exponential backoff/jitter, per-host rate pacing,
   and bounded concurrency.
+- Official-board 429 and 5xx responses are retryable; ordinary 4xx responses are terminal. A
+  successful employer page paired with a documented ATS board endpoint that returns 404/410 is an
+  unsupported board configuration, so the source is quarantined instead of wasting scheduled runs
+  or inferring that previously seen jobs closed.
 - Strict provider schemas; malformed records are skipped or fail safely with an observable code.
 - Unchanged scan observations retain identity/hash evidence without copying the full description
   into PostgreSQL several times per day.

@@ -90,10 +90,11 @@ export class AshbyConnector implements JobConnector {
     if (response.status === 304)
       return { listings: [], nextCursor: null, ...headers, notModified: true };
     if (response.status !== 200) {
+      const boardNotFound = [404, 410].includes(response.status);
       throw new ConnectorError(
-        "ASHBY_HTTP_ERROR",
+        boardNotFound ? "ASHBY_BOARD_NOT_FOUND" : "ASHBY_HTTP_ERROR",
         "Ashby returned an unexpected response.",
-        false,
+        response.status === 429 || response.status >= 500,
         response.status,
       );
     }

@@ -109,7 +109,13 @@ describe("Greenhouse connector contract", () => {
     await expect(unexpected.discover(source("greenhouse"))).rejects.toMatchObject({
       code: "GREENHOUSE_HTTP_ERROR",
       status: 418,
+      retryable: false,
     });
+    await expect(
+      new GreenhouseConnector(
+        vi.fn<SafeGet>().mockResolvedValue(fixtureResponse(503, {})),
+      ).discover(source("greenhouse")),
+    ).rejects.toMatchObject({ code: "GREENHOUSE_HTTP_ERROR", retryable: true });
     await expect(
       unexpected.verify(source("greenhouse"), "https://example.com", null),
     ).resolves.toMatchObject({ state: "uncertain" });
@@ -202,7 +208,12 @@ describe("Lever connector contract", () => {
       new LeverConnector(vi.fn<SafeGet>().mockResolvedValue(fixtureResponse(418, []))).discover(
         source("lever"),
       ),
-    ).rejects.toMatchObject({ code: "LEVER_HTTP_ERROR" });
+    ).rejects.toMatchObject({ code: "LEVER_HTTP_ERROR", retryable: false });
+    await expect(
+      new LeverConnector(vi.fn<SafeGet>().mockResolvedValue(fixtureResponse(429, []))).discover(
+        source("lever"),
+      ),
+    ).rejects.toMatchObject({ code: "LEVER_HTTP_ERROR", retryable: true });
     const malformed = new LeverConnector(
       vi.fn<SafeGet>().mockResolvedValue(fixtureResponse(200, [{ id: "bad" }])),
     );
@@ -326,7 +337,17 @@ describe("Ashby connector contract", () => {
       new AshbyConnector(vi.fn<SafeGet>().mockResolvedValue(fixtureResponse(418, {}))).discover(
         source("ashby"),
       ),
-    ).rejects.toMatchObject({ code: "ASHBY_HTTP_ERROR" });
+    ).rejects.toMatchObject({ code: "ASHBY_HTTP_ERROR", retryable: false });
+    await expect(
+      new AshbyConnector(vi.fn<SafeGet>().mockResolvedValue(fixtureResponse(404, {}))).discover(
+        source("ashby"),
+      ),
+    ).rejects.toMatchObject({ code: "ASHBY_BOARD_NOT_FOUND", retryable: false, status: 404 });
+    await expect(
+      new AshbyConnector(vi.fn<SafeGet>().mockResolvedValue(fixtureResponse(500, {}))).discover(
+        source("ashby"),
+      ),
+    ).rejects.toMatchObject({ code: "ASHBY_HTTP_ERROR", retryable: true });
     await expect(
       new AshbyConnector(
         vi.fn<SafeGet>().mockResolvedValue(fixtureResponse(200, { jobs: [] })),

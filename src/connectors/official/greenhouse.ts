@@ -90,10 +90,11 @@ export class GreenhouseConnector implements JobConnector {
     if (response.status === 304)
       return { listings: [], nextCursor: null, ...headers, notModified: true };
     if (response.status !== 200) {
+      const boardNotFound = [404, 410].includes(response.status);
       throw new ConnectorError(
-        "GREENHOUSE_HTTP_ERROR",
+        boardNotFound ? "GREENHOUSE_BOARD_NOT_FOUND" : "GREENHOUSE_HTTP_ERROR",
         "Greenhouse returned an unexpected response.",
-        false,
+        response.status === 429 || response.status >= 500,
         response.status,
       );
     }

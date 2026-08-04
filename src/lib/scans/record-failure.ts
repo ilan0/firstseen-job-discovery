@@ -25,7 +25,9 @@ export async function recordSourceScanFailure(options: {
 }) {
   const now = options.now ?? new Date();
   const errorCode = sourceFailureCode(options.error);
-  const quarantineSource = ["CONNECTOR_PAGINATION_LIMIT", "RESPONSE_TOO_LARGE"].includes(errorCode);
+  const quarantineSource =
+    ["CONNECTOR_PAGINATION_LIMIT", "RESPONSE_TOO_LARGE"].includes(errorCode) ||
+    errorCode.endsWith("_BOARD_NOT_FOUND");
 
   await db.transaction(async (tx) => {
     await tx

@@ -113,10 +113,11 @@ export class LeverConnector implements JobConnector {
     if (response.status === 304)
       return { listings: [], nextCursor: null, ...headers, notModified: true };
     if (response.status !== 200) {
+      const boardNotFound = [404, 410].includes(response.status);
       throw new ConnectorError(
-        "LEVER_HTTP_ERROR",
+        boardNotFound ? "LEVER_BOARD_NOT_FOUND" : "LEVER_HTTP_ERROR",
         "Lever returned an unexpected response.",
-        false,
+        response.status === 429 || response.status >= 500,
         response.status,
       );
     }

@@ -62,6 +62,8 @@ Supabase URL.
    or unsupported-source error. The worker already withholds closure finalization on failure. A
    provisional source that exceeds the hard response/pagination safety bound is quarantined without
    changing its jobs' closure evidence.
+   A terminal 404/410 from the documented official ATS board endpoint also quarantines that source;
+   429 and 5xx responses remain retryable and must not be treated as closure evidence.
 3. Allow Inngest's source retry/backoff to finish. Other source events continue independently.
 4. If retries exhaust, inspect the safe dead letter. Correct the URL/connector or deploy a tested
    parser fix, then use Replay once. Replay validates owner/source and records its event ID.
