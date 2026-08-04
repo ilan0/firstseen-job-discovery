@@ -7,7 +7,7 @@ import type {
   Recommendation,
 } from "./types";
 
-export const RANKING_VERSION = "2026-08-04.1";
+export const RANKING_VERSION = "2026-08-04.2";
 
 const advancedTitlePattern =
   /\b(?:senior|sr\.?|staff|principal|lead|manager|director|head|architect|intermediate)\b/i;
@@ -36,15 +36,74 @@ function normalizeSkill(skill: string): string {
   return skill.toLowerCase().replace(/[^a-z0-9+#.]/g, "");
 }
 
+const nonSkillRequirementPattern =
+  /\b(?:authorization|authori[sz]ed|citizenship|clearance|degree|eligibility|hybrid|location|office|on[ -]?site|public trust|remote|sponsor(?:ship)?|visa|work in the (?:u\.?s\.?|united states))\b/i;
+
+const skillCategories = [
+  {
+    requirement: /\b(?:front[ -]?end(?: frameworks?)?|client[ -]?side|web ui)\b/i,
+    candidate: /\b(?:css|html|javascript|next(?:\.js|js)?|react|tailwind|typescript)\b/i,
+  },
+  {
+    requirement: /\b(?:back[ -]?end(?: apis?)?|rest(?:ful)? apis?|server[ -]?side)\b/i,
+    candidate: /\b(?:c#|java|node(?:\.js|js)?|python|rest apis?)\b/i,
+  },
+  {
+    requirement: /\b(?:data stores?|databases?|persistence|relational data|sql)\b/i,
+    candidate: /\b(?:postgres(?:ql)?|sqlite|sql|supabase)\b/i,
+  },
+  {
+    requirement:
+      /\b(?:ai\/ml|artificial intelligence|large language models?|llms?|machine learning)\b/i,
+    candidate: /\b(?:ai vision|function calling|gemini|openai|structured outputs?)\b/i,
+  },
+  {
+    requirement: /\b(?:automated testing|test driven development|testing|unit tests?)\b/i,
+    candidate: /\b(?:tdd|testing|xunit)\b/i,
+  },
+  {
+    requirement: /\b(?:full[ -]?stack|web development fundamentals?)\b/i,
+    candidate: /\b(?:next(?:\.js|js)?|node(?:\.js|js)?|react|rest apis?|supabase)\b/i,
+  },
+] as const;
+
+function matchingCandidateSkills(requirement: string, candidateSkills: string[]): string[] {
+  const normalizedRequirement = normalizeSkill(requirement);
+  const direct = candidateSkills.filter((candidateSkill) => {
+    const normalizedCandidate = normalizeSkill(candidateSkill);
+    return (
+      normalizedCandidate === normalizedRequirement ||
+      (normalizedCandidate.length >= 2 && normalizedRequirement.includes(normalizedCandidate)) ||
+      (normalizedRequirement.length >= 3 && normalizedCandidate.includes(normalizedRequirement))
+    );
+  });
+  if (direct.length) return direct;
+  const category = skillCategories.find((item) => item.requirement.test(requirement));
+  return category
+    ? candidateSkills.filter((skill) => category.candidate.test(skill)).slice(0, 3)
+    : [];
+}
+
 function skillsDimension(input: RankingInput): RankingDimensionResult {
-  const candidate = new Set(input.candidateSkills.map(normalizeSkill));
-  const required = input.requiredSkills.map(normalizeSkill).filter(Boolean);
-  const preferred = input.preferredSkills.map(normalizeSkill).filter(Boolean);
-  const requiredMatches = required.filter((skill) => candidate.has(skill));
-  const preferredMatches = preferred.filter((skill) => candidate.has(skill));
+  const required = input.requiredSkills.filter(
+    (skill) => normalizeSkill(skill) && !nonSkillRequirementPattern.test(skill),
+  );
+  const preferred = input.preferredSkills.filter(
+    (skill) => normalizeSkill(skill) && !nonSkillRequirementPattern.test(skill),
+  );
+  const requiredMatches = required.filter(
+    (skill) => matchingCandidateSkills(skill, input.candidateSkills).length > 0,
+  );
+  const preferredMatches = preferred.filter(
+    (skill) => matchingCandidateSkills(skill, input.candidateSkills).length > 0,
+  );
   const requiredRatio = required.length ? requiredMatches.length / required.length : 0.65;
   const preferredRatio = preferred.length ? preferredMatches.length / preferred.length : 0.5;
   const value = requiredRatio * 80 + preferredRatio * 20;
+  const evidence = [...requiredMatches, ...preferredMatches]
+    .flatMap((skill) => matchingCandidateSkills(skill, input.candidateSkills))
+    .filter((skill, index, all) => all.indexOf(skill) === index)
+    .slice(0, 8);
   return dimension(
     "skills_fit",
     value,
@@ -52,7 +111,7 @@ function skillsDimension(input: RankingInput): RankingDimensionResult {
     required.length
       ? `${requiredMatches.length} of ${required.length} explicit required skills match the profile.`
       : "The description contains no reliable explicit required-skill list.",
-    [...requiredMatches, ...preferredMatches].slice(0, 8),
+    evidence,
   );
 }
 

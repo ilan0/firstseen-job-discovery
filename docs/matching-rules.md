@@ -64,7 +64,11 @@ or product postings at AI companies from consuming budget or entering Review as 
 Each recommendation persists one row per dimension with value, confidence, evidence, explanation,
 and ranking version:
 
-- Skills fit: overlap between required/preferred technologies and resume evidence.
+- Skills fit: overlap between required/preferred technologies and resume evidence. Matching accepts
+  normalized concrete names and reviewed category equivalents (for example React for “frontend
+  frameworks” or PostgreSQL for “databases”). Location, onsite, sponsorship, authorization,
+  clearance, and degree conditions are excluded from this dimension and remain in their dedicated
+  eligibility facts; they can never create a misleading zero-skills explanation.
 - Required-experience alignment: closeness to 0–1 year, with hard maximum already enforced.
 - Role-family alignment: candidate preference above.
 - Freshness: reliable posted time when available, otherwise first-seen; ages dynamically.

@@ -87,4 +87,34 @@ describe("explainable deterministic ranking", () => {
     );
     expect(result.dimensions.find((item) => item.dimension === "skills_fit")?.value).toBe(100);
   });
+
+  it("matches category-equivalent skills and excludes eligibility conditions from skills fit", () => {
+    const value = input("Full-time role requiring 0-1 years of experience in Miami.");
+    value.requiredSkills = [
+      "Full stack web development fundamentals",
+      "Frontend frameworks",
+      "Backend APIs",
+      "Databases",
+      "Ability to work on-site in New York, NY",
+      "Eligibility to work in the US",
+    ];
+    value.candidateSkills = ["TypeScript", "React", "Node.js", "REST APIs", "PostgreSQL"];
+    const skills = rankJob(value).dimensions.find((item) => item.dimension === "skills_fit");
+    expect(skills).toMatchObject({
+      value: 80,
+      explanation: "4 of 4 explicit required skills match the profile.",
+    });
+    expect(skills?.evidence).toEqual(expect.arrayContaining(["React", "Node.js", "PostgreSQL"]));
+  });
+
+  it("does not report zero skills when the extraction contains only non-skill conditions", () => {
+    const value = input("Full-time role requiring 0-1 years of experience in Miami.");
+    value.requiredSkills = ["US work authorization", "Ability to work on-site in Miami"];
+    value.preferredSkills = [];
+    const skills = rankJob(value).dimensions.find((item) => item.dimension === "skills_fit");
+    expect(skills).toMatchObject({
+      value: 62,
+      explanation: "The description contains no reliable explicit required-skill list.",
+    });
+  });
 });
