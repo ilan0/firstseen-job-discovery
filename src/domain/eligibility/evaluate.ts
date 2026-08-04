@@ -1,6 +1,6 @@
 import type { DecisionReason, EligibilityDecision, ExtractedJobFacts } from "./types";
 
-export const ELIGIBILITY_RULE_VERSION = "2026-08-04.1";
+export const ELIGIBILITY_RULE_VERSION = "2026-08-04.2";
 export const MAX_REQUIRED_YEARS = 2;
 
 export function evaluateEligibility(facts: ExtractedJobFacts): EligibilityDecision {

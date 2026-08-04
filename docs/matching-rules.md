@@ -36,6 +36,11 @@ notification idempotency.
 | Role                 | Software/AI engineering families are rankable                                       | Proven non-software role is not recommended                                                  | Unclear technical family            |
 | Salary/industry      | Any salary and industry                                                             | —                                                                                            | Missing salary does not block       |
 
+Foreign-only remote restrictions are recognized from deterministic ISO region names plus common
+ATS aliases such as UK, EU, EMEA, APAC, and LATAM. A listing with a compatible US option may pass;
+an explicit foreign-only option is excluded, while an unresolved city or “global” jurisdiction
+routes to Review rather than guessing.
+
 “Three years preferred” does not equal “three years required.” “Must have 3+ years,” “minimum
 three years,” and equivalent required language are hard exclusions. “0–2 years,” “up to two,” and
 true new-grad language can pass. Seniority labels are weak signals; actual requirement prose wins.
