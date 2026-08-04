@@ -13,6 +13,7 @@ import {
 } from "@/db/schema";
 import { serverEnv } from "@/lib/env/server";
 import { decryptCapability } from "@/lib/security/encrypted-capability";
+import { recordNotificationDeadLetter, resolveNotificationDeadLetter } from "./dead-letter";
 import type { PushCapability } from "./push-capability";
 
 export const PUSH_POLICY_VERSION = "2026-08-04.1";
@@ -184,6 +185,7 @@ export async function deliverWebPush(
     )
     .returning({
       id: notificationDeliveries.id,
+      userId: notificationDeliveries.userId,
       subscriptionId: notificationDeliveries.pushSubscriptionId,
       attemptCount: notificationDeliveries.attemptCount,
       response: notificationDeliveries.providerResponseSafe,
@@ -226,8 +228,9 @@ export async function deliverWebPush(
     return { state: "invalid_capability" as const };
   }
   const response = claimed.response as { payload?: unknown };
+  let result: webPush.SendResult;
   try {
-    const result = await sender(
+    result = await sender(
       {
         endpoint: capability.endpoint,
         expirationTime: capability.expirationTime,
@@ -244,29 +247,13 @@ export async function deliverWebPush(
         urgency: "high",
       },
     );
-    await db.transaction(async (tx) => {
-      await tx
-        .update(notificationDeliveries)
-        .set({
-          status: "delivered",
-          acceptedAt: new Date(),
-          nextAttemptAt: null,
-          providerResponseSafe: { statusCode: result.statusCode },
-          lastErrorCode: null,
-          updatedAt: new Date(),
-        })
-        .where(eq(notificationDeliveries.id, claimed.id));
-      await tx
-        .update(pushSubscriptions)
-        .set({ lastUsedAt: new Date(), failureCount: 0, updatedAt: new Date() })
-        .where(eq(pushSubscriptions.id, subscriptionId));
-    });
-    return { state: "delivered" as const };
   } catch (error) {
     const code = statusCode(error);
     const expired = code === 404 || code === 410;
     const retryable = code === 429 || code === null || code >= 500;
     const exhausted = claimed.attemptCount >= 6;
+    const terminalFailure = (retryable && exhausted) || (!retryable && !expired);
+    const errorCode = expired ? "PUSH_SUBSCRIPTION_EXPIRED" : `PUSH_${code ?? "NETWORK"}`;
     const baseBackoffMinutes = Math.min(12 * 60, 15 * 3 ** Math.max(0, claimed.attemptCount - 1));
     const backoffMinutes = Math.round(baseBackoffMinutes * (0.8 + Math.random() * 0.4));
     await db.transaction(async (tx) => {
@@ -279,7 +266,7 @@ export async function deliverWebPush(
             retryable && !expired && !exhausted
               ? new Date(Date.now() + backoffMinutes * 60_000)
               : null,
-          lastErrorCode: expired ? "PUSH_SUBSCRIPTION_EXPIRED" : `PUSH_${code ?? "NETWORK"}`,
+          lastErrorCode: errorCode,
           providerResponseSafe: { statusCode: code, retryable, expired },
           updatedAt: new Date(),
         })
@@ -293,17 +280,50 @@ export async function deliverWebPush(
         })
         .where(eq(pushSubscriptions.id, subscriptionId));
     });
+    if (terminalFailure) {
+      await recordNotificationDeadLetter({
+        payload: { userId: claimed.userId, channel: "web_push", deliveryId: claimed.id },
+        errorCode: exhausted ? "PUSH_RETRIES_EXHAUSTED" : errorCode,
+        errorMessageSafe: exhausted
+          ? "Web Push exhausted its bounded delivery attempts."
+          : "Web Push returned a permanent provider failure.",
+      });
+    }
     return { state: expired ? ("expired" as const) : ("failed" as const), retryable };
   }
+  const acceptedAt = new Date();
+  await db.transaction(async (tx) => {
+    await tx
+      .update(notificationDeliveries)
+      .set({
+        status: "delivered",
+        acceptedAt,
+        nextAttemptAt: null,
+        providerResponseSafe: { statusCode: result.statusCode },
+        lastErrorCode: null,
+        updatedAt: acceptedAt,
+      })
+      .where(eq(notificationDeliveries.id, claimed.id));
+    await tx
+      .update(pushSubscriptions)
+      .set({ lastUsedAt: acceptedAt, failureCount: 0, updatedAt: acceptedAt })
+      .where(eq(pushSubscriptions.id, subscriptionId));
+  });
+  await resolveNotificationDeadLetter({
+    userId: claimed.userId,
+    channel: "web_push",
+    deliveryId: claimed.id,
+  });
+  return { state: "delivered" as const };
 }
 
 export async function deliverDueWebPush(userId: string, now = new Date()) {
-  await db
+  const staleClaims = await db
     .update(notificationDeliveries)
     .set({
       status: "failed",
-      nextAttemptAt: now,
-      lastErrorCode: "PUSH_DELIVERY_LEASE_EXPIRED",
+      nextAttemptAt: null,
+      lastErrorCode: "PUSH_DELIVERY_OUTCOME_UNKNOWN",
       updatedAt: now,
     })
     .where(
@@ -311,9 +331,16 @@ export async function deliverDueWebPush(userId: string, now = new Date()) {
         eq(notificationDeliveries.userId, userId),
         eq(notificationDeliveries.status, "sending"),
         lt(notificationDeliveries.updatedAt, new Date(now.getTime() - 10 * 60_000)),
-        lt(notificationDeliveries.attemptCount, 6),
       ),
-    );
+    )
+    .returning({ id: notificationDeliveries.id });
+  for (const stale of staleClaims)
+    await recordNotificationDeadLetter({
+      payload: { userId, channel: "web_push", deliveryId: stale.id },
+      errorCode: "PUSH_DELIVERY_OUTCOME_UNKNOWN",
+      errorMessageSafe: "Web Push delivery began but its final provider outcome is unknown.",
+      now,
+    });
   const rows = await db
     .select({ id: notificationDeliveries.id })
     .from(notificationDeliveries)
@@ -335,5 +362,5 @@ export async function deliverDueWebPush(userId: string, now = new Date()) {
       // A malformed or undecryptable capability is isolated to this device.
     }
   }
-  return { due: rows.length, delivered };
+  return { due: rows.length, delivered, unknownOutcomes: staleClaims.length };
 }

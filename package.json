@@ -19,7 +19,7 @@
     "test:connectors": "vitest run src/connectors",
     "test:eval": "vitest run src/ai src/domain/eligibility",
     "eval:corpus": "tsx scripts/evaluate-ai-corpus.ts",
-    "test:workers": "vitest run src/lib/scans src/lib/supply/global-source.test.ts src/lib/supply/requirement-extraction.test.ts src/inngest src/db/global-supply.integration.test.ts src/db/global-scheduler.integration.test.ts src/db/global-demand.integration.test.ts src/db/user-overlay.integration.test.ts src/db/global-lifecycle.integration.test.ts src/db/storage-cleanup.integration.test.ts src/db/ai-budget.integration.test.ts src/db/candidate-rematch.integration.test.ts",
+    "test:workers": "vitest run src/lib/scans src/lib/supply/global-source.test.ts src/lib/supply/requirement-extraction.test.ts src/inngest src/db/global-supply.integration.test.ts src/db/global-scheduler.integration.test.ts src/db/global-demand.integration.test.ts src/db/user-overlay.integration.test.ts src/db/global-lifecycle.integration.test.ts src/db/storage-cleanup.integration.test.ts src/db/ai-budget.integration.test.ts src/db/candidate-rematch.integration.test.ts src/db/notifications.integration.test.ts src/db/web-push.integration.test.ts",
     "test:pwa": "vitest run src/pwa",
     "test:security": "vitest run src/lib/security src/discovery/redirect-resolver.test.ts src/lib/notifications/push-capability.test.ts src/db/account-access.integration.test.ts src/db/notification-preferences.integration.test.ts",
     "test:load": "vitest run src/lib/load",

@@ -101,6 +101,11 @@ leases are reclaimable. Constraints protect duplicate delivery. Failure handling
 diagnostics and fails only the affected source/delivery. HTTP and model calls are never inside a
 database transaction.
 
+Notification provider acceptance is separated from database finalization. Exhausted or permanent
+failures become owner-scoped redacted dead letters. A stale `sending` claim is an unknown outcome and
+is never automatically redelivered; explicit replay provides at-most-once-by-default behavior while
+keeping recovery available from Operations.
+
 Priority demand sets source cadence without duplicate fetches. Priority sources run every 15
 minutes, Standard/Warm hourly, and Cold every four hours. Dismissal is sticky quarantine. Capacity
 forecasting may stop admitting new Cold sources but never silently slows Priority demand.

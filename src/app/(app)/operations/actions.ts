@@ -8,6 +8,10 @@ import { careerSources, deadLetterRecords, globalScanRuns } from "@/db/schema";
 import { rolloutFlags } from "@/config/rollout";
 import { inngest } from "@/inngest/client";
 import { requireOwner } from "@/lib/auth/owner";
+import {
+  notificationDeadLetterPayloadSchema,
+  resetNotificationDeliveryForReplay,
+} from "@/lib/notifications/dead-letter";
 import { consumeRateLimit } from "@/lib/security/rate-limit";
 
 async function enforceOperationsRateLimit(ownerId: string, namespace: string) {
@@ -35,6 +39,32 @@ async function requireActiveOwnedSource(ownerId: string, sourceId: string) {
     .limit(1);
   if (!source) throw new Error("Active source was not found");
   return source;
+}
+
+async function dispatchDeadLetterReplay(
+  record: { eventName: string; eventPayload: unknown },
+  ownerId: string,
+  now: Date,
+) {
+  if (record.eventName === "firstseen/notification.delivery.failed") {
+    const payload = notificationDeadLetterPayloadSchema.parse(record.eventPayload);
+    if (payload.userId !== ownerId) throw new Error("Dead letter ownership is invalid");
+    if (!(await resetNotificationDeliveryForReplay(payload, now)))
+      throw new Error("Failed notification is no longer replayable");
+    return inngest.send({
+      name: "firstseen/user.notifications.requested",
+      data: { userId: ownerId, scheduledFor: now.toISOString() },
+    });
+  }
+  const payload = z
+    .object({ userId: z.string().uuid(), sourceId: z.string().uuid() })
+    .parse(record.eventPayload);
+  if (payload.userId !== ownerId) throw new Error("Dead letter ownership is invalid");
+  await requireActiveOwnedSource(ownerId, payload.sourceId);
+  return inngest.send({
+    name: "firstseen/source.scan.requested",
+    data: { ...payload, scheduledFor: now.toISOString() },
+  });
 }
 
 export async function requestSourceScan(formData: FormData) {
@@ -94,18 +124,11 @@ export async function replayDeadLetter(formData: FormData) {
     .limit(1);
   if (!record || record.resolvedAt)
     throw new Error("Dead letter was not found or is already resolved");
-  const payload = z
-    .object({ userId: z.string().uuid(), sourceId: z.string().uuid() })
-    .parse(record.eventPayload);
-  if (payload.userId !== owner.id) throw new Error("Dead letter ownership is invalid");
-  await requireActiveOwnedSource(owner.id, payload.sourceId);
-  const sent = await inngest.send({
-    name: "firstseen/source.scan.requested",
-    data: { ...payload, scheduledFor: new Date().toISOString() },
-  });
+  const now = new Date();
+  const sent = await dispatchDeadLetterReplay(record, owner.id, now);
   await db
     .update(deadLetterRecords)
-    .set({ replayedAt: new Date(), replayEventId: sent.ids[0] ?? null, updatedAt: new Date() })
+    .set({ replayedAt: now, replayEventId: sent.ids[0] ?? null, updatedAt: now })
     .where(eq(deadLetterRecords.id, id));
   revalidatePath("/operations");
   redirect("/operations?started=replay");

@@ -18,11 +18,11 @@ physical-device work.
 |   6 | Relationship CRM                                | Complete locally | Contacts, methods, company links, interactions, reminders, referral requests, best-contact rules, migration compatibility, UI and RLS coverage                               |
 |   7 | Applications and packet                         | Complete locally | Sessions, private resume metadata/storage policy, packet, application/stage/follow-up records, return prompt and outcome analytics; Apply never marks Applied                |
 |   8 | Installable PWA                                 | Complete locally | Manifest/icons, narrow service worker, no private response caching, offline/update UI, install and lifecycle tests                                                           |
-|   9 | Channel orchestration and Web Push              | Complete locally | Encrypted per-device subscriptions, VAPID delivery, channel/device idempotency, privacy payload, retries and 404/410 cleanup; production/device rollout pending              |
+|   9 | Channel orchestration and Web Push              | Complete locally | Encrypted per-device subscriptions, channel/device idempotency, bounded retries, unknown-outcome dead letters, replay, and 404/410 cleanup; device rollout pending           |
 |  10 | Mobile detail and Simplify handoff              | Complete locally | Deep-link recovery, mobile action parity, referral/application packet context, Continue Later/Desktop behavior; physical extension/device checks pending                     |
 |  11 | Shared AI extraction and escalation             | Complete locally | Explicit Luna, strict evidence, selective capped Terra, current pricing, cost/budget ledgers and regression evaluator; 300-item human corpus remains a human-labeling gate   |
 |  12 | Invite-only multi-user foundations              | Complete locally | Individual email route/onboarding and per-user runtime preferences implemented behind disabled flags; custom SMTP/public signup remain out of scope                          |
-|  13 | Integrated local certification                  | Complete         | From-zero migration/bootstrap, 376 tests, strengthened coverage floor, focused suites, zero-vulnerability audit, build, and retry-free four-viewport browser suite pass      |
+|  13 | Integrated local certification                  | Complete         | From-zero migration/bootstrap, 381 tests, strengthened coverage floor, focused suites, zero-vulnerability audit, build, and retry-free four-viewport browser suite pass      |
 |  14 | Production rollout and seven-day soak           | Pending rollout  | Isolated backup restore passes; requires safe FirstSeen-only deployment, Web Push/iPhone acceptance, then seven consecutive scheduled days                                   |
 |  15 | Final evidence audit                            | Pending          | Runs after the soak; current documentation intentionally lists remaining blind spots                                                                                         |
 
@@ -103,16 +103,20 @@ physical-device work.
 14. Web Push channel/subscription creation is race-safe. Partial unique indexes enforce exactly one
     global notification preference and one per-organization preference per channel, including the
     otherwise-duplicate nullable global scope.
+15. Slack and Web Push distinguish provider rejection from post-acceptance persistence. Bounded retry
+    exhaustion and permanent provider failures create redacted, owner-scoped dead letters. A stale
+    `sending` claim is treated as unknown outcome and requires explicit replay, preventing an
+    automatic duplicate notification. Successful replay resolves the same durable recovery record.
 
 ## Local release evidence
 
 - A clean `supabase db reset --local` applied every migration through
   `20260804162800_notification_preference_integrity.sql`; `pnpm db:bootstrap` then created the local owner,
   database-backed candidate profile/preferences, and browser fixture from zero.
-- Formatting, zero-warning lint, strict types, all 376 tests in 63 files, coverage, focused
+- Formatting, zero-warning lint, strict types, all 381 tests in 63 files, coverage, focused
   connector/evaluation/worker/PWA/security/load suites, zero-vulnerability audit, and optimized
   build pass.
-- Coverage: 87.90% statements, 77.55% branches, 89.47% functions, and 89.58% lines. Configuration
+- Coverage: 88.44% statements, 77.90% branches, 90.02% functions, and 90.15% lines. Configuration
   now enforces at least the prior-release baseline (87.15/77.45/88.98/89.21) so future expansion
   cannot silently lower it.
 - Playwright: 17 passed and three intentional viewport-independent skips in approximately three

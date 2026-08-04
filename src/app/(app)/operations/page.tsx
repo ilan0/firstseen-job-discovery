@@ -30,7 +30,7 @@ export default async function OperationsPage({
       : query.started === "discovery"
         ? "Broad discovery queued. Official sources will be verified before jobs appear."
         : query.started === "replay"
-          ? "Recovery scan queued."
+          ? "Recovery work queued."
           : null;
   const runs = await db
     .select()

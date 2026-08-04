@@ -154,6 +154,12 @@ license/attribution review.
   `(user, local date)` uniqueness prevents duplicates.
 - Quiet-hour exceptional alerts retain their exact stored payload until the deferred send.
 - Failed deliveries retain safe codes/attempt counts; the hourly notification workflow retries them.
+- Slack stops after five attempts and Web Push after six. Exhaustion and permanent non-expiry push
+  failures create an owner-scoped recovery record without storing message bodies, webhook values,
+  endpoints, or browser keys.
+- A delivery left `sending` for more than ten minutes has an ambiguous provider outcome. FirstSeen
+  does not automatically send it again; it records `*_DELIVERY_OUTCOME_UNKNOWN` for explicit review
+  and replay so a persistence failure after provider acceptance cannot silently duplicate an alert.
 - A digest selects only unacted jobs first detected since the prior delivered digest and no older
   than seven days, grouped Just posted/New/Recent. It skips empty output and does not resurrect Save/
   Apply/Dismiss actions. Immediate alerts require reliable official/reopening freshness, Hot/Strong,
@@ -175,6 +181,9 @@ explicit user opt-in.
 For a push incident, confirm the logical notification exists, inspect only safe delivery status/
 attempt/error fields, verify the device subscription is active, and test exact relative-path click
 routing. Do not copy the endpoint or browser key material into a ticket, log, screenshot, or report.
+The Operations recovery queue can replay notification dead letters after owner authorization. Replay
+resets only the exact failed Slack notification or device delivery; a later success resolves that
+record. HTTP 404/410 subscription expiry is normal cleanup and does not create a dead letter.
 
 `PWA_ENABLED` and `WEB_PUSH_ENABLED` are separate rollout controls. Disabling PWA removes discovery
 metadata, blocks manifest/service-worker/offline routes, unregisters existing workers when the app

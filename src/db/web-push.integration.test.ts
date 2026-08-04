@@ -54,7 +54,11 @@ describe.runIf(enabled)("Web Push delivery persistence", () => {
     if (user) await admin.auth.admin.deleteUser(user.id);
   });
 
-  async function fixture(suffix: string) {
+  async function fixture(
+    suffix: string,
+    attemptCount = 0,
+    deliveryState: { status?: "pending" | "sending"; updatedAt?: Date } = {},
+  ) {
     const { encryptCapability } = await import("@/lib/security/encrypted-capability");
     const endpoint = `https://fcm.googleapis.com/fcm/send/${suffix}`;
     const subscription = await admin
@@ -85,8 +89,10 @@ describe.runIf(enabled)("Web Push delivery persistence", () => {
         reason: "test",
         policy_version: "test",
         idempotency_key: randomUUID(),
-        status: "pending",
+        status: deliveryState.status ?? "pending",
+        attempt_count: attemptCount,
         next_attempt_at: new Date(0).toISOString(),
+        updated_at: deliveryState.updatedAt?.toISOString(),
         provider_response_safe: { payload: { path: "/jobs/test" } },
       })
       .select("id")
@@ -125,6 +131,12 @@ describe.runIf(enabled)("Web Push delivery persistence", () => {
       .eq("id", row.subscriptionId)
       .single();
     expect(stored.data?.revoked_at).toBeTruthy();
+    const deadLetter = await admin
+      .from("dead_letter_records")
+      .select("id")
+      .eq("event_id", `notification-push:${row.deliveryId}`)
+      .maybeSingle();
+    expect(deadLetter.data).toBeNull();
   });
 
   it("schedules a bounded retry after a temporary provider failure", async () => {
@@ -144,6 +156,32 @@ describe.runIf(enabled)("Web Push delivery persistence", () => {
       .single();
     expect(stored.data).toMatchObject({ status: "failed", last_error_code: "PUSH_503" });
     expect(new Date(stored.data?.next_attempt_at ?? 0).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it("dead-letters a permanent provider rejection without retrying", async () => {
+    const row = await fixture("permanent");
+    const { deliverWebPush } = await import("@/lib/notifications/web-push");
+    const sender = vi.fn(async () => {
+      throw Object.assign(new Error("Bad request"), { statusCode: 400 });
+    });
+    await expect(deliverWebPush(row.deliveryId, sender)).resolves.toMatchObject({
+      state: "failed",
+      retryable: false,
+    });
+    const [delivery, deadLetter] = await Promise.all([
+      admin
+        .from("notification_deliveries")
+        .select("next_attempt_at,last_error_code")
+        .eq("id", row.deliveryId)
+        .single(),
+      admin
+        .from("dead_letter_records")
+        .select("error_code,resolved_at")
+        .eq("event_id", `notification-push:${row.deliveryId}`)
+        .single(),
+    ]);
+    expect(delivery.data).toMatchObject({ next_attempt_at: null, last_error_code: "PUSH_400" });
+    expect(deadLetter.data).toMatchObject({ error_code: "PUSH_400", resolved_at: null });
   });
 
   it("revokes malformed encrypted capabilities without leaving work stuck", async () => {
@@ -170,5 +208,78 @@ describe.runIf(enabled)("Web Push delivery persistence", () => {
       next_attempt_at: null,
     });
     expect(subscription.data?.revoked_at).toBeTruthy();
+  });
+
+  it("dead-letters exhausted provider failures and resolves them after explicit replay", async () => {
+    const row = await fixture("exhausted", 5);
+    const { deliverWebPush } = await import("@/lib/notifications/web-push");
+    const unavailable = vi.fn(async () => {
+      throw Object.assign(new Error("Unavailable"), { statusCode: 503 });
+    });
+    await expect(deliverWebPush(row.deliveryId, unavailable)).resolves.toMatchObject({
+      state: "failed",
+      retryable: true,
+    });
+    const eventId = `notification-push:${row.deliveryId}`;
+    const failed = await admin
+      .from("dead_letter_records")
+      .select("error_code,resolved_at,event_payload")
+      .eq("event_id", eventId)
+      .single();
+    expect(failed.data).toMatchObject({
+      error_code: "PUSH_RETRIES_EXHAUSTED",
+      resolved_at: null,
+      event_payload: { userId: user.id, channel: "web_push", deliveryId: row.deliveryId },
+    });
+
+    const { resetNotificationDeliveryForReplay } = await import("@/lib/notifications/dead-letter");
+    await expect(
+      resetNotificationDeliveryForReplay({
+        userId: user.id,
+        channel: "web_push",
+        deliveryId: row.deliveryId,
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      deliverWebPush(
+        row.deliveryId,
+        vi.fn(async () => ({ statusCode: 201, headers: {}, body: "" })),
+      ),
+    ).resolves.toMatchObject({ state: "delivered" });
+    const resolved = await admin
+      .from("dead_letter_records")
+      .select("resolved_at")
+      .eq("event_id", eventId)
+      .single();
+    expect(resolved.data?.resolved_at).toBeTruthy();
+  });
+
+  it("does not automatically redeliver a stale claim with an unknown provider outcome", async () => {
+    const row = await fixture("stale", 1, { status: "sending", updatedAt: new Date(0) });
+    const { deliverDueWebPush } = await import("@/lib/notifications/web-push");
+    await expect(deliverDueWebPush(user.id, new Date())).resolves.toMatchObject({
+      unknownOutcomes: 1,
+    });
+    const [delivery, deadLetter] = await Promise.all([
+      admin
+        .from("notification_deliveries")
+        .select("status,next_attempt_at,last_error_code")
+        .eq("id", row.deliveryId)
+        .single(),
+      admin
+        .from("dead_letter_records")
+        .select("error_code,resolved_at")
+        .eq("event_id", `notification-push:${row.deliveryId}`)
+        .single(),
+    ]);
+    expect(delivery.data).toMatchObject({
+      status: "failed",
+      next_attempt_at: null,
+      last_error_code: "PUSH_DELIVERY_OUTCOME_UNKNOWN",
+    });
+    expect(deadLetter.data).toMatchObject({
+      error_code: "PUSH_DELIVERY_OUTCOME_UNKNOWN",
+      resolved_at: null,
+    });
   });
 });

@@ -111,4 +111,106 @@ describe.runIf(enabled)("durable Slack notification delivery", () => {
     expect(deliver).toHaveBeenCalledOnce();
     expect(deliver).toHaveBeenCalledWith(deferred.data.id);
   });
+
+  it("dead-letters an exhausted Slack delivery and resolves it after explicit replay", async () => {
+    const terminal = await admin
+      .from("notifications")
+      .insert({
+        user_id: user.id,
+        kind: "operational_alert",
+        idempotency_key: `terminal-${randomUUID()}`,
+        payload_hash: "terminal-test-hash",
+        payload: { text: "Terminal Slack integration test" },
+        status: "failed",
+        attempt_count: 4,
+        deferred_until: new Date(0).toISOString(),
+      })
+      .select("id")
+      .single();
+    if (terminal.error) throw terminal.error;
+    const { deliverPendingNotification } = await import("@/lib/notifications/slack");
+    const failedFetch: typeof fetch = vi.fn(async () => new Response("failure", { status: 503 }));
+    await expect(
+      deliverPendingNotification(terminal.data.id, undefined, failedFetch),
+    ).rejects.toThrow();
+
+    const eventId = `notification-slack:${terminal.data.id}`;
+    const failed = await admin
+      .from("dead_letter_records")
+      .select("error_code,resolved_at,event_payload")
+      .eq("event_id", eventId)
+      .single();
+    expect(failed.error).toBeNull();
+    expect(failed.data).toMatchObject({
+      error_code: "SLACK_RETRIES_EXHAUSTED",
+      resolved_at: null,
+      event_payload: { userId: user.id, channel: "slack", notificationId: terminal.data.id },
+    });
+
+    const { resetNotificationDeliveryForReplay } = await import("@/lib/notifications/dead-letter");
+    await expect(
+      resetNotificationDeliveryForReplay({
+        userId: user.id,
+        channel: "slack",
+        notificationId: terminal.data.id,
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      deliverPendingNotification(
+        terminal.data.id,
+        undefined,
+        vi.fn(async () => new Response("ok", { status: 200 })),
+      ),
+    ).resolves.toEqual({ state: "delivered" });
+    const resolved = await admin
+      .from("dead_letter_records")
+      .select("resolved_at")
+      .eq("event_id", eventId)
+      .single();
+    expect(resolved.data?.resolved_at).toBeTruthy();
+  });
+
+  it("does not automatically redeliver a stale claim with an unknown provider outcome", async () => {
+    const stale = await admin
+      .from("notifications")
+      .insert({
+        user_id: user.id,
+        kind: "operational_alert",
+        idempotency_key: `stale-${randomUUID()}`,
+        payload_hash: "stale-test-hash",
+        payload: { text: "Stale Slack integration test" },
+        status: "sending",
+        attempt_count: 1,
+        deferred_until: new Date(0).toISOString(),
+        updated_at: new Date(0).toISOString(),
+      })
+      .select("id")
+      .single();
+    if (stale.error) throw stale.error;
+    const { retryFailedNotifications } = await import("@/lib/notifications/slack");
+    await expect(retryFailedNotifications(user.id, new Date())).resolves.toMatchObject({
+      unknownOutcomes: 1,
+    });
+    const [notification, deadLetter] = await Promise.all([
+      admin
+        .from("notifications")
+        .select("status,deferred_until,last_error_code")
+        .eq("id", stale.data.id)
+        .single(),
+      admin
+        .from("dead_letter_records")
+        .select("error_code,resolved_at")
+        .eq("event_id", `notification-slack:${stale.data.id}`)
+        .single(),
+    ]);
+    expect(notification.data).toMatchObject({
+      status: "failed",
+      deferred_until: null,
+      last_error_code: "SLACK_DELIVERY_OUTCOME_UNKNOWN",
+    });
+    expect(deadLetter.data).toMatchObject({
+      error_code: "SLACK_DELIVERY_OUTCOME_UNKNOWN",
+      resolved_at: null,
+    });
+  });
 });
