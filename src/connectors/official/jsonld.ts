@@ -41,6 +41,12 @@ const jobPostingSchema = z
     datePosted: z.string().optional(),
     validThrough: z.string().optional(),
     employmentType: z.union([z.string(), z.array(z.string())]).optional(),
+    hiringOrganization: z
+      .union([
+        z.string(),
+        z.object({ name: z.string().optional(), url: z.string().optional() }).passthrough(),
+      ])
+      .optional(),
     jobLocationType: z.string().optional(),
     jobLocation: z.union([jobLocationSchema, z.array(jobLocationSchema)]).optional(),
     applicantLocationRequirements: z.unknown().optional(),
@@ -72,6 +78,26 @@ function identifier(job: z.infer<typeof jobPostingSchema>, officialUrl: string):
   if (typeof job.identifier === "string") return job.identifier;
   if (job.identifier?.value !== undefined) return String(job.identifier.value);
   return idFromUrl(job.url ?? officialUrl);
+}
+
+function hiringOrganizationName(job: z.infer<typeof jobPostingSchema>) {
+  return typeof job.hiringOrganization === "string"
+    ? job.hiringOrganization
+    : job.hiringOrganization?.name;
+}
+
+function organizationMatches(actual: string, expected: string) {
+  const normalize = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  const left = normalize(actual);
+  const right = normalize(expected);
+  return (
+    left === right ||
+    (left.length >= 4 && right.length >= 4 && (left.includes(right) || right.includes(left)))
+  );
 }
 
 function normalize(job: z.infer<typeof jobPostingSchema>, fetchedUrl: string): NormalizedListing {
@@ -113,11 +139,17 @@ function normalize(job: z.infer<typeof jobPostingSchema>, fetchedUrl: string): N
       validThrough: job.validThrough ?? null,
       applicantLocationRequirements: job.applicantLocationRequirements ?? null,
       baseSalary: job.baseSalary ?? null,
+      hiringOrganization: hiringOrganizationName(job) ?? null,
     },
   };
 }
 
-function parsePostings(html: string, fetchedUrl: string): NormalizedListing[] {
+function parsePostings(
+  html: string,
+  fetchedUrl: string,
+  expectedOrganization?: string,
+  requireHiringOrganization = false,
+): NormalizedListing[] {
   const $ = load(html);
   const values: unknown[] = [];
   $('script[type="application/ld+json"]').each((_, element) => {
@@ -129,7 +161,15 @@ function parsePostings(html: string, fetchedUrl: string): NormalizedListing[] {
   });
   return values.flatMap((value) => {
     const parsed = jobPostingSchema.safeParse(value);
-    return parsed.success ? [normalize(parsed.data, fetchedUrl)] : [];
+    if (!parsed.success) return [];
+    const actualOrganization = hiringOrganizationName(parsed.data);
+    if (
+      expectedOrganization &&
+      ((!actualOrganization && requireHiringOrganization) ||
+        (actualOrganization && !organizationMatches(actualOrganization, expectedOrganization)))
+    )
+      return [];
+    return [normalize(parsed.data, fetchedUrl)];
   });
 }
 
@@ -160,7 +200,16 @@ export class JsonLdConnector implements JobConnector {
         response.status,
       );
     }
-    const listings = parsePostings(response.text(), response.url);
+    const expectedOrganization =
+      typeof source.publicConfig?.expectedOrganization === "string"
+        ? source.publicConfig.expectedOrganization
+        : undefined;
+    const listings = parsePostings(
+      response.text(),
+      response.url,
+      expectedOrganization,
+      source.publicConfig?.requireHiringOrganization === true,
+    );
     if (!listings.length) {
       throw new ConnectorError(
         "JOBPOSTING_NOT_FOUND",
@@ -188,7 +237,16 @@ export class JsonLdConnector implements JobConnector {
       return { state: "closed", evidence: `Official page returned ${response.status}.` };
     if (response.status !== 200)
       return { state: "uncertain", evidence: `Official page returned ${response.status}.` };
-    const listings = parsePostings(response.text(), response.url);
+    const expectedOrganization =
+      typeof source.publicConfig?.expectedOrganization === "string"
+        ? source.publicConfig.expectedOrganization
+        : undefined;
+    const listings = parsePostings(
+      response.text(),
+      response.url,
+      expectedOrganization,
+      source.publicConfig?.requireHiringOrganization === true,
+    );
     const listing = listings.find(
       (candidate) =>
         candidate.externalId === externalId ||

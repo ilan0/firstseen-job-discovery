@@ -1,25 +1,26 @@
 # FirstSeen
 
-FirstSeen is a private, single-user job-discovery portal that finds fresh software-engineering
-roles at official employer sites before the candidate has to hunt through general job boards. It
-monitors referral and priority companies, uses broad providers only as discovery sensors, verifies
-every vacancy at the employer or ATS, enforces hard eligibility rules, ranks viable roles with
-separate explainable dimensions, and sends Slack alerts and a morning digest.
+FirstSeen is a private freshness-first job-search portal. It finds software-engineering roles at
+official employer sites, verifies every recommendation at the employer or ATS, applies the
+candidate's deterministic eligibility rules, and presents a mobile-friendly queue with referral,
+application, Slack, and Web Push workflows.
 
 FirstSeen never auto-applies, reads email, contacts referrals, scrapes LinkedIn/Indeed, bypasses a
 CAPTCHA, or turns an aggregator result directly into a recommendation.
 
 ## What is implemented
 
-- Private four-digit access-code sign-in for one configured owner, backed by a server-created
-  Supabase session, server authorization, PostgreSQL RLS, durable throttling, account export, and
-  deletion. The plaintext code is never stored by the application.
+- Private four-digit owner access backed by a normal Supabase session, server authorization,
+  PostgreSQL RLS, durable throttling, account export, and deletion. Invite-only individual email
+  authentication is implemented behind a disabled rollout flag for a future external beta.
 - Responsive freshness-first Matches, Saved, Applied, Dismissed, My/Discovered Companies,
   Operations, Settings, and explainable job-detail views.
-- Greenhouse, Lever, Ashby, and reviewed JSON-LD connectors with pagination, conditional requests,
-  safe outbound HTTP, retries, confidence, change detection, closure, and reopening.
-- Brave Search and Adzuna discovery sensors. A result advances only when it resolves to a supported
-  official ATS URL.
+- Greenhouse, Lever, Ashby, Recruitee, Pinpoint, and reviewed structured-source connectors with
+  pagination, conditional requests, bounded outbound HTTP, retries, confidence, change detection,
+  closure, and reopening.
+- Twelve stable role/location discovery cohorts every four hours. Brave is handled transiently as
+  a URL sensor. Adzuna automated promotion is quarantined because its default terms conflict with
+  offsite employer verification.
 - Canonical identity, cross-source fingerprints, snapshots, first/last-seen times, material hashes,
   no unchanged reanalysis, aging, and duplicate-safe queue transitions.
 - Default seven-day feed grouped into Just posted, New, and Recent, with official-posted,
@@ -27,20 +28,30 @@ CAPTCHA, or turns an aggregator result directly into a recommendation.
   urgency sorts are server-backed and URL-restorable.
 - Independent company interest and referrals with 15-minute Priority, hourly Standard/Warm, and
   four-hour Cold monitoring. Automatic provenance survives Follow; Not relevant is sticky.
-- Deterministic full-time, experience, clearance/Public Trust, sponsorship, role, and location
-  rules before schema-constrained OpenAI analysis.
+- Database-driven candidate preferences and deterministic full-time, experience,
+  clearance/Public Trust, sponsorship, role, and location rules before schema-constrained OpenAI
+  analysis.
 - Ten visible ranking dimensions rather than an opaque match score.
+- Additive shared canonical-supply tables and a fair oldest-due global source scheduler, with
+  private per-user overlays and legacy dual-write/read comparison during rollout.
+- Relationship CRM with contacts, company links, interactions, referral requests, reminders, and
+  deterministic best-contact recommendations.
+- Application sessions, a private resume/application packet, explicit application records and
+  stage history. Opening Apply never marks a job Applied.
+- Installable PWA metadata, a narrowly scoped service worker, offline recovery, and standards-based
+  Web Push with encrypted subscriptions and channel-independent idempotent delivery.
+- Explicit `gpt-5.6-luna` candidate-neutral extraction with evidence validation and capped,
+  selective `gpt-5.6-terra` escalation.
 - Inngest schedules for priority scanning, broad discovery, per-listing durable processing,
-  notifications, retries/dead letters, and retention.
-- Idempotent fresh Hot/Strong Slack alerts and an exact-time-zone, age-grouped morning digest that
-  skips empty days.
+  notifications, retries/dead letters, and retention. Slack alerts and the morning digest remain
+  enabled for the owner.
 - Database-backed scan diagnostics, worker attempts, provider usage/cost ledger, and optional
   privacy-redacted Sentry reporting.
 
 ## Local development
 
-Prerequisites are Node 22, pnpm 11, Docker Desktop, and the Supabase CLI runtime used by the npm
-package. Secrets belong only in ignored `.env.local` or encrypted provider deployment settings.
+Prerequisites are Node 24, pnpm 11, Docker Desktop, and the repository-pinned Supabase CLI package.
+Secrets belong only in ignored `.env.local` or encrypted provider deployment settings.
 Never copy them into source, fixtures, screenshots, logs, or documentation.
 
 The verified local workflow is:
@@ -48,7 +59,7 @@ The verified local workflow is:
 ```bash
 nvm use
 pnpm install --frozen-lockfile
-npx --yes supabase@latest start
+pnpm exec supabase start
 pnpm env:local
 pnpm db:bootstrap
 pnpm dev --hostname 127.0.0.1
@@ -83,6 +94,17 @@ pnpm build
 pnpm test:e2e
 ```
 
+Focused release suites are also available:
+
+```bash
+pnpm test:connectors
+pnpm test:eval
+pnpm test:workers
+pnpm test:pwa
+pnpm test:security
+pnpm test:load
+```
+
 Provider checks are explicit because they consume real quotas or send a labelled Slack message:
 
 ```bash
@@ -99,19 +121,21 @@ failure recovery.
 
 - Vercel serves Next.js and the authenticated application APIs.
 - Supabase provides Auth and the authoritative PostgreSQL database.
-- Inngest invokes the `/api/inngest` endpoint, owns schedules/retries, and persists each listing as
-  an independently resumable step.
+- Inngest invokes the `/api/inngest` endpoint and owns schedules, retries, fan-out, and independently
+  resumable listing work.
 - OpenAI runs only for new/materially changed plausible software roles after deterministic hard
-  filtering and a durable monthly budget reservation.
-- Slack receives exceptional alerts and the digest. Brave/Adzuna feed only official-source
-  candidates. Sentry is optional; Vercel, Inngest, and database diagnostics remain available if it
-  is disabled.
+  filtering and a durable monthly budget reservation. Candidate-neutral extraction can be shared
+  by all private user overlays.
+- Slack receives exceptional alerts and the digest. Web Push is independently deliverable when its
+  rollout flag is enabled. Brave supplies transient official-URL candidates only. Sentry is
+  optional; Vercel, Inngest, and database diagnostics remain available if it is disabled.
 
 The private production portal is live at
 [firstseen-job-discovery.vercel.app](https://firstseen-job-discovery.vercel.app). It uses the
 dedicated FirstSeen Supabase project, a unique Inngest app, and the private GitHub repository;
-unrelated existing projects are deliberately not reused. See `PLAN.md` for current soak evidence and
-release follow-up.
+unrelated existing projects are deliberately not reused. The Daily-Driver expansion is locally
+certified but not represented as production-complete: physical iPhone acceptance and seven
+consecutive scheduled production days remain explicit final gates in `PLAN.md`.
 
 ## Configuration
 
@@ -127,10 +151,10 @@ Runtime credentials:
 | Supabase          | URL, publishable key, secret key, database URL, project ref | Auth sessions, RLS, server writes, migrations |
 | Owner access      | scrypt access-code hash, owner email, rate-limit salt       | Private code gate and abuse protection        |
 | Inngest           | event key, signing key                                      | Durable events and authenticated callbacks    |
-| OpenAI            | project API key, model, $25 app budget                      | Structured analysis of changed roles          |
-| Brave             | Search API key                                              | Broad discovery sensor                        |
-| Adzuna            | app ID and app key                                          | Secondary broad sensor                        |
+| OpenAI            | project key, Luna/Terra models, $25 app budget              | Shared extraction of changed roles            |
+| Brave             | Search API key                                              | Transient broad discovery sensor              |
 | Slack             | incoming webhook URL                                        | Alerts and morning digest                     |
+| Web Push          | VAPID keys, subject, subscription encryption key            | Device alerts without a managed push vendor   |
 | Sentry (optional) | DSN; auth token/org/project only at build                   | Redacted errors and source maps               |
 | Vercel/GitHub     | deployment token or authenticated CLI                       | Bootstrap/deployment, never app runtime       |
 

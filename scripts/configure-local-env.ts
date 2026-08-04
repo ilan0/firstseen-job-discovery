@@ -41,13 +41,21 @@ function requireValue(values: Record<string, string>, key: string): string {
 }
 
 const providerValues = parseEnv(readFileSync(resolve(secretsPath), "utf8"));
+const target = resolve(".env.local");
+const existingValues = (() => {
+  try {
+    return parseEnv(readFileSync(target, "utf8"));
+  } catch {
+    return {};
+  }
+})();
 const localAccessCode = execFileSync(
   "security",
   ["find-generic-password", "-a", "ilannabatkhorian", "-s", "firstseen-local-access-code", "-w"],
   { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
 ).trim();
 const status = JSON.parse(
-  execFileSync("npx", ["--yes", "supabase@latest", "status", "--output", "json"], {
+  execFileSync(resolve("node_modules/.bin/supabase"), ["status", "--output", "json"], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   }),
@@ -60,7 +68,6 @@ const copiedProviderKeys = [
   "INNGEST_EVENT_KEY",
   "INNGEST_SIGNING_KEY",
   "OPENAI_API_KEY",
-  "OPENAI_MODEL",
   "SENTRY_AUTH_TOKEN",
   "SLACK_WEBHOOK_URL",
 ] as const;
@@ -76,16 +83,25 @@ const output: Record<string, string> = {
   OWNER_EMAIL: "inabatkhorian@gmail.com",
   ACCESS_CODE_HASH: await hashAccessCode(localAccessCode),
   RATE_LIMIT_SALT: randomBytes(32).toString("base64url"),
-  OPENAI_ESCALATION_MODEL: providerValues.OPENAI_MODEL || "gpt-5.6",
+  OPENAI_MODEL: "gpt-5.6-luna",
+  OPENAI_ESCALATION_MODEL: "gpt-5.6-terra",
   OPENAI_MONTHLY_BUDGET_USD: "25",
+  INNGEST_MONTHLY_EXECUTION_LIMIT: "50000",
 };
 
 for (const key of copiedProviderKeys) output[key] = requireValue(providerValues, key);
+for (const key of [
+  "NEXT_PUBLIC_VAPID_PUBLIC_KEY",
+  "VAPID_PRIVATE_KEY",
+  "VAPID_SUBJECT",
+  "PUSH_SUBSCRIPTION_ENCRYPTION_KEY",
+] as const) {
+  if (existingValues[key]) output[key] = existingValues[key];
+}
 
 const body = `${Object.entries(output)
   .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
   .join("\n")}\n`;
-const target = resolve(".env.local");
 writeFileSync(target, body, { encoding: "utf8", mode: 0o600 });
 chmodSync(target, 0o600);
 

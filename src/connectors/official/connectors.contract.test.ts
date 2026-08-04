@@ -405,6 +405,27 @@ describe("JSON-LD connector contract", () => {
     });
   });
 
+  it("requires the reviewed hiring organization when authority matching is enabled", async () => {
+    const html = `<script type="application/ld+json">${JSON.stringify({
+      "@type": "JobPosting",
+      title: "Software Engineer",
+      description: "Full-time role.",
+      hiringOrganization: { name: "Unrelated Staffing Company" },
+    })}</script>`;
+    const connector = new JsonLdConnector(
+      vi.fn<SafeGet>().mockResolvedValue(fixtureResponse(200, html)),
+    );
+    await expect(
+      connector.discover({
+        ...source("custom_jsonld", ""),
+        publicConfig: {
+          expectedOrganization: "Example",
+          requireHiringOrganization: true,
+        },
+      }),
+    ).rejects.toMatchObject({ code: "JOBPOSTING_NOT_FOUND" });
+  });
+
   it("refuses verification outside the reviewed employer hostname", async () => {
     const get = vi.fn<SafeGet>();
     const result = await new JsonLdConnector(get).verify(

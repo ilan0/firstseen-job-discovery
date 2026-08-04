@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "dotenv";
+import { activeDiscoveryProviders } from "@/discovery/provider-policy";
 import { resolveOfficialSource } from "@/discovery/resolve-official";
 import { AdzunaSensor } from "@/discovery/sensors/adzuna";
 import { BraveSensor } from "@/discovery/sensors/brave";
@@ -11,10 +12,11 @@ const query = {
   locationQuery: "Miami OR Fort Lauderdale",
   remote: false,
 };
-const checks = [
-  new BraveSensor(values.BRAVE_SEARCH_API_KEY ?? ""),
-  new AdzunaSensor(values.ADZUNA_APP_ID ?? "", values.ADZUNA_APP_KEY ?? ""),
-];
+const available = {
+  brave: new BraveSensor(values.BRAVE_SEARCH_API_KEY ?? ""),
+  adzuna: new AdzunaSensor(values.ADZUNA_APP_ID ?? "", values.ADZUNA_APP_KEY ?? ""),
+};
+const checks = activeDiscoveryProviders().map((provider) => available[provider]);
 const results = [];
 for (const sensor of checks) {
   try {

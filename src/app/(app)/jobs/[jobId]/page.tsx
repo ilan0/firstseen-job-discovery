@@ -1,18 +1,22 @@
 import {
   ArrowLeft,
-  ArrowUpRight,
   Building2,
   CalendarDays,
   CheckCircle2,
   CircleAlert,
   Clock3,
+  ExternalLink,
   MapPin,
   ShieldCheck,
+  UsersRound,
 } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { JobActions } from "@/components/jobs/job-actions";
+import { ApplicationLink } from "@/components/applications/application-link";
+import { SubmitButton } from "@/components/forms/submit-button";
+import { resolveApplicationSession } from "@/app/(app)/applications/actions";
 import { requireOwner } from "@/lib/auth/owner";
 import { getJobDetail } from "@/lib/jobs/queue";
 
@@ -92,13 +96,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
         </p>
         <p className="mt-5 max-w-3xl leading-7">{job.headline}</p>
         {isOfficiallyOpen ? (
-          <Link
-            className="mt-7 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[var(--lime)] px-5 text-sm font-black text-[var(--ink)]"
-            href={`/jobs/${job.id}/open`}
-            target="_blank"
-          >
-            Open verified official application <ArrowUpRight aria-hidden="true" size={17} />
-          </Link>
+          <ApplicationLink jobId={job.id} />
         ) : (
           <p className="mt-7 inline-flex min-h-11 items-center rounded-xl bg-white/10 px-5 text-sm font-black">
             This official listing is no longer verified as open.
@@ -111,6 +109,94 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
           status={job.status}
         />
       </header>
+      {job.pendingApplicationSession ? (
+        <section className="mt-6 rounded-[1.5rem] border border-[var(--green)] bg-[#e7f6ef] p-5 sm:flex sm:items-center sm:justify-between sm:gap-5">
+          <div>
+            <p className="font-black">
+              {job.pendingApplicationSession.disposition === "continue_later"
+                ? "Ready to finish this application?"
+                : "Did you submit this application?"}
+            </p>
+            <p className="mt-1 text-sm text-[var(--muted)]">
+              {job.pendingApplicationSession.disposition === "continue_later"
+                ? "Your place is saved. Confirm only after you actually submit on the employer page."
+                : "Opening the employer page did not change your status. Confirm only after you actually submitted it."}
+            </p>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2 sm:mt-0">
+            {[
+              ["submitted", "Yes, submitted"],
+              ["continue_later", "Continue later"],
+              ["dismissed", "Dismiss prompt"],
+            ].map(([disposition, label]) => (
+              <form action={resolveApplicationSession} key={disposition}>
+                <input name="sessionId" type="hidden" value={job.pendingApplicationSession?.id} />
+                <input name="disposition" type="hidden" value={disposition} />
+                <SubmitButton
+                  className={`min-h-11 rounded-xl px-4 text-xs font-black ${disposition === "submitted" ? "bg-[var(--green)] text-white" : "border border-[var(--line)] bg-white"}`}
+                  pendingLabel="Saving…"
+                >
+                  {label}
+                </SubmitButton>
+              </form>
+            ))}
+          </div>
+        </section>
+      ) : null}
+      {job.recommendedContact ? (
+        <section className="mt-6 rounded-[1.5rem] border border-[#b9ddcd] bg-[#eef8f3] p-5 sm:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="flex items-center gap-2 text-xs font-black tracking-[0.12em] text-[var(--green)] uppercase">
+                <UsersRound aria-hidden="true" size={17} /> Best referral contact
+              </p>
+              <h2 className="mt-2 text-xl font-black">{job.recommendedContact.name}</h2>
+              <p className="mt-1 text-sm text-[var(--muted)]">
+                {[job.recommendedContact.title, job.recommendedContact.team]
+                  .filter(Boolean)
+                  .join(" · ") || "Relationship contact"}
+              </p>
+              <ul className="mt-3 space-y-1 text-xs text-[var(--muted)]">
+                {job.recommendedContact.reasons.map((reason) => (
+                  <li key={reason}>• {reason}</li>
+                ))}
+              </ul>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {job.recommendedContact.methods
+                .filter((method) => method.kind === "email" || method.kind === "profile_url")
+                .map((method) => (
+                  <a
+                    className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[var(--green)] px-4 text-xs font-black text-white"
+                    href={method.kind === "email" ? `mailto:${method.value}` : method.value}
+                    key={`${method.kind}:${method.value}`}
+                    rel={method.kind === "profile_url" ? "noopener noreferrer" : undefined}
+                    target={method.kind === "profile_url" ? "_blank" : undefined}
+                  >
+                    Contact referral <ExternalLink aria-hidden="true" size={14} />
+                  </a>
+                ))}
+              <Link
+                className="inline-flex min-h-11 items-center rounded-xl border border-[var(--line)] bg-white px-4 text-xs font-black"
+                href="/relationships"
+              >
+                View relationship
+              </Link>
+            </div>
+          </div>
+        </section>
+      ) : job.referrals.length ? (
+        <section className="mt-6 rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-5 text-sm">
+          <p className="font-black">Referral available</p>
+          <p className="mt-1 text-[var(--muted)]">
+            Add this referral to People to receive a best-contact recommendation and follow-up
+            reminders.
+          </p>
+          <Link className="mt-3 inline-flex font-black text-[var(--green)]" href="/relationships">
+            Set up relationship →
+          </Link>
+        </section>
+      ) : null}
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_1.4fr]">
         <section className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-6">
           <h2 className="text-lg font-black">Eligibility</h2>

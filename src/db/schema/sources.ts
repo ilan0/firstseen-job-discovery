@@ -19,6 +19,7 @@ import {
   referralStatus,
   watchlistScope,
 } from "./enums";
+import { globalCareerSources, organizations } from "./global-supply";
 
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -40,6 +41,9 @@ export const companies = pgTable(
     interested: boolean("interested").default(false).notNull(),
     active: boolean("active").default(true).notNull(),
     discoveryEvidence: jsonb("discovery_evidence").default({}).notNull(),
+    organizationId: uuid("organization_id").references(() => organizations.id, {
+      onDelete: "set null",
+    }),
     ...timestamps,
   },
   (table) => [
@@ -117,6 +121,9 @@ export const careerSources = pgTable(
     lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
     lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
     lastErrorCode: text("last_error_code"),
+    globalSourceId: uuid("global_source_id").references(() => globalCareerSources.id, {
+      onDelete: "set null",
+    }),
     ...timestamps,
   },
   (table) => [

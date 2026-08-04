@@ -89,6 +89,39 @@ describe("safe connector HTTP", () => {
     await expect(safeGet("https://8.8.8.8/start", { maximumRedirects: 1 })).rejects.toMatchObject({
       code: "TOO_MANY_REDIRECTS",
     });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 302, headers: { location: "/start" } })),
+    );
+    await expect(safeGet("https://8.8.8.8/start")).rejects.toMatchObject({
+      code: "REDIRECT_LOOP",
+    });
+  });
+
+  it("rejects missing and unsupported final content types", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(new Uint8Array([1, 2]), {
+            status: 200,
+            headers: { "content-type": "application/octet-stream" },
+          }),
+      ),
+    );
+    await expect(safeGet("https://8.8.8.8/jobs")).rejects.toMatchObject({
+      code: "UNSUPPORTED_CONTENT_TYPE",
+      retryable: false,
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 200 })),
+    );
+    await expect(safeGet("https://8.8.8.8/jobs")).rejects.toMatchObject({
+      code: "UNSUPPORTED_CONTENT_TYPE",
+    });
   });
 
   it.each([
@@ -128,7 +161,10 @@ describe("safe connector HTTP", () => {
     });
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => new Response(stream, { status: 200 })),
+      vi.fn(
+        async () =>
+          new Response(stream, { status: 200, headers: { "content-type": "text/plain" } }),
+      ),
     );
     await expect(safeGet("https://8.8.8.8/jobs", { maximumBytes: 7 })).rejects.toMatchObject({
       code: "RESPONSE_TOO_LARGE",

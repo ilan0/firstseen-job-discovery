@@ -7,8 +7,11 @@ public on an official employer site and Ilan seeing and applying to it. The defa
 never-ending, fresh queue that is easy to clear with Apply, Save, and Dismiss; exceptional matches
 arrive immediately in Slack and the best remaining work arrives in a morning digest.
 
-This is a private, single-user product. Fit matters more than ordering Miami, DMV, New York, and
-remote against one another, and application volume is not artificially capped.
+The release remains a private personal product. Its data model and authentication foundations are
+commercial-ready and per-user, but external invitations and public signup stay disabled until the
+licensing, SMTP, legal, paid-capacity, and privacy prerequisites in `PLAN.md` are met. Fit matters
+more than ordering Miami, DMV, New York, and remote against one another, and application volume is
+not artificially capped.
 
 ## Candidate profile
 
@@ -40,7 +43,9 @@ remote against one another, and application volume is not artificially capped.
 - Interested or active-referral companies scan every 15 minutes; other followed and warm discovered
   companies scan hourly; cold discovered companies scan every four hours. Sticky dismissal
   quarantines a source. Adaptive cadence may slow only cold automatic sources.
-- Broad discovery runs every four hours initially. Brave and Adzuna are sensors, never authorities.
+- Broad discovery runs all twelve role/location cohorts every four hours. Brave is a transient URL
+  sensor, never an authority. Adzuna automated promotion stays disabled until written permission
+  permits offsite official verification.
 - Every recommended listing must be verified through an official supported employer/ATS URL.
 - The official listing description, not an aggregator snippet or seniority label, determines fit.
 - Persist posted, first-seen, verified, last-seen, changed, possibly-closed, closed, and reopened
@@ -78,12 +83,39 @@ remote against one another, and application volume is not artificially capped.
   by age; an empty digest is skipped. Delivery uses an exact configured hour and IANA time zone, is
   idempotent, and respects quiet hours.
 
+## Daily-driver workflows
+
+- Supply-side organizations, sources, observations, jobs, snapshots, lifecycle, and
+  candidate-neutral requirement extraction are canonical and shared. Candidate profiles, company
+  follows, eligibility, ranking, queue actions, contacts, applications, resumes, and notification
+  devices are private overlays.
+- Greenhouse, Lever, Ashby, Recruitee, Pinpoint, and reviewed structured employer sources use
+  documented public mechanisms. Unsupported ATS families remain explicit coverage blind spots;
+  FirstSeen never substitutes an undocumented private endpoint.
+- Relationship CRM stores contacts, contact methods, company links, interaction history, referral
+  requests, and follow-up reminders. It recommends the best contact deterministically and provides
+  copy/contact actions, but never sends outreach.
+- Apply opens the verified official application and records an application session only. The user
+  explicitly confirms submission before an application exists. Applications track a deliberately
+  small stage set, follow-ups, resume version, referral use, notes, and outcome history.
+- A private application packet exposes signed resume download and copyable facts/links/projects.
+  Continue Later/Desktop bridges mobile to a user-controlled desktop application flow.
+- FirstSeen is installable as a PWA. Its service worker caches only the public static shell and an
+  offline fallback, never authenticated HTML/API data, contacts, resumes, or application records.
+- A logical notification can deliver independently through Slack and standards-based Web Push.
+  Push subscriptions are encrypted; generic lock-screen text is the default; device/channel
+  deliveries are independently idempotent and retryable.
+- Routine AI extraction uses explicit Luna without candidate/contact/application PII. Selective
+  Terra escalation handles validated hard-field ambiguity within a deterministic budget cap. Hard
+  decisions, queue routing, lifecycle, and notification eligibility remain code-owned.
+
 ## Interface
 
-- Private four-digit access-code sign-in that creates a normal authorized owner session;
+- Private four-digit access-code sign-in that creates a normal authorized owner session; disabled
+  invite-only individual email foundations for a future external beta;
   responsive behavior at phone, tablet, laptop, and large desktop sizes.
-- Active matches, Saved, Applied, Dismissed, job details, Watchlist/Referrals, Operations health,
-  Notification/Candidate settings, export, and deletion.
+- Active matches, Saved, Applications, Dismissed, job details, companies, People/Referrals,
+  Operations health, notification/candidate settings, export, and deletion.
 - Search/filter/sort, posted windows (6h/24h/3d/7d/30d/All), referral and band filters, official verification, scan freshness, worker
   health, quota/cost visibility, retry/dead-letter recovery, and provider diagnostics.
 - Accessible labels/focus, keyboard operability, robust long descriptions, loading/empty/stale/error
@@ -109,9 +141,10 @@ remote against one another, and application volume is not artificially capped.
 
 ## Explicit exclusions
 
-No full auto-application, Gmail integration, automated referral outreach, authenticated LinkedIn
-or Indeed automation/scraping, CAPTCHA circumvention, private/hidden API use, clearance jobs, or a
-complex applicant-tracking workflow beyond Applied/Saved/Dismissed.
+No full auto-application, Gmail integration, automated referral outreach, authenticated LinkedIn,
+Indeed, Glassdoor, or Simplify-board automation/scraping, CAPTCHA circumvention, private/hidden ATS
+API use, clearance jobs, broad recruiting CRM, automated application submission, or email-driven
+applicant tracking. The application workflow remains a small explicit stage/history layer.
 
 ## Initial service targets
 
@@ -119,7 +152,8 @@ complex applicant-tracking workflow beyond Applied/Saved/Dismissed.
   under 300 ms.
 - Priority source discovery-to-feed p95 under 20 minutes; standard monitoring under 75 minutes under
   normal provider conditions.
-- Exceptional Slack alert within five minutes after recommendation; morning digest by 08:02 local.
+- Exceptional enabled-channel alert within five minutes after recommendation; morning digest by
+  08:02 local.
 - Each durable listing step remains below the host's 60-second Hobby invocation ceiling; network
   calls have explicit shorter timeouts.
 - Filtering 1,000 normalized roles in deterministic code under 250 ms in isolation.

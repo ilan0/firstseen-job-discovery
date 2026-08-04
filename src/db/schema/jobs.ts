@@ -20,6 +20,7 @@ import {
   runStatus,
   scheduleKind,
 } from "./enums";
+import { globalJobs, globalJobSnapshots } from "./global-supply";
 
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -167,6 +168,9 @@ export const canonicalJobs = pgTable(
     consecutiveSuccessfulMisses: integer("consecutive_successful_misses").default(0).notNull(),
     currentMaterialHash: text("current_material_hash"),
     rowVersion: integer("row_version").default(1).notNull(),
+    globalJobId: uuid("global_job_id").references(() => globalJobs.id, {
+      onDelete: "set null",
+    }),
     ...timestamps,
   },
   (table) => [
@@ -220,6 +224,9 @@ export const jobDescriptionSnapshots = pgTable(
       .default(sql`ARRAY[]::text[]`)
       .notNull(),
     capturedAt: timestamp("captured_at", { withTimezone: true }).defaultNow().notNull(),
+    globalSnapshotId: uuid("global_snapshot_id").references(() => globalJobSnapshots.id, {
+      onDelete: "set null",
+    }),
     ...timestamps,
   },
   (table) => [

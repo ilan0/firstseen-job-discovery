@@ -1,11 +1,18 @@
-import { and, eq, lt, lte, sql } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { and, asc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { NonRetriableError } from "inngest";
 import { z } from "zod";
 import { ConnectorError } from "@/connectors/errors";
 import { db } from "@/db/client";
 import {
   candidateProfiles,
+  careerSources,
+  companies,
   deadLetterRecords,
+  globalCareerSources,
+  globalScanRuns,
+  globalScanSchedules,
+  outboxEvents,
   rawObservations,
   scanRuns,
   scanSourceRuns,
@@ -14,12 +21,14 @@ import {
   workerAttempts,
 } from "@/db/schema";
 import { discoverBroadSources } from "@/lib/discovery/broad";
+import { rolloutFlags } from "@/config/rollout";
 import {
   deliverDeferredAlerts,
   deliverMorningDigest,
   queueExceptionalAlert,
 } from "@/lib/notifications/orchestrate";
 import { retryFailedNotifications } from "@/lib/notifications/slack";
+import { deliverDueWebPush } from "@/lib/notifications/web-push";
 import {
   finalizeStagedSource,
   loadActiveSources,
@@ -28,6 +37,7 @@ import {
 } from "@/lib/scans/scan-source";
 import { recordSourceScanFailure } from "@/lib/scans/record-failure";
 import { rebalanceColdCadence } from "@/lib/scans/adaptive-cadence";
+import { loadGlobalSource, scanGlobalSource } from "@/lib/supply/global-source";
 import { inngest } from "./client";
 
 const sourceEventSchema = z.object({
@@ -37,9 +47,184 @@ const sourceEventSchema = z.object({
   scanKind: z.enum(["watchlist", "broad_discovery", "closure"]).default("watchlist"),
 });
 
+const globalSourceEventSchema = z.object({
+  sourceId: z.string().uuid(),
+  scanRunId: z.string().uuid(),
+  scheduledFor: z.string().datetime(),
+});
+
+export const globalSourceScheduler = inngest.createFunction(
+  { id: "global-source-scheduler-v2", triggers: [{ cron: "*/5 * * * *" }] },
+  async ({ step }) => {
+    if (!rolloutFlags().globalSupply) return { disabled: true };
+    const claimed = await step.run("claim-oldest-due-global-sources", async () => {
+      const now = new Date();
+      const due = await db
+        .select()
+        .from(globalScanSchedules)
+        .where(
+          and(
+            eq(globalScanSchedules.active, true),
+            lte(globalScanSchedules.nextRunAt, now),
+            or(isNull(globalScanSchedules.leasedUntil), lte(globalScanSchedules.leasedUntil, now)),
+          ),
+        )
+        .orderBy(
+          sql`case ${globalScanSchedules.monitoringTier} when 'priority' then 0 when 'standard' then 1 when 'warm' then 2 when 'cold' then 3 else 4 end`,
+          asc(globalScanSchedules.nextRunAt),
+          asc(globalScanSchedules.id),
+        )
+        .limit(100);
+      const runs: Array<{ id: string; sourceId: string; scheduledFor: Date }> = [];
+      for (const schedule of due) {
+        const run = await db.transaction(async (tx) => {
+          const token = randomUUID();
+          const [lease] = await tx
+            .update(globalScanSchedules)
+            .set({
+              leaseToken: token,
+              leasedUntil: new Date(now.getTime() + 10 * 60_000),
+              nextRunAt: new Date(now.getTime() + schedule.cadenceMinutes * 60_000),
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(globalScanSchedules.id, schedule.id),
+                lte(globalScanSchedules.nextRunAt, now),
+                or(
+                  isNull(globalScanSchedules.leasedUntil),
+                  lte(globalScanSchedules.leasedUntil, now),
+                ),
+              ),
+            )
+            .returning({ id: globalScanSchedules.id });
+          if (!lease) return null;
+          const idempotencyKey = `global-source:${schedule.careerSourceId}:${schedule.nextRunAt.toISOString()}`;
+          const [created] = await tx
+            .insert(globalScanRuns)
+            .values({
+              careerSourceId: schedule.careerSourceId,
+              scheduleId: schedule.id,
+              status: "queued",
+              idempotencyKey,
+              scheduledFor: schedule.nextRunAt,
+            })
+            .onConflictDoNothing()
+            .returning({ id: globalScanRuns.id });
+          const [existing] = created
+            ? [created]
+            : await tx
+                .select({ id: globalScanRuns.id })
+                .from(globalScanRuns)
+                .where(eq(globalScanRuns.idempotencyKey, idempotencyKey))
+                .limit(1);
+          return existing
+            ? {
+                id: existing.id,
+                sourceId: schedule.careerSourceId,
+                scheduledFor: schedule.nextRunAt,
+              }
+            : null;
+        });
+        if (run) runs.push(run);
+      }
+      return runs;
+    });
+    if (claimed.length)
+      await step.sendEvent(
+        "dispatch-global-source-scans",
+        claimed.map((run) => ({
+          id: run.id,
+          name: "supply/source.scan.requested.v2" as const,
+          data: {
+            sourceId: run.sourceId,
+            scanRunId: run.id,
+            scheduledFor: run.scheduledFor,
+          },
+        })),
+      );
+    return { claimed: claimed.length };
+  },
+);
+
+export const globalSourceScan = inngest.createFunction(
+  {
+    id: "global-source-scan-v2",
+    triggers: [{ event: "supply/source.scan.requested.v2" }],
+    retries: 4,
+    concurrency: [{ limit: 1, key: "event.data.sourceId" }, { limit: 5 }],
+    onFailure: async ({ event, error }) => {
+      const parsed = globalSourceEventSchema.safeParse(event.data.event.data);
+      if (!parsed.success) return;
+      const now = new Date();
+      await db.transaction(async (tx) => {
+        await tx
+          .update(globalScanRuns)
+          .set({
+            status: "failed",
+            finishedAt: now,
+            errorCode: error instanceof Error ? error.name.slice(0, 100) : "UNKNOWN",
+            updatedAt: now,
+          })
+          .where(eq(globalScanRuns.id, parsed.data.scanRunId));
+        await tx
+          .update(globalCareerSources)
+          .set({ lastAttemptAt: now, lastErrorCode: "GLOBAL_SCAN_FAILED", updatedAt: now })
+          .where(eq(globalCareerSources.id, parsed.data.sourceId));
+        await tx
+          .update(globalScanSchedules)
+          .set({ leasedUntil: null, leaseToken: null, updatedAt: now })
+          .where(eq(globalScanSchedules.careerSourceId, parsed.data.sourceId));
+      });
+    },
+  },
+  async ({ event, step }) => {
+    if (!rolloutFlags().globalSupply) return { disabled: true };
+    const data = globalSourceEventSchema.parse(event.data);
+    const source = await step.run("load-global-source", () => loadGlobalSource(data.sourceId));
+    if (!source) throw new NonRetriableError("Active global source was not found");
+    await step.run("mark-global-source-running", () =>
+      db
+        .update(globalScanRuns)
+        .set({ status: "running", startedAt: new Date(), updatedAt: new Date() })
+        .where(eq(globalScanRuns.id, data.scanRunId)),
+    );
+    const result = await step.run("scan-global-source-once", async () => {
+      try {
+        return await scanGlobalSource(source, new Date(data.scheduledFor), data.scanRunId);
+      } catch (error) {
+        if (error instanceof ConnectorError && !error.retryable)
+          throw new NonRetriableError(`[${error.code}] ${error.message}`, { cause: error });
+        throw error;
+      }
+    });
+    await step.run("complete-global-source-run", async () => {
+      const now = new Date();
+      await db.transaction(async (tx) => {
+        await tx
+          .update(globalScanRuns)
+          .set({
+            status: "succeeded",
+            finishedAt: now,
+            complete: true,
+            metrics: result,
+            updatedAt: now,
+          })
+          .where(eq(globalScanRuns.id, data.scanRunId));
+        await tx
+          .update(globalScanSchedules)
+          .set({ leasedUntil: null, leaseToken: null, updatedAt: now })
+          .where(eq(globalScanSchedules.careerSourceId, data.sourceId));
+      });
+    });
+    return result;
+  },
+);
+
 export const watchlistScheduler = inngest.createFunction(
   { id: "watchlist-scheduler", triggers: [{ cron: "*/15 * * * *" }] },
   async ({ step }) => {
+    if (rolloutFlags().globalSupply) return { disabled: true };
     const due = await step.run("lease-due-watchlists", async () => {
       await rebalanceColdCadence();
       const now = new Date();
@@ -47,36 +232,103 @@ export const watchlistScheduler = inngest.createFunction(
         .select()
         .from(watchlists)
         .where(and(eq(watchlists.active, true), lte(watchlists.nextScanAt, now)))
+        .orderBy(
+          sql`case ${watchlists.monitoringTier} when 'priority' then 0 when 'standard' then 1 when 'warm' then 2 when 'cold' then 3 else 4 end`,
+          asc(watchlists.nextScanAt),
+          asc(watchlists.id),
+        )
         .limit(100);
-      const events: Array<{ userId: string; sourceId: string; scheduledFor: string }> = [];
+      let claimed = 0;
+      let enqueued = 0;
       for (const row of rows) {
-        const [leased] = await db
-          .update(watchlists)
-          .set({
-            nextScanAt: new Date(now.getTime() + row.cadenceMinutes * 60_000),
-            updatedAt: now,
-          })
-          .where(and(eq(watchlists.id, row.id), lte(watchlists.nextScanAt, now)))
-          .returning({ companyId: watchlists.companyId });
-        if (!leased) continue;
-        const sources = await loadActiveSources(row.userId, row.companyId);
-        events.push(
-          ...sources.map((source) => ({
-            userId: row.userId,
-            sourceId: source.id,
-            scheduledFor: now.toISOString(),
-            scanKind: "watchlist" as const,
-          })),
-        );
+        const result = await db.transaction(async (tx) => {
+          const [leased] = await tx
+            .update(watchlists)
+            .set({
+              nextScanAt: new Date(now.getTime() + row.cadenceMinutes * 60_000),
+              updatedAt: now,
+            })
+            .where(and(eq(watchlists.id, row.id), lte(watchlists.nextScanAt, now)))
+            .returning({ companyId: watchlists.companyId });
+          if (!leased) return { claimed: 0, enqueued: 0 };
+          const sources = await tx
+            .select({ id: careerSources.id })
+            .from(careerSources)
+            .innerJoin(companies, eq(careerSources.companyId, companies.id))
+            .where(
+              and(
+                eq(careerSources.userId, row.userId),
+                eq(careerSources.companyId, leased.companyId),
+                eq(careerSources.active, true),
+                eq(companies.active, true),
+              ),
+            );
+          if (sources.length)
+            await tx
+              .insert(outboxEvents)
+              .values(
+                sources.map((source) => ({
+                  userId: row.userId,
+                  eventName: "firstseen/source.scan.requested",
+                  aggregateType: "career_source",
+                  aggregateId: source.id,
+                  idempotencyKey: `watchlist:${row.id}:${row.nextScanAt.toISOString()}:${source.id}`,
+                  payload: {
+                    userId: row.userId,
+                    sourceId: source.id,
+                    scheduledFor: now.toISOString(),
+                    scanKind: "watchlist" as const,
+                  },
+                })),
+              )
+              .onConflictDoNothing();
+          return { claimed: 1, enqueued: sources.length };
+        });
+        claimed += result.claimed;
+        enqueued += result.enqueued;
       }
-      return events;
+      return { claimed, enqueued };
     });
-    if (due.length)
+    const pending = await step.run("load-pending-source-outbox", () =>
+      db
+        .select({
+          id: outboxEvents.id,
+          eventName: outboxEvents.eventName,
+          payload: outboxEvents.payload,
+        })
+        .from(outboxEvents)
+        .where(
+          and(
+            eq(outboxEvents.status, "pending"),
+            lte(outboxEvents.availableAt, new Date()),
+            eq(outboxEvents.eventName, "firstseen/source.scan.requested"),
+          ),
+        )
+        .orderBy(asc(outboxEvents.availableAt), asc(outboxEvents.id))
+        .limit(500),
+    );
+    if (pending.length) {
       await step.sendEvent(
         "dispatch-source-scans",
-        due.map((data) => ({ name: "firstseen/source.scan.requested", data })),
+        pending.map((record) => ({
+          id: record.id,
+          name: "firstseen/source.scan.requested" as const,
+          data: sourceEventSchema.parse(record.payload),
+        })),
       );
-    return { dispatched: due.length };
+      await step.run("mark-source-outbox-dispatched", () =>
+        db
+          .update(outboxEvents)
+          .set({ status: "dispatched", dispatchedAt: new Date(), updatedAt: new Date() })
+          .where(
+            inArray(
+              outboxEvents.id,
+              pending.map((record) => record.id),
+            ),
+          ),
+      );
+    }
+    return { ...due, dispatched: pending.length };
   },
 );
 
@@ -262,7 +514,10 @@ export const broadDiscovery = inngest.createFunction(
       const discovered = await step.run(`discover-${user.userId}`, () =>
         discoverBroadSources(user.userId),
       );
-      if (discovered.sourceIds.length)
+      // Global supply schedules every newly verified source immediately. Let the
+      // five-minute global scheduler claim it so one source cannot be fetched
+      // once per user or race a second ad-hoc global scan.
+      if (discovered.sourceIds.length && !rolloutFlags().globalSupply)
         await step.sendEvent(
           `verify-${user.userId}`,
           discovered.sourceIds.map((sourceId) => ({
@@ -275,7 +530,11 @@ export const broadDiscovery = inngest.createFunction(
             },
           })),
         );
-      results.push({ ...discovered, dispatched: discovered.sourceIds.length });
+      results.push({
+        ...discovered,
+        dispatched: rolloutFlags().globalSupply ? 0 : discovered.sourceIds.length,
+        scheduledGlobally: rolloutFlags().globalSupply ? discovered.sourceIds.length : 0,
+      });
     }
     return results;
   },
@@ -294,6 +553,8 @@ export const notificationSchedule = inngest.createFunction(
       );
       await step.run(`deferred-${user.userId}`, () => deliverDeferredAlerts(user.userId));
       await step.run(`retry-failed-${user.userId}`, () => retryFailedNotifications(user.userId));
+      if (rolloutFlags().webPush)
+        await step.run(`retry-push-${user.userId}`, () => deliverDueWebPush(user.userId));
     }
     return results;
   },
@@ -316,6 +577,8 @@ export const cleanupSchedule = inngest.createFunction(
 );
 
 export const functions = [
+  globalSourceScheduler,
+  globalSourceScan,
   watchlistScheduler,
   sourceScan,
   broadDiscovery,

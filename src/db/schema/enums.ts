@@ -14,17 +14,24 @@ export const referralStatus = pgEnum("referral_status", [
   "requested",
   "submitted",
   "declined",
+  "agreed",
+  "expired",
+  "completed",
   "unknown",
 ]);
 export const connectorKind = pgEnum("connector_kind", [
   "greenhouse",
   "lever",
   "ashby",
+  "recruitee",
+  "pinpoint",
   "smartrecruiters",
   "workday",
   "icims",
   "jobvite",
   "custom_jsonld",
+  "custom_feed",
+  "custom_sitemap",
   "custom_html",
   "brave",
   "adzuna",
@@ -141,4 +148,24 @@ export const outboxStatus = pgEnum("outbox_status", [
   "dispatching",
   "dispatched",
   "failed",
+]);
+export const applicationStage = pgEnum("application_stage", [
+  "applied",
+  "recruiter_screen",
+  "interview",
+  "final",
+  "offer",
+  "rejected",
+  "withdrawn",
+]);
+export const contactMethodKind = pgEnum("contact_method_kind", [
+  "email",
+  "phone",
+  "profile_url",
+  "other",
+]);
+export const notificationChannelKind = pgEnum("notification_channel_kind", [
+  "slack",
+  "web_push",
+  "digest",
 ]);

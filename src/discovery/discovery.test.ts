@@ -21,18 +21,24 @@ function response(payload: unknown): SafeResponse {
 }
 
 describe("broad discovery queries", () => {
-  it("builds one query for each accepted region plus remote", () => {
+  it("builds all twelve role/location cohorts on every cycle", () => {
     const queries = buildDiscoveryQueries(0);
 
-    expect(queries).toHaveLength(4);
-    expect(queries.filter((query) => query.remote)).toHaveLength(1);
+    expect(queries).toHaveLength(12);
+    expect(queries).toEqual(buildDiscoveryQueries(3));
+    expect(queries.filter((query) => query.remote)).toHaveLength(3);
     expect(queries.some((query) => query.locationQuery.includes("Miami"))).toBe(true);
     expect(queries.some((query) => query.locationQuery.includes("Fairfax"))).toBe(true);
     expect(queries.some((query) => query.locationQuery.includes("New York City"))).toBe(true);
+    expect(queries.some((query) => query.roleQuery.includes("new grad"))).toBe(true);
+    expect(queries.some((query) => query.roleQuery.includes("applied AI"))).toBe(true);
   });
 
   it("restricts Brave searches toward official ATS and career pages", () => {
-    expect(braveQuery(buildDiscoveryQueries(0)[0]!)).toContain("site:jobs.lever.co");
+    const query = braveQuery(buildDiscoveryQueries(0)[0]!);
+    expect(query).toContain("site:jobs.lever.co");
+    expect(query).toContain("site:recruitee.com");
+    expect(query).toContain("site:pinpointhq.com");
   });
 });
 
@@ -115,8 +121,24 @@ describe("official source resolution", () => {
       { kind: "ashby", tenantId: "acme", externalId: "abc-123" },
     ],
     [
+      "https://acme.recruitee.com/o/software-engineer-i",
+      { kind: "recruitee", tenantId: "acme", externalId: "software-engineer-i" },
+    ],
+    [
+      "https://acme.pinpointhq.com/en/postings/abc-123",
+      { kind: "pinpoint", tenantId: "acme", externalId: "abc-123" },
+    ],
+    [
       "https://acme.com/careers/software-engineer",
       { kind: "custom_jsonld", tenantId: null, externalId: null },
+    ],
+    [
+      "https://careers.acme.com/jobs.rss",
+      { kind: "custom_feed", tenantId: null, externalId: null },
+    ],
+    [
+      "https://careers.acme.com/job-sitemap.xml",
+      { kind: "custom_sitemap", tenantId: null, externalId: null },
     ],
   ])("identifies official source %s", (url, expected) => {
     expect(resolveOfficialSource(url)).toMatchObject(expected);

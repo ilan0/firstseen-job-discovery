@@ -4,3 +4,4 @@ node_modules/
 playwright-report/
 supabase/.temp/
 test-results/
+TEST_REPORT 2.md

@@ -21,7 +21,23 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  await supabase.auth.getClaims();
+  const claims = await supabase.auth.getClaims();
+  const pathname = request.nextUrl.pathname;
+  const publicPath =
+    pathname === "/sign-in" ||
+    pathname === "/offline" ||
+    pathname === "/manifest.webmanifest" ||
+    pathname === "/sw.js" ||
+    pathname.startsWith("/auth/") ||
+    pathname.startsWith("/api/inngest") ||
+    pathname.startsWith("/icons/");
+  if (!claims.data?.claims && !publicPath) {
+    const signIn = request.nextUrl.clone();
+    signIn.pathname = "/sign-in";
+    signIn.search = "";
+    signIn.searchParams.set("next", `${pathname}${request.nextUrl.search}`);
+    return NextResponse.redirect(signIn);
+  }
   return response;
 }
 

@@ -15,6 +15,8 @@ const structuredConnectors = new Set<ConnectorKind>([
   "greenhouse",
   "lever",
   "ashby",
+  "recruitee",
+  "pinpoint",
   "smartrecruiters",
 ]);
 

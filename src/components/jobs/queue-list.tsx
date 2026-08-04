@@ -23,11 +23,13 @@ export function QueueList({
   olderJobs = [],
   status,
   feedQuery,
+  nextCursor,
 }: {
   jobs: Jobs;
   olderJobs?: Jobs | undefined;
   status: QueueStatus;
   feedQuery?: FeedQuery | undefined;
+  nextCursor?: string | null | undefined;
 }) {
   const activeFeed = status === "active" && Boolean(feedQuery);
   const router = useRouter();
@@ -47,6 +49,7 @@ export function QueueList({
       if (!value) params.delete(key);
       else params.set(key, value);
     }
+    if (!("cursor" in values)) params.delete("cursor");
     navigationParams.current = params;
     startTransition(() => router.replace(`/?${params.toString()}`, { scroll: false }));
   }
@@ -251,6 +254,23 @@ export function QueueList({
             ))}
           </div>
         </section>
+      ) : null}
+      {activeFeed && nextCursor ? (
+        <div className="mt-8 flex justify-center">
+          <Link
+            className="rounded-xl border border-[var(--line)] bg-[var(--surface)] px-5 py-3 text-sm font-black transition hover:border-[var(--green)]"
+            href={`/?${new URLSearchParams({
+              ...(feedQuery?.postedWithin ? { postedWithin: feedQuery.postedWithin } : {}),
+              ...(feedQuery?.sort ? { sort: feedQuery.sort } : {}),
+              ...(feedQuery?.band && feedQuery.band !== "all" ? { band: feedQuery.band } : {}),
+              ...(feedQuery?.query ? { q: feedQuery.query } : {}),
+              ...(feedQuery?.referralsOnly ? { referrals: "true" } : {}),
+              cursor: nextCursor,
+            }).toString()}`}
+          >
+            Next verified results
+          </Link>
+        </div>
       ) : null}
     </>
   );

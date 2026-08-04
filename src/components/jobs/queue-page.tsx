@@ -8,6 +8,7 @@ export function QueuePage({
   status,
   feedQuery,
   olderJobs,
+  nextCursor,
 }: {
   title: string;
   description: string;
@@ -15,6 +16,7 @@ export function QueuePage({
   status: QueueStatus;
   feedQuery?: FeedQuery | undefined;
   olderJobs?: Awaited<ReturnType<typeof import("@/lib/jobs/queue").listQueue>> | undefined;
+  nextCursor?: string | null | undefined;
 }) {
   return (
     <div className="mx-auto max-w-5xl">
@@ -30,6 +32,7 @@ export function QueuePage({
         jobs={jobs}
         key={feedQuery ? JSON.stringify(feedQuery) : status}
         olderJobs={olderJobs}
+        nextCursor={nextCursor}
         status={status}
       />
     </div>

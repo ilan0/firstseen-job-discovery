@@ -1,12 +1,15 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-import { observeFailures, ownerAccessCode, signIn } from "./helpers";
+import { observeFailures, ownerAccessCode, resetLocalRateLimits, signIn } from "./helpers";
 
-test("access-code gate fails safely and sign-out returns to it", async ({ page }) => {
+test("access-code gate fails safely and sign-out returns to it", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile-390", "Rate-limit behavior is viewport-independent");
+  await resetLocalRateLimits();
   const failures = observeFailures(page);
   const code = ownerAccessCode();
   const wrongCode = String((Number(code) + 1) % 10_000).padStart(4, "0");
   await page.goto("/");
+  await page.locator("form[data-hydrated='true']").waitFor();
   const codeInput = page.getByLabel("Access code", { exact: true });
   await expect(codeInput).toBeFocused();
   await codeInput.fill("123");
@@ -20,11 +23,12 @@ test("access-code gate fails safely and sign-out returns to it", async ({ page }
   await expect(page.getByRole("heading", { name: "Fresh matches" })).toBeVisible();
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(page.getByLabel("Access code", { exact: true })).toBeVisible();
-  await expect(page).toHaveURL(/\/sign-in$/);
+  await expect(page).toHaveURL(/\/sign-in(?:\?.*)?$/);
   expect(failures).toEqual([]);
 });
 
 test("sign-in, explainable match, filters, and persistent queue transitions", async ({ page }) => {
+  test.setTimeout(60_000);
   const failures = observeFailures(page);
   await signIn(page);
   if ((page.viewportSize()?.width ?? 1440) < 1024) {
@@ -32,9 +36,10 @@ test("sign-in, explainable match, filters, and persistent queue transitions", as
     for (const name of [
       "Matches",
       "Saved",
-      "Applied",
+      "Applications",
       "Dismissed",
       "Watchlist",
+      "People",
       "Health",
       "Settings",
     ])
@@ -57,13 +62,26 @@ test("sign-in, explainable match, filters, and persistent queue transitions", as
   const officialResponse = await page.request.get(officialOpenPath!, { maxRedirects: 0 });
   expect(officialResponse.status()).toBe(303);
   expect(officialResponse.headers().location).toBe("https://jobs.lever.co/firstseen-qa/qa-swe-1");
-  await page.getByRole("combobox", { name: "Filter match type" }).selectOption("hot");
+  const detailPath = officialOpenPath!.replace(/\/open$/, "");
+  await page.goto(detailPath);
+  await expect(page.getByText("Did you submit this application?", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Continue later", exact: true }).click();
+  await expect(page.getByText("Ready to finish this application?", { exact: true })).toBeVisible();
+  await page.goto("/");
+  const resumable = page.locator("section").filter({ hasText: "Applications waiting for you" });
+  await expect(resumable).toContainText("Software Engineer I");
+  await resumable.getByRole("link").filter({ hasText: "Software Engineer I" }).click();
+  await expect(page.getByText("Ready to finish this application?", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Dismiss prompt", exact: true }).click();
+  await expect(page.getByText("Ready to finish this application?", { exact: true })).toBeHidden();
+  await page.goto("/");
+  await page.getByRole("combobox", { name: "Filter match type" }).selectOption("strong");
   await page.getByRole("checkbox", { name: "Referrals" }).check();
-  await expect(page).toHaveURL(/band=hot/);
+  await expect(page).toHaveURL(/band=strong/);
   await expect(page).toHaveURL(/referrals=true/);
   await expect(page.getByText(/^Showing \d+ jobs$/)).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("combobox", { name: "Filter match type" })).toHaveValue("hot");
+  await expect(page.getByRole("combobox", { name: "Filter match type" })).toHaveValue("strong");
   await expect(page.getByRole("checkbox", { name: "Referrals" })).toBeChecked();
   const filteredFixture = page.locator("article").filter({ hasText: "FirstSeen QA Fixture" });
   const fixtureTitle = filteredFixture.getByRole("link", {
@@ -102,8 +120,9 @@ test("sign-in, explainable match, filters, and persistent queue transitions", as
   const appliedFixture = page.locator("article").filter({ hasText: "FirstSeen QA Fixture" });
   await expect(appliedFixture).toBeVisible();
   await page.reload();
-  await appliedFixture.getByRole("button", { name: "Restore", exact: true }).click();
-  await expect(appliedFixture).toBeHidden();
+  await appliedFixture.getByRole("link", { name: "Job detail", exact: true }).click();
+  await page.getByRole("button", { name: "Restore to active", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Save for later", exact: true })).toBeVisible();
 
   await page.goto("/");
   await page
@@ -198,6 +217,8 @@ test("watchlist validation is recoverable and core pages are accessible", async 
     "/applied",
     "/dismissed",
     "/watchlist",
+    "/relationships",
+    "/applications/packet",
     "/operations",
     "/settings",
   ]) {
@@ -222,7 +243,7 @@ test("watchlist validation is recoverable and core pages are accessible", async 
       hasCompanies: Array.isArray(body.data?.companies),
     };
   });
-  expect(exported).toMatchObject({ status: 200, version: 1, hasCompanies: true });
+  expect(exported).toMatchObject({ status: 200, version: 2, hasCompanies: true });
   expect(exported.disposition).toContain("firstseen-export-");
   await page.goto("/settings");
   await page.getByRole("checkbox", { name: "Morning digest" }).uncheck();

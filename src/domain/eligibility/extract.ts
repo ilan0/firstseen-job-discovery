@@ -1,12 +1,15 @@
 import { extractClearance, extractPublicTrust } from "./clearance";
 import { extractEmployment } from "./employment";
 import { extractExperienceRequirements } from "./experience";
-import { evaluateLocations, extractWorkArrangement } from "./location";
+import { evaluateLocations, extractWorkArrangement, type LocationPolicy } from "./location";
 import { classifyRole } from "./role";
 import { extractSponsorship } from "./sponsorship";
 import type { ExtractedJobFacts, JobInput } from "./types";
 
-export function extractDeterministicFacts(input: JobInput): ExtractedJobFacts {
+export function extractDeterministicFacts(
+  input: JobInput,
+  locationPolicy: LocationPolicy = {},
+): ExtractedJobFacts {
   const workArrangement = extractWorkArrangement(input.workplaceType, input.description);
   const locations = input.locations ?? [];
 
@@ -22,7 +25,12 @@ export function extractDeterministicFacts(input: JobInput): ExtractedJobFacts {
       confidence: locations.length ? "high" : "low",
       evidence: [],
     },
-    locationEligibility: evaluateLocations(locations, workArrangement.value, input.description),
+    locationEligibility: evaluateLocations(
+      locations,
+      workArrangement.value,
+      input.description,
+      locationPolicy,
+    ),
     roleFamily: classifyRole(input.title),
   };
 }

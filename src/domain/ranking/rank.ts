@@ -1,4 +1,3 @@
-import { preferenceSeed } from "@/config/candidate";
 import { freshness as jobFreshness } from "@/domain/jobs";
 import type {
   RankingDimensionName,
@@ -144,7 +143,18 @@ function experienceDimension(input: RankingInput): RankingDimensionResult {
 
 function roleDimension(input: RankingInput): RankingDimensionResult {
   const priority =
-    preferenceSeed.rolePriorities.find((item) => item.family === input.roleFamily)?.priority ?? 9;
+    input.rolePriorities?.find((item) => item.family === input.roleFamily)?.priority ??
+    {
+      general_swe: 1,
+      full_stack: 2,
+      backend: 3,
+      frontend: 4,
+      ai_engineering: 5,
+      embedded: 6,
+      internal_automation: 7,
+      customer_facing: 8,
+      other: 9,
+    }[input.roleFamily];
   const values: Record<number, number> = {
     1: 100,
     2: 93,

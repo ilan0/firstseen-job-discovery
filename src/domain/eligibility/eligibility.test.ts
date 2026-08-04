@@ -32,6 +32,15 @@ describe("deterministic eligibility", () => {
     ).toBe("eligible");
   });
 
+  it("enforces the persisted per-user experience ceiling", () => {
+    const facts = extractDeterministicFacts({
+      ...baseJob,
+      description: "Full-time. 3 years of relevant experience required.",
+    });
+    expect(evaluateEligibility(facts, { eligibleRequiredYearsMax: 4 }).outcome).toBe("eligible");
+    expect(evaluateEligibility(facts, { eligibleRequiredYearsMax: 2 }).outcome).toBe("ineligible");
+  });
+
   it("rejects more than two required years", () => {
     const decision = decide({
       description: "Full-time. 3+ years of professional experience required.",
@@ -188,6 +197,17 @@ describe("deterministic eligibility", () => {
     },
   );
 
+  it("uses persisted accepted-area selections instead of admitting every built-in region", () => {
+    const facts = extractDeterministicFacts(
+      { ...baseJob, locations: ["Miami, FL"] },
+      {
+        acceptedAreas: [{ id: "dmv", anchor: "Fairfax, VA" }],
+        allowFullyRemote: true,
+      },
+    );
+    expect(evaluateEligibility(facts).outcome).toBe("ineligible");
+  });
+
   it("reviews a New York metro location that might be in New Jersey", () => {
     expect(decide({ locations: ["New York Metropolitan Area"] }).outcome).toBe("review");
   });
@@ -207,6 +227,19 @@ describe("deterministic eligibility", () => {
         description: "Full-time remote software role.",
       }).outcome,
     ).toBe("eligible");
+  });
+
+  it("rejects fully remote work when the persisted preference disables it", () => {
+    const facts = extractDeterministicFacts(
+      {
+        ...baseJob,
+        locations: ["Remote - United States"],
+        workplaceType: "Remote",
+        description: "Full-time remote software role.",
+      },
+      { acceptedAreas: [{ id: "dmv" }], allowFullyRemote: false },
+    );
+    expect(evaluateEligibility(facts).outcome).toBe("ineligible");
   });
 
   it("rejects remote work restricted to New Jersey", () => {
@@ -245,6 +278,17 @@ describe("deterministic eligibility", () => {
 
     expect(decision.outcome).toBe("eligible");
     expect(decision.facts.sponsorship.value).toBe("compatible");
+  });
+
+  it("applies sponsorship availability only when the persisted profile needs sponsorship", () => {
+    const facts = extractDeterministicFacts(baseJob);
+    facts.sponsorship = {
+      value: "incompatible",
+      confidence: "high",
+      evidence: [],
+    };
+    expect(evaluateEligibility(facts, { needsUsSponsorship: false }).outcome).toBe("eligible");
+    expect(evaluateEligibility(facts, { needsUsSponsorship: true }).outcome).toBe("ineligible");
   });
 
   it("classifies role families without making them hard filters", () => {

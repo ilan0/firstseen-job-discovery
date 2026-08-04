@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/db/client";
-import { careerSources, deadLetterRecords } from "@/db/schema";
+import { careerSources, deadLetterRecords, globalScanRuns } from "@/db/schema";
+import { rolloutFlags } from "@/config/rollout";
 import { inngest } from "@/inngest/client";
 import { requireOwner } from "@/lib/auth/owner";
 import { consumeRateLimit } from "@/lib/security/rate-limit";
@@ -22,7 +23,7 @@ async function enforceOperationsRateLimit(ownerId: string, namespace: string) {
 
 async function requireActiveOwnedSource(ownerId: string, sourceId: string) {
   const [source] = await db
-    .select({ id: careerSources.id })
+    .select({ id: careerSources.id, globalSourceId: careerSources.globalSourceId })
     .from(careerSources)
     .where(
       and(
@@ -33,17 +34,40 @@ async function requireActiveOwnedSource(ownerId: string, sourceId: string) {
     )
     .limit(1);
   if (!source) throw new Error("Active source was not found");
+  return source;
 }
 
 export async function requestSourceScan(formData: FormData) {
   const owner = await requireOwner();
   await enforceOperationsRateLimit(owner.id, "manual-source-scan");
   const sourceId = z.string().uuid().parse(formData.get("sourceId"));
-  await requireActiveOwnedSource(owner.id, sourceId);
-  await inngest.send({
-    name: "firstseen/source.scan.requested",
-    data: { userId: owner.id, sourceId, scheduledFor: new Date().toISOString() },
-  });
+  const source = await requireActiveOwnedSource(owner.id, sourceId);
+  const scheduledFor = new Date();
+  if (rolloutFlags().globalSupply && source.globalSourceId) {
+    const [run] = await db
+      .insert(globalScanRuns)
+      .values({
+        careerSourceId: source.globalSourceId,
+        status: "queued",
+        idempotencyKey: `manual:${owner.id}:${source.globalSourceId}:${scheduledFor.toISOString()}`,
+        scheduledFor,
+      })
+      .returning({ id: globalScanRuns.id });
+    if (!run) throw new Error("Global scan could not be queued");
+    await inngest.send({
+      id: run.id,
+      name: "supply/source.scan.requested.v2",
+      data: {
+        sourceId: source.globalSourceId,
+        scanRunId: run.id,
+        scheduledFor: scheduledFor.toISOString(),
+      },
+    });
+  } else
+    await inngest.send({
+      name: "firstseen/source.scan.requested",
+      data: { userId: owner.id, sourceId, scheduledFor: scheduledFor.toISOString() },
+    });
   revalidatePath("/operations");
   redirect("/operations?started=scan");
 }

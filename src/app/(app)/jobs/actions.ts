@@ -7,6 +7,8 @@ import { z } from "zod";
 import { db } from "@/db/client";
 import {
   auditEvents,
+  applications,
+  applicationStageHistory,
   canonicalJobs,
   queueStateHistory,
   queueStates,
@@ -36,7 +38,11 @@ export async function transitionQueue(formData: FormData) {
 
   await db.transaction(async (tx) => {
     const [current] = await tx
-      .select({ queue: queueStates, lifecycleStatus: canonicalJobs.lifecycleStatus })
+      .select({
+        queue: queueStates,
+        lifecycleStatus: canonicalJobs.lifecycleStatus,
+        globalJobId: canonicalJobs.globalJobId,
+      })
       .from(queueStates)
       .innerJoin(canonicalJobs, eq(queueStates.jobId, canonicalJobs.id))
       .where(and(eq(queueStates.userId, owner.id), eq(queueStates.jobId, jobId)))
@@ -91,6 +97,34 @@ export async function transitionQueue(formData: FormData) {
       targetId: jobId,
       metadataSafe: { from: current.queue.status, to: status },
     });
+    if (status === "applied") {
+      const [existingApplication] = await tx
+        .select({ id: applications.id })
+        .from(applications)
+        .where(and(eq(applications.userId, owner.id), eq(applications.legacyJobId, jobId)))
+        .limit(1);
+      const [application] = existingApplication
+        ? [existingApplication]
+        : await tx
+            .insert(applications)
+            .values({
+              userId: owner.id,
+              globalJobId: current.globalJobId,
+              legacyJobId: jobId,
+              stage: "applied",
+              appliedAt: new Date(),
+              source: "manual_portal",
+            })
+            .returning({ id: applications.id });
+      if (application && !existingApplication)
+        await tx.insert(applicationStageHistory).values({
+          userId: owner.id,
+          applicationId: application.id,
+          fromStage: null,
+          toStage: "applied",
+          reason: "Marked applied in FirstSeen",
+        });
+    }
   });
 
   revalidatePath("/");

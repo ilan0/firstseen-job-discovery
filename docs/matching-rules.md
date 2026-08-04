@@ -1,24 +1,33 @@
 # FirstSeen matching rules
 
 Matching is versioned, deterministic where eligibility matters, and explicit about uncertainty.
-The implemented candidate policy is encoded in `src/config/candidate.ts` and pure rules under
-`src/domain/eligibility`; changes require unit and database regression tests.
+Runtime candidate facts and preferences are loaded from the authenticated user's database records;
+`src/config/candidate.ts` is seed input only. Pure rules live under `src/domain/eligibility`, and
+changes require unit and database regression tests.
 
 ## Processing order
 
 1. Normalize the official listing and extract conservative facts from the title, description,
    employment field, locations, and workplace field.
 2. Apply deterministic hard rules. A proven hard exclusion ends analysis before OpenAI.
-3. For eligible/review plausible software roles only, reserve durable AI budget and request a
-   compact structured extraction.
+3. For plausible software roles only, reserve durable AI budget and request one candidate-neutral
+   Luna extraction per global description snapshot.
 4. Validate the schema and verify quoted evidence against the supplied description. Merge only
    supported facts; deterministic evidence takes precedence on hard exclusions.
-5. Re-run deterministic eligibility. Unknown/contradictory hard facts produce Review.
-6. Calculate and persist separate ranking dimensions, route the queue, and evaluate notification
+5. If a hard field is low-confidence, conflicts with regex, contains complex alternatives, or
+   fails validation, selectively request a capped Terra second pass and reconcile evidence.
+6. Run deterministic eligibility separately for each user. Unknown/contradictory hard facts produce
+   Review.
+7. Calculate and persist separate ranking dimensions, route the queue, and evaluate notification
    eligibility in deterministic code.
 
 AI cannot change lifecycle, deduplication, queue state transitions, hard exclusion semantics, or
 notification idempotency.
+
+Routine extraction receives no candidate profile, contact/referral PII, resume, application state,
+or notification device data. Its cache identity includes snapshot, model, schema, prompt hash, and
+reasoning configuration. Terra is capped at 10% of analyzed snapshots and 20% of AI spend. A model
+refusal, invalid evidence, or unresolved Luna/Terra conflict routes to Review rather than guessing.
 
 ## Hard eligibility
 
@@ -66,8 +75,8 @@ or product postings at AI companies from consuming budget or entering Review as 
 
 ## Explainable dimensions
 
-Each recommendation persists one row per dimension with value, confidence, evidence, explanation,
-and ranking version:
+Each private recommendation persists one row per dimension with value, confidence, evidence,
+explanation, and ranking version:
 
 - Skills fit: overlap between required/preferred technologies and resume evidence. Matching accepts
   normalized concrete names and reviewed category equivalents (for example React for “frontend

@@ -12,7 +12,7 @@ added only after the dedicated provider projects exist and the exact procedure i
 | Inngest        | function runs, step traces, retries                          | Source event or per-listing step              |
 | Official ATS   | career-source attempt/success/error, source-run metrics      | One source; never closure on error            |
 | OpenAI         | analysis status/error, token/cost ledger, budget reservation | One changed listing; routes Review on failure |
-| Slack          | notification/digest status, attempt/error, retry             | One idempotency key                           |
+| Notifications  | logical/channel/device deliveries, retry/dead-letter status  | One logical alert and one device/channel      |
 | Broad sensors  | usage ledger, candidate/source counts, error list            | One provider/query                            |
 
 The protected `/operations` page is the first stop. Confirm latest scan status/time, source scope/
@@ -24,7 +24,7 @@ visible and does not silently close jobs.
 
 ```bash
 nvm use
-npx --yes supabase@latest start
+pnpm exec supabase start
 pnpm db:migrate
 pnpm dev --hostname 127.0.0.1
 ```
@@ -45,6 +45,12 @@ pnpm typecheck
 pnpm test
 RUN_DATABASE_TESTS=true pnpm test
 RUN_DATABASE_TESTS=true pnpm test:coverage
+pnpm test:connectors
+pnpm test:eval
+pnpm test:workers
+pnpm test:pwa
+pnpm test:security
+pnpm test:load
 pnpm audit --audit-level=low
 pnpm build
 pnpm test:e2e
@@ -107,13 +113,17 @@ Credentialed model verification consumes real quota:
 pnpm smoke:openai
 ```
 
-## Broad discovery quota or outage
+## Broad discovery quota, rights, or outage
 
-Initial cadence produces approximately 720 requests/provider/month. The application breaker stops
-each provider at 900 requests/month. Check usage ledger before changing cadence. A Brave or Adzuna
-error is retained in run diagnostics while the other provider continues; neither affects existing
-official watchlists. Provider requests are claimed in PostgreSQL before the network call; another
-delivery in the same query rotation must find the existing claim and skip the external request.
+Twelve stable role/location cohorts run every four hours. The application breaker stops Brave at
+its configured monthly limit. Check the usage ledger before changing cadence. Brave candidates are
+transient URL hints: search snippets, titles, and result payloads are not persisted or placed in
+Inngest events. Only independently verified official facts may enter durable supply.
+
+Adzuna automated discovery and redirect resolution are disabled by provider policy. Its default
+terms conflict with contacting offsite content providers during automated verification; do not
+enable it without written permission and a reviewed rights record. Neither broad-provider state
+affects existing official source scans.
 
 Credentialed verification consumes provider quota:
 
@@ -138,7 +148,7 @@ license/attribution review.
 - A source with no priority success inside its target window is an operations warning. Check provider
   health and trace state before replay; lack of a fresh job is not itself failure.
 
-## Slack failure or duplicate prevention
+## Slack, Web Push, or duplicate-delivery failure
 
 - `notifications.idempotency_key` includes job plus snapshot/reopening occurrence, and digest
   `(user, local date)` uniqueness prevents duplicates.
@@ -155,6 +165,16 @@ pnpm smoke:slack
 ```
 
 This command sends a real Slack message. Never print or inspect the webhook value.
+
+Web Push delivery is channel/device-specific beneath the same logical notification. A 404/410
+expires the encrypted subscription; 429 and 5xx retry with bounded exponential backoff. Permission
+denial does not fail Slack. Raw endpoints and browser encryption keys are encrypted at rest and
+redacted from logs. The default lock-screen payload is generic; detailed company/title text is an
+explicit user opt-in.
+
+For a push incident, confirm the logical notification exists, inspect only safe delivery status/
+attempt/error fields, verify the device subscription is active, and test exact relative-path click
+routing. Do not copy the endpoint or browser key material into a ticket, log, screenshot, or report.
 
 ## Authentication and security response
 
@@ -205,18 +225,31 @@ npx --yes supabase@latest db dump --db-url "$DATABASE_URL" --data-only --use-cop
 ```
 
 Confirm all three files are non-empty, encrypt the backup as one set, test restoration in an
-isolated project before relying on it, and enforce an owner-defined retention policy. The initial
-verification artifacts were permanently deleted rather than retained as plaintext.
+isolated disposable database before relying on it, and enforce an owner-defined retention policy.
+The protected pre-migration artifact currently exists outside the repository and must not be
+described as deleted, copied into the worktree, or removed without explicit owner authority.
 
 ## Release and rollback gate
 
-Before promoting a deployment, require formatting, lint, strict types, default tests, database
-integration tests, production build, all four Playwright projects/Axe, credentialed connector/model/
-sensor checks where changed, a labelled Slack check where notifications changed, and inspection of
-browser console/network, server logs, Inngest traces, and persisted rows.
+Before promoting a deployment, require formatting, lint, strict types, default and database tests,
+coverage, focused connector/evaluation/worker/PWA/security/load suites, audit, production build, all
+four Playwright projects/Axe, credentialed connector/model/sensor checks where changed, a labelled
+Slack check where notifications changed, and inspection of browser console/network, server logs,
+Inngest traces, delivery status, cost ledgers, and persisted rows.
 
 Rollback uses the previous immutable Vercel deployment only after production exists and the action
 has been verified. Migrations must be backward compatible for at least one app release; never roll
 back by destructively reverting the production database. Pause manual replays during rollback,
 confirm in-flight stable Inngest function IDs complete safely, then rerun protected route and source
 smokes.
+
+After sourcing the protected external production environment, the following read-only verifier is
+guarded to the dedicated FirstSeen ref and reports only aggregate counts/security booleans:
+
+```bash
+pnpm verify:production-schema
+```
+
+It refuses any project/database URL other than `tlhwxayhjamopnnlroke`. Require the latest migration,
+zero listed private tables without RLS, and no authenticated/anonymous read privilege on global raw
+observations.

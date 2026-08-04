@@ -99,8 +99,9 @@ export async function refreshCompanyMonitoring(
       active: policy.active,
       cadenceMinutes: policy.cadenceMinutes,
       monitoringTier: policy.tier,
-      nextScanAt:
-        policy.cadenceMinutes < watch.cadenceMinutes && watch.nextScanAt > now
+      nextScanAt: !policy.active
+        ? watch.nextScanAt
+        : policy.cadenceMinutes < watch.cadenceMinutes && watch.nextScanAt > now
           ? now
           : policy.cadenceMinutes > watch.cadenceMinutes
             ? new Date(now.getTime() + policy.cadenceMinutes * 60_000)

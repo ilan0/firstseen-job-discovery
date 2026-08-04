@@ -5,9 +5,19 @@ import { signOut } from "@/app/sign-in/actions";
 import { ApplicationNavigation } from "@/components/navigation/application-navigation";
 import { SubmitButton } from "@/components/forms/submit-button";
 import { requireOwner } from "@/lib/auth/owner";
+import { db } from "@/db/client";
+import { candidateProfiles } from "@/db/schema";
+import { eq } from "drizzle-orm";
+import { redirect } from "next/navigation";
 
 export default async function ApplicationLayout({ children }: { children: ReactNode }) {
   const owner = await requireOwner();
+  const [profile] = await db
+    .select({ id: candidateProfiles.id })
+    .from(candidateProfiles)
+    .where(eq(candidateProfiles.userId, owner.id))
+    .limit(1);
+  if (!profile) redirect("/onboarding");
 
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[15rem_1fr]">

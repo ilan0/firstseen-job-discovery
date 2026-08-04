@@ -88,6 +88,15 @@ describe("explainable deterministic ranking", () => {
     expect(result.dimensions.find((item) => item.dimension === "skills_fit")?.value).toBe(100);
   });
 
+  it("uses persisted role priorities instead of a candidate-specific module constant", () => {
+    const value = input("Full-time role requiring 0-2 years of experience in Miami.");
+    const role = rankJob({
+      ...value,
+      rolePriorities: [{ family: "general_swe", priority: 8 }],
+    }).dimensions.find((item) => item.dimension === "role_family_alignment");
+    expect(role).toMatchObject({ value: 35 });
+  });
+
   it("matches category-equivalent skills and excludes eligibility conditions from skills fit", () => {
     const value = input("Full-time role requiring 0-1 years of experience in Miami.");
     value.requiredSkills = [

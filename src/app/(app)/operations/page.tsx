@@ -13,6 +13,8 @@ import {
   watchlists,
 } from "@/db/schema";
 import { requireOwner } from "@/lib/auth/owner";
+import { serverEnv } from "@/lib/env/server";
+import { supplyCapacityState } from "@/lib/load/capacity";
 
 export default async function OperationsPage({
   searchParams,
@@ -109,6 +111,44 @@ export default async function OperationsPage({
   const adaptedColdSources = sources.filter(
     (source) => source.tier === "cold" && source.cadence > 240,
   ).length;
+  const [v2Health] = await db.execute<{
+    global_sources: string;
+    due_sources: string;
+    priority_overdue: string;
+    failed_push: string;
+    benchmark_total: string;
+    benchmark_matched: string;
+    global_priority: string;
+    global_standard: string;
+    global_cold: string;
+    global_runs_this_month: string;
+  }>(sql`
+    select
+      (select count(*)::text from public.global_career_sources where active) as global_sources,
+      (select count(*)::text from public.global_scan_schedules where active and next_run_at <= now()) as due_sources,
+      (select count(*)::text from public.global_scan_schedules where active and monitoring_tier = 'priority' and next_run_at < now() - interval '5 minutes') as priority_overdue,
+      (select count(*)::text from public.notification_deliveries where user_id = ${owner.id} and status = 'failed' and next_attempt_at is null) as failed_push,
+      (select count(*)::text from public.coverage_benchmarks) as benchmark_total,
+      (select count(*)::text from public.coverage_benchmarks where matched) as benchmark_matched,
+      (select count(*)::text from public.global_scan_schedules where active and monitoring_tier = 'priority') as global_priority,
+      (select count(*)::text from public.global_scan_schedules where active and monitoring_tier in ('standard', 'warm')) as global_standard,
+      (select count(*)::text from public.global_scan_schedules where active and monitoring_tier = 'cold') as global_cold,
+      (select count(*)::text from public.global_scan_runs where created_at >= date_trunc('month', now())) as global_runs_this_month
+  `);
+  const sourceFamilies = new Map<string, number>();
+  for (const source of sources)
+    sourceFamilies.set(source.connector, (sourceFamilies.get(source.connector) ?? 0) + 1);
+  const benchmarkTotal = Number(v2Health?.benchmark_total ?? 0);
+  const benchmarkRecall = benchmarkTotal
+    ? `${Math.round((Number(v2Health?.benchmark_matched ?? 0) / benchmarkTotal) * 100)}%`
+    : "Not sampled";
+  const executionCapacity = supplyCapacityState({
+    prioritySources: Number(v2Health?.global_priority ?? 0),
+    standardSources: Number(v2Health?.global_standard ?? 0),
+    coldSources: Number(v2Health?.global_cold ?? 0),
+    usedExecutionsThisMonth: Number(v2Health?.global_runs_this_month ?? 0) * 3,
+    monthlyExecutionLimit: serverEnv().INNGEST_MONTHLY_EXECUTION_LIMIT,
+  });
   return (
     <div className="mx-auto max-w-6xl">
       <header className="flex flex-wrap items-end justify-between gap-5">
@@ -153,6 +193,23 @@ export default async function OperationsPage({
           </p>
         </div>
       ) : null}
+      {executionCapacity.warning ? (
+        <div
+          className="mt-6 rounded-2xl border border-[#b59231] bg-[#fff9e8] p-4 text-sm"
+          role="alert"
+        >
+          <p className="font-black">Durable execution capacity is approaching its limit</p>
+          <p className="mt-1 text-[var(--muted)]">
+            The current shared-source cadence forecasts{" "}
+            {executionCapacity.projected.toLocaleString()} executions against a{" "}
+            {serverEnv().INNGEST_MONTHLY_EXECUTION_LIMIT.toLocaleString()} monthly planning limit.
+            Priority cadence remains protected
+            {executionCapacity.admitColdSources
+              ? "; cold-source admission is still open."
+              : "; new cold sources are paused."}
+          </p>
+        </div>
+      ) : null}
       <div className="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Stat icon={Activity} label="Active sources" value={String(sources.length)} />
         <Stat icon={CircleX} label="Unresolved dead letters" value={String(dead?.count ?? 0)} />
@@ -178,7 +235,40 @@ export default async function OperationsPage({
           label="Reliable official timestamps"
           value={`${reliablePosted.length}/${jobs.length}`}
         />
+        <Stat icon={Radar} label="Shared global sources" value={v2Health?.global_sources ?? "0"} />
+        <Stat icon={Clock3} label="Global sources due" value={v2Health?.due_sources ?? "0"} />
+        <Stat icon={CircleCheck} label="Independent benchmark recall" value={benchmarkRecall} />
+        <Stat
+          icon={Activity}
+          label="Forecast durable capacity"
+          value={`${Math.round(executionCapacity.ratio * 100)}%`}
+        />
       </div>
+      <section className="mt-8 rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-5">
+        <h2 className="text-lg font-black">Coverage and delivery truth</h2>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {[...sourceFamilies.entries()].map(([family, count]) => (
+            <div className="rounded-xl bg-[var(--paper)] p-3" key={family}>
+              <p className="text-lg font-black">{count}</p>
+              <p className="text-xs font-bold text-[var(--muted)]">
+                {family.replaceAll("_", " ")} sources
+              </p>
+            </div>
+          ))}
+          <div className="rounded-xl bg-[var(--paper)] p-3">
+            <p className="text-lg font-black">{v2Health?.priority_overdue ?? "0"}</p>
+            <p className="text-xs font-bold text-[var(--muted)]">priority sources &gt;5m overdue</p>
+          </div>
+          <div className="rounded-xl bg-[var(--paper)] p-3">
+            <p className="text-lg font-black">{v2Health?.failed_push ?? "0"}</p>
+            <p className="text-xs font-bold text-[var(--muted)]">terminal push failures</p>
+          </div>
+        </div>
+        <p className="mt-4 text-xs leading-5 text-[var(--muted)]">
+          FirstSeen measures supported official-source recall and a maintained independent market
+          benchmark. It never claims complete board-exclusive inventory.
+        </p>
+      </section>
       <section className="mt-8">
         <h2 className="text-lg font-black">Sources</h2>
         {sources.length ? (

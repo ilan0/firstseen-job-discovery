@@ -1,6 +1,6 @@
 # FirstSeen test report
 
-Freshness-first release tested 2026-08-04 on macOS with Node 24.14.0, pnpm 11.9.0,
+Daily-Driver local release tested 2026-08-04 on macOS with Node 24.14.0, pnpm 11.9.0,
 local Supabase PostgreSQL/Auth in Docker, Next.js 16.2.12, React 19.2.8, and Inngest CLI 1.40.0.
 
 ## Local release gate
@@ -11,16 +11,17 @@ local Supabase PostgreSQL/Auth in Docker, Next.js 16.2.12, React 19.2.8, and Inn
 | Lint                    | `pnpm lint`                                  | Pass; zero warnings                                                |
 | Strict TypeScript       | `pnpm typecheck`                             | Pass                                                               |
 | Unit/component/contract | `pnpm test`                                  | Pass                                                               |
-| PostgreSQL/Auth/RLS     | `RUN_DATABASE_TESTS=true pnpm test`          | 218 passed in 25 files                                             |
-| Coverage                | `RUN_DATABASE_TESTS=true pnpm test:coverage` | 87.15% statements, 77.45% branches, 88.98% functions, 89.21% lines |
+| PostgreSQL/Auth/RLS     | `RUN_DATABASE_TESTS=true pnpm test`          | 311 passed in 49 files                                             |
+| Coverage                | `RUN_DATABASE_TESTS=true pnpm test:coverage` | 88.21% statements, 77.65% branches, 89.76% functions, 89.63% lines |
 | Dependency security     | `pnpm audit --audit-level=low`               | Pass; zero known vulnerabilities                                   |
-| Production compile      | `pnpm build`                                 | Pass; 12 app routes plus Proxy                                     |
-| Real browser/Axe        | `pnpm test:e2e`                              | 16 passed in 2.0 minutes; retries disabled                         |
+| Production compile      | `pnpm build`                                 | Pass; 20 routes plus Proxy                                         |
+| Real browser/Axe        | `pnpm test:e2e`                              | 17 passed, 3 intentional skips; retries disabled                   |
 
-Coverage excludes declarative Drizzle definitions and the outer AI-budget, notification, and scan
-orchestration shells. Those paths are covered by the database, worker, and browser suites; the
-policy preserves a 75% gate for executable business logic. For comparison, the untouched prior
-release failed its nominal coverage command at 70.40% branches and 70.49% functions.
+Coverage enforces at least the prior-release baseline: 87.15% statements, 77.45% branches, 88.98%
+functions, and 89.21% lines. New AI escalation, global supply, CRM, application, Web Push, PWA,
+discovery-security, and scheduler paths are included. Focused commands also passed: 73 connector
+tests, 84 AI/eligibility tests, nine worker tests, three PWA tests, 15 security tests, and two load
+tests.
 
 ## Risk coverage
 
@@ -41,6 +42,10 @@ release failed its nominal coverage command at 70.40% branches and 70.49% functi
   retry and alert/digest idempotency, empty-digest suppression, and prior-action exclusion.
 - Four-digit sign-in failure/success/sign-out, durable throttling, owner authorization, anon and
   cross-user RLS denial, CSRF/input validation, export, settings, and queue persistence after reload.
+- Shared global source fetch/fan-out, oldest-due scheduling, candidate-neutral extraction reuse,
+  private overlays, contact/referral recommendations, application sessions/stages/follow-ups,
+  private resume policy, encrypted push subscriptions, channel/device deduplication, and service
+  worker lifecycle/privacy.
 
 ## Browser matrix
 
@@ -51,24 +56,28 @@ release failed its nominal coverage command at 70.40% branches and 70.49% functi
 | 1440×900  | Pass        | Pass               | Pass                      | Pass           |
 | 1920×1080 | Pass        | Pass               | Pass                      | Pass           |
 
-Observers fail on page exceptions, browser console errors, and HTTP 5xx responses. The suite
+Observers fail on page exceptions, browser console errors, unexpected failed responses, and HTTP
+5xx responses. The suite
 exercised URL-restored filters, official-apply redirect, Save/Applied/Dismiss/Restore persistence,
 interest/referral cadence changes, add/remove company recovery, confirmation focus, every core
-route, settings, and account export. No page failure or Axe violation remained. Fresh screenshots
-were inspected at every viewport; cards did not mislabel an initial listing as Updated.
+route, settings, account export, relationship capture, application-session return, stage changes,
+follow-up scheduling, and reload persistence. No page failure or Axe violation remained.
 
 ## Real runtime and provider evidence
 
-| Provider/path | 2026-08-04 result                                                                       |
-| ------------- | --------------------------------------------------------------------------------------- |
-| Greenhouse    | 176 public Figma listings; sample officially verified open                              |
-| Lever         | 100 public Palantir listings; pagination present; sample verified open                  |
-| Ashby         | 24 public Linear listings; sample verified open                                         |
-| Brave Search  | 8 candidates; 7 directly resolvable supported official URLs                             |
-| Adzuna        | Valid response; zero candidates for the narrow query                                    |
-| OpenAI        | `gpt-5.6-luna` structured response/evidence passed; 1,406 input and 2,096 output tokens |
-| Slack         | Labelled setup check delivered, HTTP 200                                                |
-| Inngest       | Five functions registered; real Figma source run succeeded; duplicate delivery safe     |
+| Provider/path | 2026-08-04 result                                                              |
+| ------------- | ------------------------------------------------------------------------------ |
+| Greenhouse    | 177 public Figma listings; sample officially verified open                     |
+| Lever         | 100 public Palantir listings; pagination present; sample verified open         |
+| Ashby         | 24 public Linear listings; sample verified open                                |
+| Recruitee     | amperecloud 5/open and xneelo 3/open                                           |
+| Pinpoint      | workwithus 3/open and wealthwizards 3/open                                     |
+| Safety bound  | TransPerfect's >8 MiB response rejected with `RESPONSE_TOO_LARGE`              |
+| Brave Search  | 7 candidates; 6 directly resolvable supported official URLs                    |
+| Adzuna        | Disabled provider was not instantiated or contacted                            |
+| OpenAI        | `gpt-5.6-luna` structured evidence passed; 1,204 input and 1,340 output tokens |
+| Slack         | Labelled setup check delivered, HTTP 200                                       |
+| Inngest       | Prior real Figma source run succeeded; duplicate delivery safe                 |
 
 The real local Inngest source event fetched and finalized 176 official Greenhouse listings with one
 succeeded source run, zero source errors, and zero unresolved dead letters. Delivering the identical
@@ -76,8 +85,18 @@ stable scan occurrence again retained exactly one `scan_runs` row; its source at
 reconciled and no dead letter appeared. Application callbacks were HTTP 200/206 and completed within
 the configured hosted-function bounds.
 
+The protected production roles/schema/data backup restored into a separately named disposable
+local database after bootstrapping Supabase-managed Auth/Storage definitions. Aggregate validation
+found 33 public tables, one Auth user, 37 companies, 2,368 jobs, 2,828 snapshots and eligibility
+decisions, 5,890 recommendations, 71 queue states, and zero unvalidated constraints. The disposable
+database was then deleted; the protected backup remained unchanged.
+
 ## Production status
 
+- Additive Daily-Driver migrations through `20260804162200` applied to the guarded FirstSeen
+  database URL. `pnpm verify:production-schema` returned `ok: true`: 52 backfilled organizations and
+  global sources, zero listed private tables without RLS, no Auth/anon read privilege on global raw
+  observations, and latest migration present.
 - Protected non-empty roles/schema/data backup artifacts were created outside the repository before
   applying the backward-compatible migration to dedicated FirstSeen ref `tlhwxayhjamopnnlroke`.
 - Company, feed, and Slack rollout flags were enabled independently. The current Vercel production
@@ -94,3 +113,10 @@ the configured hosted-function bounds.
   idempotency groups or failed notifications.
 
 The unrelated ProofCheck project remained out of scope and was not mutated.
+
+## Certification limits
+
+This report does not claim a seven-day Daily-Driver production soak, physical iPhone Web Push,
+300 human-labeled AI evaluations, an 85% independent-market recall result, a licensed-sensor
+bakeoff, or external multi-user launch. Those remain explicit gates in
+`PLAN.md`; automated Chromium and fixture tests are not represented as substitutes.

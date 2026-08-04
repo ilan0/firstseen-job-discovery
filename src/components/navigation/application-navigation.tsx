@@ -6,6 +6,7 @@ import {
   Building2,
   Gauge,
   Inbox,
+  UsersRound,
   Settings,
   XCircle,
 } from "lucide-react";
@@ -15,9 +16,10 @@ import { usePathname } from "next/navigation";
 const navigation = [
   { href: "/", label: "Matches", icon: Inbox },
   { href: "/saved", label: "Saved", icon: Bookmark },
-  { href: "/applied", label: "Applied", icon: BriefcaseBusiness },
+  { href: "/applied", label: "Applications", icon: BriefcaseBusiness },
   { href: "/dismissed", label: "Dismissed", icon: XCircle },
   { href: "/watchlist", label: "Watchlist", icon: Building2 },
+  { href: "/relationships", label: "People", icon: UsersRound },
   { href: "/operations", label: "Health", icon: Gauge },
   { href: "/settings", label: "Settings", icon: Settings },
 ] as const;

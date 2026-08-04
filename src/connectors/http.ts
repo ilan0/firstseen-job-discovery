@@ -9,6 +9,7 @@ export type SafeRequestOptions = {
   timeoutMs?: number;
   maximumBytes?: number;
   maximumRedirects?: number;
+  allowedContentTypes?: string[];
   allowHttpForTests?: boolean;
 };
 
@@ -141,17 +142,51 @@ async function readBoundedBody(response: Response, maximumBytes: number): Promis
   return body;
 }
 
+const DEFAULT_CONTENT_TYPES = [
+  "application/json",
+  "application/ld+json",
+  "application/xml",
+  "application/rss+xml",
+  "application/atom+xml",
+  "text/html",
+  "text/plain",
+  "text/xml",
+] as const;
+
+function assertAllowedContentType(response: Response, allowedContentTypes: readonly string[]) {
+  if ([204, 304].includes(response.status)) return;
+  const contentType = response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
+  if (
+    !contentType ||
+    !allowedContentTypes.some((allowed) => contentType === allowed.toLowerCase())
+  ) {
+    throw new ConnectorError(
+      "UNSUPPORTED_CONTENT_TYPE",
+      "The source returned an unsupported content type.",
+      false,
+      response.status,
+    );
+  }
+}
+
 export async function safeGet(
   value: string,
   options: SafeRequestOptions = {},
 ): Promise<SafeResponse> {
-  const maximumRedirects = options.maximumRedirects ?? 4;
+  const maximumRedirects = options.maximumRedirects ?? 5;
   const maximumBytes = options.maximumBytes ?? 2_000_000;
   const timeoutMs = options.timeoutMs ?? 15_000;
+  const allowedContentTypes = options.allowedContentTypes ?? [...DEFAULT_CONTENT_TYPES];
   let current = value;
+  const visited = new Set<string>();
 
   for (let redirect = 0; redirect <= maximumRedirects; redirect += 1) {
     const url = await assertSafeUrl(current, options);
+    const normalizedUrl = url.toString();
+    if (visited.has(normalizedUrl)) {
+      throw new ConnectorError("REDIRECT_LOOP", "The source returned a redirect loop.", false);
+    }
+    visited.add(normalizedUrl);
     const timeoutSignal = AbortSignal.timeout(timeoutMs);
     const signal = options.signal
       ? AbortSignal.any([options.signal, timeoutSignal])
@@ -206,6 +241,7 @@ export async function safeGet(
       );
     }
 
+    assertAllowedContentType(response, allowedContentTypes);
     const body = await readBoundedBody(response, maximumBytes);
     const decoder = new TextDecoder("utf-8", { fatal: false });
     return {

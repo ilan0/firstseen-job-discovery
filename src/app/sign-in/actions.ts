@@ -11,11 +11,21 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export type SignInState = { error?: string };
 
-const credentialsSchema = z.object({ code: z.string().regex(/^\d{4}$/) });
+const safeNext = z
+  .string()
+  .max(2_000)
+  .refine((value) => value.startsWith("/") && !value.startsWith("//"));
+const credentialsSchema = z.object({
+  code: z.string().regex(/^\d{4}$/),
+  next: safeNext.default("/"),
+});
 
 export async function signIn(_: SignInState, formData: FormData): Promise<SignInState> {
+  if (process.env.OWNER_CODE_AUTH_ENABLED === "false")
+    return { error: "Owner code access is disabled." };
   const parsed = credentialsSchema.safeParse({
     code: formData.get("code"),
+    next: formData.get("next") || "/",
   });
   const requestHeaders = await headers();
   const forwardedAddress = requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim();
@@ -59,7 +69,40 @@ export async function signIn(_: SignInState, formData: FormData): Promise<SignIn
     clearRateLimit({ namespace: "access-code-address", identifier: clientAddress }),
     clearRateLimit({ namespace: "access-code-global", identifier: "owner" }),
   ]);
-  redirect("/");
+  redirect(parsed.data.next);
+}
+
+const emailSchema = z.object({ email: z.email().max(320), next: safeNext.default("/") });
+
+export async function requestEmailSignIn(
+  _: SignInState,
+  formData: FormData,
+): Promise<SignInState & { success?: string }> {
+  if (process.env.INDIVIDUAL_AUTH_ENABLED !== "true")
+    return { error: "Individual email access is not enabled." };
+  const parsed = emailSchema.safeParse({
+    email: formData.get("email"),
+    next: formData.get("next") || "/",
+  });
+  if (!parsed.success) return { error: "Enter a valid invited email address." };
+  const rate = await consumeRateLimit({
+    namespace: "email-otp",
+    identifier: parsed.data.email.toLowerCase(),
+    maximum: 3,
+    windowMinutes: 60,
+    blockMinutes: 60,
+  });
+  if (!rate.allowed) return { error: "Too many email-link requests. Try again later." };
+  const supabase = await createSupabaseServerClient();
+  const appUrl = new URL(serverEnv().NEXT_PUBLIC_APP_URL);
+  appUrl.pathname = "/auth/callback";
+  appUrl.searchParams.set("next", parsed.data.next);
+  const { error } = await supabase.auth.signInWithOtp({
+    email: parsed.data.email.toLowerCase(),
+    options: { shouldCreateUser: false, emailRedirectTo: appUrl.toString() },
+  });
+  if (error) return { error: "This address is not invited or email delivery is unavailable." };
+  return { success: "Check your email for a secure FirstSeen sign-in link." };
 }
 
 export async function signOut() {

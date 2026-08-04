@@ -63,6 +63,41 @@ const nyc = [
 ];
 const newJersey = ["new jersey", "jersey city", "newark, nj", "hoboken", "secaucus"];
 
+const areaCatalog: Record<string, string[]> = {
+  "south-florida": southFlorida,
+  dmv,
+  nyc,
+};
+
+export type AcceptedArea = {
+  id: string;
+  anchor?: string | undefined;
+  boroughs?: string[] | undefined;
+  excludeStates?: string[] | undefined;
+};
+
+export type LocationPolicy = {
+  acceptedAreas?: AcceptedArea[];
+  allowFullyRemote?: boolean;
+};
+
+function areaPlaces(policy: LocationPolicy): string[] {
+  const selected = policy.acceptedAreas;
+  if (!selected?.length) return [...southFlorida, ...dmv, ...nyc];
+  return selected.flatMap((area) => [
+    ...(areaCatalog[area.id] ?? []),
+    ...(area.anchor ? [area.anchor.toLowerCase().replace(/,?\s+(?:fl|va|ny)$/i, "")] : []),
+    ...(area.boroughs?.map((borough) => borough.toLowerCase()) ?? []),
+  ]);
+}
+
+function excludedPlaces(policy: LocationPolicy): string[] {
+  const excludes = policy.acceptedAreas?.flatMap((area) => area.excludeStates ?? []) ?? ["NJ"];
+  return excludes.flatMap((state) =>
+    /^nj$|new jersey/i.test(state) ? newJersey : [state.toLowerCase()],
+  );
+}
+
 const nonUsRegionCodes =
   `AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM UY UZ VA VC VE VG VI VN VU WF WS XK YE YT ZA ZM ZW`.split(
     " ",
@@ -147,13 +182,21 @@ export function evaluateLocations(
   locations: string[],
   arrangement: WorkArrangement,
   description: string,
+  policy: LocationPolicy = {},
 ): Fact<LocationEligibility> {
   const evidence = locations.map((location) => metadataEvidence("location", location));
   const joined = locations.join(" | ");
+  const acceptedPlaces = areaPlaces(policy);
+  const excluded = excludedPlaces(policy);
 
   if (arrangement === "fully_remote") {
+    if (policy.allowFullyRemote === false)
+      return { value: "ineligible", confidence: "high", evidence };
     const restrictions = `${joined}\n${description}`.toLowerCase();
-    if (/\bremote\s+(?:in|within|only)\s+(?:new jersey|nj)\b/.test(restrictions)) {
+    if (
+      /\bremote\s+(?:in|within|only)\s+(?:new jersey|nj)\b/.test(restrictions) ||
+      locations.some((location) => containsPlace(location, excluded))
+    ) {
       return { value: "ineligible", confidence: "high", evidence };
     }
     const compatible =
@@ -162,7 +205,7 @@ export function evaluateLocations(
         (location) =>
           /^remote$/i.test(location.trim()) ||
           /\b(?:united states|usa|u\.s\.)\b/i.test(location) ||
-          containsPlace(location, [...southFlorida, ...dmv, ...nyc]) ||
+          containsPlace(location, acceptedPlaces) ||
           /\b(?:florida|virginia|washington,? dc|new york)\b/i.test(location),
       );
     if (!compatible && locations.length) {
@@ -174,10 +217,10 @@ export function evaluateLocations(
     return { value: "eligible", confidence: "high", evidence };
   }
 
-  if (locations.some((location) => containsPlace(location, newJersey))) {
+  if (locations.some((location) => containsPlace(location, excluded))) {
     return { value: "ineligible", confidence: "high", evidence };
   }
-  if (locations.some((location) => containsPlace(location, [...southFlorida, ...dmv, ...nyc]))) {
+  if (locations.some((location) => containsPlace(location, acceptedPlaces))) {
     return { value: "eligible", confidence: "high", evidence };
   }
   if (locations.some((location) => /new york (?:metro|metropolitan)|tri-state/i.test(location))) {

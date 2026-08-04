@@ -1,15 +1,27 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useSyncExternalStore } from "react";
 import { signIn, type SignInState } from "./actions";
 
 const initialState: SignInState = {};
+const subscribe = () => () => undefined;
 
-export function SignInForm() {
+export function SignInForm({ next = "/" }: { next?: string }) {
   const [state, action, pending] = useActionState(signIn, initialState);
+  const hydrated = useSyncExternalStore(
+    subscribe,
+    () => true,
+    () => false,
+  );
 
   return (
-    <form action={action} className="mt-9 space-y-5" noValidate>
+    <form
+      action={action}
+      className="mt-9 space-y-5"
+      data-hydrated={hydrated ? "true" : "false"}
+      noValidate
+    >
+      <input name="next" type="hidden" value={next} />
       <div>
         <label className="mb-2 block text-sm font-bold" htmlFor="code">
           Access code
@@ -23,8 +35,6 @@ export function SignInForm() {
           inputMode="numeric"
           maxLength={4}
           name="code"
-          pattern="[0-9]{4}"
-          required
           type="password"
         />
         <p className="mt-2 text-sm text-[var(--muted)]" id="code-hint">
@@ -41,7 +51,7 @@ export function SignInForm() {
       ) : null}
       <button
         className="w-full rounded-2xl bg-[var(--green)] px-5 py-3.5 font-bold text-white transition hover:bg-[var(--green-dark)] disabled:cursor-wait disabled:opacity-60"
-        disabled={pending}
+        disabled={pending || !hydrated}
         type="submit"
       >
         {pending ? "Opening FirstSeen…" : "Open FirstSeen"}

@@ -8,6 +8,7 @@ test-results/
 tmp/
 node_modules/
 coverage/
+eval-corpus/
 playwright-report/
 test-results/
 .vercel/

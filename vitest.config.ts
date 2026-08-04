@@ -19,7 +19,9 @@ export default defineConfig({
         "src/lib/notifications/orchestrate.ts",
         "src/lib/scans/scan-source.ts",
       ],
-      thresholds: { branches: 75, functions: 75, lines: 75, statements: 75 },
+      // The freshness-first release established this repository-wide floor.
+      // New work must add coverage rather than quietly regressing it.
+      thresholds: { branches: 77.45, functions: 88.98, lines: 89.21, statements: 87.15 },
     },
   },
 });

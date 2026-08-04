@@ -1,10 +1,9 @@
 import type { DiscoveryQuery } from "./types";
 
-const roleRotations = [
-  '"software engineer" OR "software developer"',
-  '"full stack engineer" OR "backend engineer"',
-  '"frontend engineer" OR "AI engineer"',
-  '"software engineer I" OR "associate software engineer"',
+const roleClusters = [
+  '("software engineer" OR "software developer" OR "software engineer I" OR "associate software engineer" OR "junior software engineer" OR "early career software engineer" OR "new grad software engineer")',
+  '("full stack engineer" OR "full-stack engineer" OR "backend engineer" OR "frontend engineer" OR "software developer I" OR "engineer I")',
+  '("AI engineer" OR "applied AI engineer" OR "machine learning engineer" OR "ML engineer" OR "associate AI engineer")',
 ] as const;
 
 const locations = [
@@ -14,12 +13,16 @@ const locations = [
   { locationQuery: "United States", remote: true },
 ] as const;
 
-export function buildDiscoveryQueries(rotation: number): DiscoveryQuery[] {
-  const roleQuery = roleRotations[Math.abs(rotation) % roleRotations.length]!;
-  return locations.map((location) => ({ roleQuery, ...location }));
+export function buildDiscoveryQueries(_rotation = 0): DiscoveryQuery[] {
+  void _rotation;
+  // Every role/location cohort runs in every broad cycle. Rotation previously
+  // made a specific cluster wait up to sixteen hours on a four-hour schedule.
+  return roleClusters.flatMap((roleQuery) =>
+    locations.map((location) => ({ roleQuery, ...location })),
+  );
 }
 
 export function braveQuery(query: DiscoveryQuery): string {
   const location = query.remote ? '"fully remote" OR "remote - US"' : `(${query.locationQuery})`;
-  return `${query.roleQuery} ${location} (site:jobs.lever.co OR site:boards.greenhouse.io OR site:job-boards.greenhouse.io OR site:jobs.ashbyhq.com OR site:careers.*)`;
+  return `${query.roleQuery} ${location} (site:jobs.lever.co OR site:boards.greenhouse.io OR site:job-boards.greenhouse.io OR site:jobs.ashbyhq.com OR site:recruitee.com OR site:pinpointhq.com OR site:careers.*)`;
 }

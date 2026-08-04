@@ -136,6 +136,38 @@ const result = await analyzeAndRankListing({
   listing,
   ingest,
   hasReferral: true,
+  sharedExtraction: {
+    status: "succeeded",
+    model: "browser-fixture",
+    errorCode: null,
+    unresolvedFields: [],
+    analysis: {
+      employment: { value: "full_time", confidence: "high", evidence: [] },
+      experienceRequirements: [
+        {
+          text: "0-1 years of professional software engineering experience",
+          kind: "required",
+          minimumYears: 0,
+          maximumYears: 1,
+          alternativePath: false,
+          confidence: "high",
+          evidence: [],
+        },
+      ],
+      clearance: { value: "not_required", confidence: "high", evidence: [] },
+      publicTrust: { value: "not_required", confidence: "high", evidence: [] },
+      sponsorship: { value: "not_mentioned", confidence: "high", evidence: [] },
+      workArrangement: { value: "hybrid", confidence: "high", evidence: [] },
+      locations: { value: ["Miami, FL"], confidence: "high", evidence: [] },
+      roleFamily: { value: "general_swe", confidence: "high", evidence: [] },
+      requiredSkills: ["TypeScript", "React", "PostgreSQL", "Python"],
+      preferredSkills: ["AI API experience"],
+      candidateStrengths: [],
+      candidateWeaknesses: [],
+      summary: "Early-career hybrid software engineering role in Miami.",
+      extractionWarnings: [],
+    },
+  },
 });
 console.log(
   JSON.stringify({

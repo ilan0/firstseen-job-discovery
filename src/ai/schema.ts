@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const AI_ANALYSIS_SCHEMA_VERSION = "2026-08-03.1";
+export const AI_ANALYSIS_SCHEMA_VERSION = "2026-08-04.2";
 
 const confidenceSchema = z.enum(["low", "medium", "high"]);
 

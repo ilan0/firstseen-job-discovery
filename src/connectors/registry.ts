@@ -1,4 +1,12 @@
-import { AshbyConnector, GreenhouseConnector, LeverConnector } from "./official";
+import {
+  AshbyConnector,
+  GreenhouseConnector,
+  LeverConnector,
+  PinpointConnector,
+  RecruiteeConnector,
+  ReviewedFeedConnector,
+  ReviewedSitemapConnector,
+} from "./official";
 import { JsonLdConnector } from "./official/jsonld";
 import type { JobConnector } from "./types";
 import { UnsupportedConnector } from "./unsupported";
@@ -8,7 +16,11 @@ const connectors = new Map<ConnectorKind, JobConnector>([
   ["greenhouse", new GreenhouseConnector()],
   ["lever", new LeverConnector()],
   ["ashby", new AshbyConnector()],
+  ["recruitee", new RecruiteeConnector()],
+  ["pinpoint", new PinpointConnector()],
   ["custom_jsonld", new JsonLdConnector()],
+  ["custom_feed", new ReviewedFeedConnector()],
+  ["custom_sitemap", new ReviewedSitemapConnector()],
   [
     "smartrecruiters",
     new UnsupportedConnector(

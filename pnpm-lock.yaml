@@ -67,6 +67,9 @@ importers:
       tailwind-merge:
         specifier: ^3.4.0
         version: 3.6.0
+      web-push:
+        specifier: ^3.6.7
+        version: 3.6.7
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -98,6 +101,9 @@ importers:
       "@types/sanitize-html":
         specifier: ^2.16.0
         version: 2.16.1
+      "@types/web-push":
+        specifier: ^3.6.4
+        version: 3.6.4
       "@vitest/coverage-v8":
         specifier: ^4.1.10
         version: 4.1.10(vitest@4.1.10)
@@ -118,10 +124,13 @@ importers:
         version: 1.40.0
       jsdom:
         specifier: ^27.4.0
-        version: 27.4.0
+        version: 27.4.0(@noble/hashes@1.8.0)
       prettier:
         specifier: ^3.7.4
         version: 3.9.6
+      supabase:
+        specifier: 2.111.0
+        version: 2.111.0
       tailwindcss:
         specifier: ^4.1.18
         version: 4.3.3
@@ -133,7 +142,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^4.1.10
-        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@27.4.0)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.4)(yaml@2.9.0))
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@27.4.0(@noble/hashes@1.8.0))(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.4)(yaml@2.9.0))
 
 packages:
   "@acemir/cssom@0.9.31":
@@ -401,6 +410,15 @@ packages:
       {
         integrity: sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w==,
       }
+
+  "@ecies/ciphers@0.2.6":
+    resolution:
+      {
+        integrity: sha512-patgsRPKGkhhoBjETV4XxD0En4ui5fbX0hzayqI3M8tvNMGUoUvmyYAIWwlxBc1KX5cturfqByYdj5bYGRpN9g==,
+      }
+    engines: { bun: ">=1", deno: ">=2.7.10", node: ">=16" }
+    peerDependencies:
+      "@noble/ciphers": ^1.0.0
 
   "@emnapi/core@1.10.0":
     resolution:
@@ -1238,6 +1256,27 @@ packages:
     engines: { node: ">= 10" }
     cpu: [x64]
     os: [win32]
+
+  "@noble/ciphers@1.3.0":
+    resolution:
+      {
+        integrity: sha512-2I0gnIVPtfnMw9ee9h1dJG7tp81+8Ob3OJb3Mv37rx5L40/b0i7djjCVvGOVqc9AEIQyvyu1i6ypKdFw8R8gQw==,
+      }
+    engines: { node: ^14.21.3 || >=16 }
+
+  "@noble/curves@1.9.7":
+    resolution:
+      {
+        integrity: sha512-gbKGcRUYIjA3/zCCNaWDciTMFI0dCkvou3TL8Zmy5Nc7sJ47a0jtOeZoTaMxkuqRo9cRhjOdZJXegxYE5FN/xw==,
+      }
+    engines: { node: ^14.21.3 || >=16 }
+
+  "@noble/hashes@1.8.0":
+    resolution:
+      {
+        integrity: sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A==,
+      }
+    engines: { node: ^14.21.3 || >=16 }
 
   "@nodelib/fs.scandir@2.1.5":
     resolution:
@@ -2728,6 +2767,74 @@ packages:
       }
     engines: { node: ">=22.0.0" }
 
+  "@supabase/cli-darwin-arm64@2.111.0":
+    resolution:
+      {
+        integrity: sha512-H1ucZ+9Z37Ha7uqYrKHfAy1vXWMVsN4gNlKaOpjKUYoHwDEbueEHVIDA1/PBIUd4HX+usJfpq+R+gWqzM/FKqQ==,
+      }
+    cpu: [arm64]
+    os: [darwin]
+
+  "@supabase/cli-darwin-x64@2.111.0":
+    resolution:
+      {
+        integrity: sha512-4iMYm/XaAZJ8YzdJ2HBRVc7i9SRIwE6VQrnSt968WTt83M1y6knC7UENCKjMtO+As4QeZkICpUk50CeathqxbA==,
+      }
+    cpu: [x64]
+    os: [darwin]
+
+  "@supabase/cli-linux-arm64-musl@2.111.0":
+    resolution:
+      {
+        integrity: sha512-RnvbVlJ4TX/UIwLiglBVQ2eL4GAl9SfWZmM5LENXyIaohBcRZHDva5t2OyK+BPGBtngjVGpb3QyfLdvkt9yJcw==,
+      }
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  "@supabase/cli-linux-arm64@2.111.0":
+    resolution:
+      {
+        integrity: sha512-2KSHITFMXe2u5yALupBWHGeQ1IY4C8GkcIWPWgNFdtAPo03pgs1hLWgL1eeqSh/a0wB/6rgUlM1fQR/hAgCyCA==,
+      }
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  "@supabase/cli-linux-x64-musl@2.111.0":
+    resolution:
+      {
+        integrity: sha512-2QVpsy/3v+TzqE5GgTCPruoxTlF3d8QPGirjcnah8hP66nxXStB9yTvxmJq+LtO3gwMt1Kpm7is0roZVkV55Pw==,
+      }
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  "@supabase/cli-linux-x64@2.111.0":
+    resolution:
+      {
+        integrity: sha512-NwwNhiZZT4WYEPDXAbgZL+l77z/hoJ+w5t+52WBN1VlmoxwDmf2NP+UERM8wuCGFe/tmBlUuFE1eJYZfab0/qA==,
+      }
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  "@supabase/cli-windows-arm64@2.111.0":
+    resolution:
+      {
+        integrity: sha512-twawKY5xfU2dNOnZrKDmrudxRG/XIKcBxOb6X2lMGJU3N1Hd+8oWpI9TwM5Qv+eXehtlsKDmUvbitStXvJr/xQ==,
+      }
+    cpu: [arm64]
+    os: [win32]
+
+  "@supabase/cli-windows-x64@2.111.0":
+    resolution:
+      {
+        integrity: sha512-1F+X5tAYxAGx93ZZoIQBnIQ2Q2NnplKqjpigAS/zpTsNaWAjNi7EnxmuQKaEoAdqOHKbLhegVVDiw1+us3ZVpA==,
+      }
+    cpu: [x64]
+    os: [win32]
+
   "@supabase/functions-js@2.111.0":
     resolution:
       {
@@ -3098,6 +3205,12 @@ packages:
     resolution:
       {
         integrity: sha512-KHPsfX/FoVbUGbyYvk1q9MMQHLPeRZhRJZdO45Q4YjvFkv4hMNghCWTvy7rdKessBsmtz4euWCWAB6/tVpI1Iw==,
+      }
+
+  "@types/web-push@3.6.4":
+    resolution:
+      {
+        integrity: sha512-GnJmSr40H3RAnj0s34FNTcJi1hmWFV5KXugE0mYWnYhgTAHLJ/dJKAwDmvPJYMke0RplY2XE9LnM4hqSqKIjhQ==,
       }
 
   "@typescript-eslint/eslint-plugin@8.65.0":
@@ -3725,6 +3838,12 @@ packages:
       }
     engines: { node: ">= 0.4" }
 
+  asn1.js@5.4.1:
+    resolution:
+      {
+        integrity: sha512-+I//4cYPccV8LdmBLiX8CYvf9Sp3vQsrqu2QNXRcrbiWvcx/UdlFiqUJJzxRQxgsZmvhXhn4cSKeSmoFjVdupA==,
+      }
+
   assertion-error@2.0.1:
     resolution:
       {
@@ -3812,6 +3931,12 @@ packages:
         integrity: sha512-Ko0uX15oIUS7wJ3Rb30Fs6SkVbLmPBAKdlm7q9+ak9bbIeFf0MwuBsQV6z7+X768/cHsfg+WlysDWJcmthjsjQ==,
       }
 
+  bn.js@4.12.5:
+    resolution:
+      {
+        integrity: sha512-3aRg6/JxfffFD+OlOjOFR3Vo79l39ooBTFucxx+MT3dhCtzn3EmiUPQo+6/OZuI2jbXi3YKgmiTFBgChQMwIRQ==,
+      }
+
   boolbase@1.0.0:
     resolution:
       {
@@ -3851,6 +3976,12 @@ packages:
       }
     engines: { node: ^6 || ^7 || ^8 || ^9 || ^10 || ^11 || ^12 || >=13.7 }
     hasBin: true
+
+  buffer-equal-constant-time@1.0.1:
+    resolution:
+      {
+        integrity: sha512-zRpUiDwd/xk6ADqPMATG8vc9VPrkck7T07OIx0gnjmJAnHnTVXNQG3vfvWNuiZIkwu9KrKdA1iJKfsfTVxE6NA==,
+      }
 
   buffer-from@1.1.2:
     resolution:
@@ -4390,6 +4521,19 @@ packages:
       {
         integrity: sha512-I88TYZWc9XiYHRQ4/3c5rjjfgkjhLyW2luGIheGERbNQ6OY7yTybanSpDXZa8y7VUP9YmDcYa+eyq4ca7iLqWA==,
       }
+
+  ecdsa-sig-formatter@1.0.11:
+    resolution:
+      {
+        integrity: sha512-nagl3RYrbNv6kQkeJIpt6NJZy8twLB/2vtz6yN9Z4vRKHN4/QZJIEbqohALSgwKdnksuY3k5Addp5lg8sVoVcQ==,
+      }
+
+  eciesjs@0.5.0:
+    resolution:
+      {
+        integrity: sha512-s0J9SEVYAEPg7J63GFMApLYzPH9VNIQIyC6s15JpnqVc0TqcKWdbgFlnAweEBRyMmko2dcs2sfC83Hj4J43tuA==,
+      }
+    engines: { bun: ">=1", deno: ">=2.7.10", node: ">=16" }
 
   electron-to-chromium@1.5.399:
     resolution:
@@ -5144,6 +5288,13 @@ packages:
       }
     engines: { node: ">= 14" }
 
+  http_ece@1.2.0:
+    resolution:
+      {
+        integrity: sha512-JrF8SSLVmcvc5NducxgyOrKXe3EsyHMgBFgSaIUGmArKe+rwr0uphRkRXvwiom3I+fpIfoItveHrfudL8/rxuA==,
+      }
+    engines: { node: ">=16" }
+
   https-proxy-agent@5.0.1:
     resolution:
       {
@@ -5557,6 +5708,12 @@ packages:
       }
     hasBin: true
 
+  jose@6.2.8:
+    resolution:
+      {
+        integrity: sha512-Bsdjwm3Qsd/P0jR+BHDe3LytDfY7WBq2HmCCLIwuVRHMuEC9ae7/R474GIUdF1NgCyZjzVo/A9DOiOBtXq8ZoQ==,
+      }
+
   js-tokens@10.0.0:
     resolution:
       {
@@ -5653,6 +5810,18 @@ packages:
         integrity: sha512-ZZow9HBI5O6EPgSJLUb8n2NKgmVWTwCvHGwFuJlMjvLFqlGG6pjirPhtdsseaLZjSibD8eegzmYpUZwoIlj2cQ==,
       }
     engines: { node: ">=4.0" }
+
+  jwa@2.0.1:
+    resolution:
+      {
+        integrity: sha512-hRF04fqJIP8Abbkq5NKGN0Bbr3JxlQ+qhZufXVr0DvujKy93ZCbXZMHDL4EOtodSbCWxOqR8MS1tXA5hwqCXDg==,
+      }
+
+  jws@4.0.1:
+    resolution:
+      {
+        integrity: sha512-EKI/M/yqPncGUUh44xz0PxSidXFr/+r0pA70+gIYhjv+et7yxM+s29Y+VGDkovRofQem0fs7Uvf4+YmAdyRduA==,
+      }
 
   keyv@4.5.4:
     resolution:
@@ -6760,6 +6929,12 @@ packages:
       }
     engines: { node: ">=0.4" }
 
+  safe-buffer@5.2.1:
+    resolution:
+      {
+        integrity: sha512-rp3So07KcdmmKbGvgaNxQSJr7bGVSVk5S9Eq1F+ppbRo70+YeaDxkw5Dd8NPN+GD6bjnYm2VuPuCXmpuYvmCXQ==,
+      }
+
   safe-push-apply@1.0.0:
     resolution:
       {
@@ -7086,6 +7261,13 @@ packages:
         optional: true
       babel-plugin-macros:
         optional: true
+
+  supabase@2.111.0:
+    resolution:
+      {
+        integrity: sha512-0cjCRdYNV1h2XXa0wm04mdct7QuDU7sMul/NwETRJmN3+HCsdEu6u5n0oygL97fdf6sDrGmnAdBh8E4wsv1ayg==,
+      }
+    hasBin: true
 
   supports-color@7.2.0:
     resolution:
@@ -7476,6 +7658,14 @@ packages:
         integrity: sha512-6i/00NBjP4yGPs+caKSyRfpTF/8Torsu0MOW3mMzIbhgISFder8i7xbqgHlLMwJrdiN8ndBV3UA1/AfzPSr+jg==,
       }
     engines: { node: ">=10.13.0" }
+
+  web-push@3.6.7:
+    resolution:
+      {
+        integrity: sha512-OpiIUe8cuGjrj3mMBFWY+e4MMIkW3SVT+7vEIjvD9kejGUypv8GPDf84JdPWskK8zMRIJ6xYGm+Kxr8YkPyA0A==,
+      }
+    engines: { node: ">= 16" }
+    hasBin: true
 
   web-streams-polyfill@3.3.3:
     resolution:
@@ -7904,6 +8094,10 @@ snapshots:
 
   "@drizzle-team/brocli@0.10.2": {}
 
+  "@ecies/ciphers@0.2.6(@noble/ciphers@1.3.0)":
+    dependencies:
+      "@noble/ciphers": 1.3.0
+
   "@emnapi/core@1.10.0":
     dependencies:
       "@emnapi/wasi-threads": 1.2.1
@@ -8075,7 +8269,9 @@ snapshots:
       "@eslint/core": 0.17.0
       levn: 0.4.1
 
-  "@exodus/bytes@1.15.1": {}
+  "@exodus/bytes@1.15.1(@noble/hashes@1.8.0)":
+    optionalDependencies:
+      "@noble/hashes": 1.8.0
 
   "@grpc/grpc-js@1.14.4":
     dependencies:
@@ -8304,6 +8500,14 @@ snapshots:
 
   "@next/swc-win32-x64-msvc@16.2.12":
     optional: true
+
+  "@noble/ciphers@1.3.0": {}
+
+  "@noble/curves@1.9.7":
+    dependencies:
+      "@noble/hashes": 1.8.0
+
+  "@noble/hashes@1.8.0": {}
 
   "@nodelib/fs.scandir@2.1.5":
     dependencies:
@@ -9410,6 +9614,30 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
+  "@supabase/cli-darwin-arm64@2.111.0":
+    optional: true
+
+  "@supabase/cli-darwin-x64@2.111.0":
+    optional: true
+
+  "@supabase/cli-linux-arm64-musl@2.111.0":
+    optional: true
+
+  "@supabase/cli-linux-arm64@2.111.0":
+    optional: true
+
+  "@supabase/cli-linux-x64-musl@2.111.0":
+    optional: true
+
+  "@supabase/cli-linux-x64@2.111.0":
+    optional: true
+
+  "@supabase/cli-windows-arm64@2.111.0":
+    optional: true
+
+  "@supabase/cli-windows-x64@2.111.0":
+    optional: true
+
   "@supabase/functions-js@2.111.0":
     dependencies:
       tslib: 2.8.1
@@ -9639,6 +9867,10 @@ snapshots:
     dependencies:
       "@types/node": 22.20.1
 
+  "@types/web-push@3.6.4":
+    dependencies:
+      "@types/node": 22.20.1
+
   "@typescript-eslint/eslint-plugin@8.65.0(@typescript-eslint/parser@8.65.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3)":
     dependencies:
       "@eslint-community/regexpp": 4.12.2
@@ -9812,7 +10044,7 @@ snapshots:
       obug: 2.1.4
       std-env: 4.2.0
       tinyrainbow: 3.1.1
-      vitest: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@27.4.0)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.4)(yaml@2.9.0))
+      vitest: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@27.4.0(@noble/hashes@1.8.0))(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.4)(yaml@2.9.0))
 
   "@vitest/expect@4.1.10":
     dependencies:
@@ -10065,6 +10297,13 @@ snapshots:
       get-intrinsic: 1.3.0
       is-array-buffer: 3.0.5
 
+  asn1.js@5.4.1:
+    dependencies:
+      bn.js: 4.12.5
+      inherits: 2.0.4
+      minimalistic-assert: 1.0.1
+      safer-buffer: 2.1.2
+
   assertion-error@2.0.1: {}
 
   ast-types-flow@0.0.8: {}
@@ -10099,6 +10338,8 @@ snapshots:
 
   bignumber.js@9.3.1: {}
 
+  bn.js@4.12.5: {}
+
   boolbase@1.0.0: {}
 
   brace-expansion@1.1.18:
@@ -10125,6 +10366,8 @@ snapshots:
       electron-to-chromium: 1.5.399
       node-releases: 2.0.51
       update-browserslist-db: 1.2.3(browserslist@4.28.7)
+
+  buffer-equal-constant-time@1.0.1: {}
 
   buffer-from@1.1.2: {}
 
@@ -10382,6 +10625,17 @@ snapshots:
       gopd: 1.2.0
 
   eastasianwidth@0.2.0: {}
+
+  ecdsa-sig-formatter@1.0.11:
+    dependencies:
+      safe-buffer: 5.2.1
+
+  eciesjs@0.5.0:
+    dependencies:
+      "@ecies/ciphers": 0.2.6(@noble/ciphers@1.3.0)
+      "@noble/ciphers": 1.3.0
+      "@noble/curves": 1.9.7
+      "@noble/hashes": 1.8.0
 
   electron-to-chromium@1.5.399: {}
 
@@ -10985,9 +11239,9 @@ snapshots:
     dependencies:
       hermes-estree: 0.25.1
 
-  html-encoding-sniffer@6.0.0:
+  html-encoding-sniffer@6.0.0(@noble/hashes@1.8.0):
     dependencies:
-      "@exodus/bytes": 1.15.1
+      "@exodus/bytes": 1.15.1(@noble/hashes@1.8.0)
     transitivePeerDependencies:
       - "@noble/hashes"
 
@@ -11013,6 +11267,8 @@ snapshots:
       debug: 4.4.3
     transitivePeerDependencies:
       - supports-color
+
+  http_ece@1.2.0: {}
 
   https-proxy-agent@5.0.1:
     dependencies:
@@ -11279,6 +11535,8 @@ snapshots:
 
   jiti@2.7.0: {}
 
+  jose@6.2.8: {}
+
   js-tokens@10.0.0: {}
 
   js-tokens@4.0.0: {}
@@ -11287,15 +11545,15 @@ snapshots:
     dependencies:
       argparse: 2.0.1
 
-  jsdom@27.4.0:
+  jsdom@27.4.0(@noble/hashes@1.8.0):
     dependencies:
       "@acemir/cssom": 0.9.31
       "@asamuzakjp/dom-selector": 6.8.1
-      "@exodus/bytes": 1.15.1
+      "@exodus/bytes": 1.15.1(@noble/hashes@1.8.0)
       cssstyle: 5.3.7
       data-urls: 6.0.1
       decimal.js: 10.6.0
-      html-encoding-sniffer: 6.0.0
+      html-encoding-sniffer: 6.0.0(@noble/hashes@1.8.0)
       http-proxy-agent: 7.0.2
       https-proxy-agent: 7.0.6
       is-potential-custom-element-name: 1.0.1
@@ -11343,6 +11601,17 @@ snapshots:
       array.prototype.flat: 1.3.3
       object.assign: 4.1.7
       object.values: 1.2.1
+
+  jwa@2.0.1:
+    dependencies:
+      buffer-equal-constant-time: 1.0.1
+      ecdsa-sig-formatter: 1.0.11
+      safe-buffer: 5.2.1
+
+  jws@4.0.1:
+    dependencies:
+      jwa: 2.0.1
+      safe-buffer: 5.2.1
 
   keyv@4.5.4:
     dependencies:
@@ -11964,6 +12233,8 @@ snapshots:
       has-symbols: 1.1.0
       isarray: 2.0.5
 
+  safe-buffer@5.2.1: {}
+
   safe-push-apply@1.0.0:
     dependencies:
       es-errors: 1.3.0
@@ -12214,6 +12485,20 @@ snapshots:
     optionalDependencies:
       "@babel/core": 7.29.7
 
+  supabase@2.111.0:
+    dependencies:
+      eciesjs: 0.5.0
+      jose: 6.2.8
+    optionalDependencies:
+      "@supabase/cli-darwin-arm64": 2.111.0
+      "@supabase/cli-darwin-x64": 2.111.0
+      "@supabase/cli-linux-arm64": 2.111.0
+      "@supabase/cli-linux-arm64-musl": 2.111.0
+      "@supabase/cli-linux-x64": 2.111.0
+      "@supabase/cli-linux-x64-musl": 2.111.0
+      "@supabase/cli-windows-arm64": 2.111.0
+      "@supabase/cli-windows-x64": 2.111.0
+
   supports-color@7.2.0:
     dependencies:
       has-flag: 4.0.0
@@ -12423,7 +12708,7 @@ snapshots:
       tsx: 4.23.4
       yaml: 2.9.0
 
-  vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@27.4.0)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.4)(yaml@2.9.0)):
+  vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@27.4.0(@noble/hashes@1.8.0))(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.4)(yaml@2.9.0)):
     dependencies:
       "@vitest/expect": 4.1.10
       "@vitest/mocker": 4.1.10(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.4)(yaml@2.9.0))
@@ -12449,7 +12734,7 @@ snapshots:
       "@opentelemetry/api": 1.9.1
       "@types/node": 22.20.1
       "@vitest/coverage-v8": 4.1.10(vitest@4.1.10)
-      jsdom: 27.4.0
+      jsdom: 27.4.0(@noble/hashes@1.8.0)
     transitivePeerDependencies:
       - msw
 
@@ -12460,6 +12745,16 @@ snapshots:
   watchpack@2.5.2:
     dependencies:
       graceful-fs: 4.2.11
+
+  web-push@3.6.7:
+    dependencies:
+      asn1.js: 5.4.1
+      http_ece: 1.2.0
+      https-proxy-agent: 7.0.6
+      jws: 4.0.1
+      minimist: 1.2.8
+    transitivePeerDependencies:
+      - supports-color
 
   web-streams-polyfill@3.3.3: {}
 

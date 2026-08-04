@@ -44,6 +44,31 @@ describe.runIf(enabled)("unchanged-listing policy refresh", () => {
     });
     if (created.error) throw created.error;
     user = created.data.user;
+    const profile = await admin.from("candidate_profiles").insert({
+      user_id: user.id,
+      full_name: "Policy Fixture",
+      headline: "Software Engineer",
+      home_city: "Fairfax",
+      home_region: "Virginia",
+      months_full_time_experience: 8,
+      needs_us_sponsorship: false,
+      citizenships: ["United States"],
+      summary: "Early-career software engineer.",
+      skills: { languages: ["TypeScript"] },
+    });
+    if (profile.error) throw profile.error;
+    const preferences = await admin.from("search_preferences").insert({
+      user_id: user.id,
+      full_time_only: true,
+      ideal_required_years_max: 1,
+      eligible_required_years_max: 2,
+      reject_clearance: true,
+      reject_public_trust: true,
+      accepted_areas: [{ id: "dmv", anchor: "Fairfax, VA", travelMinutes: 60 }],
+      allow_fully_remote: true,
+      role_priorities: [{ family: "general_swe", priority: 1 }],
+    });
+    if (preferences.error) throw preferences.error;
     const company = await admin
       .from("companies")
       .insert({
@@ -304,5 +329,72 @@ describe.runIf(enabled)("unchanged-listing policy refresh", () => {
       .eq("user_id", user.id)
       .eq("provider", "openai");
     expect(usage.data).toEqual([]);
+  });
+
+  it("forces a shared Luna/Terra disagreement to Review without a per-user model call", async () => {
+    const { ingestListing } = await import("@/lib/jobs/ingest");
+    const { analyzeAndRankListing } = await import("@/lib/jobs/analyze-and-rank");
+    const sharedListing: NormalizedListing = {
+      ...listing,
+      externalId: `shared-disagreement-${randomUUID()}`,
+      title: "Software Engineer I",
+      descriptionText:
+        "This is a full-time remote United States software engineering role for candidates with 0-1 years of experience.",
+      officialUrl: `https://jobs.lever.co/policy-refresh/shared-${randomUUID()}`,
+      applyUrl: `https://jobs.lever.co/policy-refresh/shared-${randomUUID()}`,
+    };
+    const ingest = await ingestListing(
+      {
+        userId: user.id,
+        companyId,
+        companyDomain: "policy-refresh.test",
+        sourceId,
+        connectorKind: "lever",
+        tenantId: "policy-refresh",
+        observedAt: new Date("2026-08-04T12:00:00Z"),
+      },
+      sharedListing,
+    );
+    const result = await analyzeAndRankListing({
+      userId: user.id,
+      listing: sharedListing,
+      ingest,
+      hasReferral: false,
+      sharedExtraction: {
+        status: "succeeded",
+        model: "gpt-5.6-luna",
+        errorCode: null,
+        unresolvedFields: ["clearance"],
+        analysis: {
+          employment: { value: "full_time", confidence: "high", evidence: [] },
+          experienceRequirements: [],
+          clearance: { value: "not_mentioned", confidence: "high", evidence: [] },
+          publicTrust: { value: "not_mentioned", confidence: "high", evidence: [] },
+          sponsorship: { value: "not_mentioned", confidence: "high", evidence: [] },
+          workArrangement: { value: "fully_remote", confidence: "high", evidence: [] },
+          locations: { value: ["United States"], confidence: "high", evidence: [] },
+          roleFamily: { value: "general_swe", confidence: "high", evidence: [] },
+          requiredSkills: [],
+          preferredSkills: [],
+          candidateStrengths: [],
+          candidateWeaknesses: [],
+          summary: "Early-career remote software engineering role.",
+          extractionWarnings: [],
+        },
+      },
+    });
+    expect(result.state).toBe("analyzed");
+    if (result.state !== "analyzed") return;
+    expect(result.decision).toMatchObject({
+      outcome: "review",
+      uncertainFields: expect.arrayContaining(["clearance"]),
+    });
+    const persisted = await admin
+      .from("ai_analyses")
+      .select("model")
+      .eq("job_id", ingest.jobId)
+      .single();
+    expect(persisted.error).toBeNull();
+    expect(persisted.data?.model).toBe("shared:gpt-5.6-luna");
   });
 });

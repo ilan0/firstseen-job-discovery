@@ -1,4 +1,10 @@
-import { AshbyConnector, GreenhouseConnector, LeverConnector } from "@/connectors/official";
+import {
+  AshbyConnector,
+  GreenhouseConnector,
+  LeverConnector,
+  PinpointConnector,
+  RecruiteeConnector,
+} from "@/connectors/official";
 import type { ConnectorSource, JobConnector } from "@/connectors/types";
 
 const checks: Array<{ connector: JobConnector; source: ConnectorSource }> = [
@@ -32,6 +38,26 @@ const checks: Array<{ connector: JobConnector; source: ConnectorSource }> = [
       tenantId: "linear",
     },
   },
+  ...["amperecloud", "xneelo"].map((tenantId) => ({
+    connector: new RecruiteeConnector(),
+    source: {
+      id: `recruitee-${tenantId}-smoke`,
+      kind: "recruitee" as const,
+      companyName: tenantId,
+      baseUrl: `https://${tenantId}.recruitee.com`,
+      tenantId,
+    },
+  })),
+  ...["workwithus", "wealthwizards"].map((tenantId) => ({
+    connector: new PinpointConnector(),
+    source: {
+      id: `pinpoint-${tenantId}-smoke`,
+      kind: "pinpoint" as const,
+      companyName: tenantId,
+      baseUrl: `https://${tenantId}.pinpointhq.com`,
+      tenantId,
+    },
+  })),
 ];
 
 const results = [];
@@ -44,16 +70,20 @@ for (const check of checks) {
       : null;
     results.push({
       kind: check.connector.kind,
+      tenant: check.source.tenantId,
       ok: true,
       listingCount: page.listings.length,
       paginationPresent: Boolean(page.nextCursor),
       sampleVerified: verification?.state ?? "no_sample",
     });
   } catch (error) {
+    const safe = error as { code?: string; name?: string; status?: number };
     results.push({
       kind: check.connector.kind,
+      tenant: check.source.tenantId,
       ok: false,
-      code: error instanceof Error ? error.name : "UNKNOWN",
+      code: safe.code ?? safe.name ?? "UNKNOWN",
+      status: safe.status ?? null,
     });
   }
 }

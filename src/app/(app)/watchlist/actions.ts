@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { connectorVersions } from "@/connectors/versions";
@@ -9,8 +9,13 @@ import {
   careerSources,
   companies,
   connectorRegistrations,
+  globalCareerSources,
+  globalScanSchedules,
+  globalSourcePolicies,
+  organizations,
   referrals,
   sourcePolicyReviews,
+  userCompanyFollows,
   watchlists,
 } from "@/db/schema";
 import { resolveOfficialSource } from "@/discovery/resolve-official";
@@ -51,8 +56,22 @@ export async function addWatchCompany(
   if (!resolved)
     return {
       error:
-        "This URL is not a recognized official ATS or careers page. Use an official Greenhouse, Lever, Ashby, or structured employer careers URL.",
+        "This URL is not a recognized official ATS or careers page. Use an official ATS, reviewed job feed/sitemap, or structured employer careers URL.",
     };
+  const publicConfig =
+    resolved.kind === "custom_feed"
+      ? { reviewed: true }
+      : resolved.kind === "custom_sitemap"
+        ? {
+            reviewed: true,
+            jobUrlPattern: "(?:jobs|careers|positions|openings)",
+            maximumJobUrls: 100,
+            expectedOrganization: input.company,
+            requireHiringOrganization: true,
+          }
+        : resolved.kind === "custom_jsonld"
+          ? { expectedOrganization: input.company, requireHiringOrganization: true }
+          : {};
   const sourceId = await db.transaction(async (tx) => {
     const [company] = await tx
       .insert(companies)
@@ -79,6 +98,86 @@ export async function addWatchCompany(
       })
       .returning();
     if (!company) throw new Error("Company could not be saved");
+    let organizationId = company.organizationId;
+    if (!organizationId) {
+      const [existingOrganization] = await tx
+        .select({ id: organizations.id })
+        .from(organizations)
+        .where(eq(organizations.normalizedName, normalizedName(input.company)))
+        .limit(1);
+      const [organization] = existingOrganization
+        ? [existingOrganization]
+        : await tx
+            .insert(organizations)
+            .values({
+              name: input.company,
+              normalizedName: normalizedName(input.company),
+            })
+            .returning({ id: organizations.id });
+      if (!organization) throw new Error("Organization could not be saved");
+      organizationId = organization.id;
+      await tx
+        .update(companies)
+        .set({ organizationId, updatedAt: new Date() })
+        .where(and(eq(companies.userId, owner.id), eq(companies.id, company.id)));
+    }
+    const [existingGlobalSource] = await tx
+      .select({ id: globalCareerSources.id })
+      .from(globalCareerSources)
+      .where(
+        or(
+          eq(globalCareerSources.normalizedUrl, resolved.officialUrl),
+          and(
+            eq(globalCareerSources.connectorKind, resolved.kind),
+            resolved.tenantId
+              ? eq(globalCareerSources.tenantId, resolved.tenantId)
+              : eq(globalCareerSources.normalizedUrl, resolved.officialUrl),
+          ),
+        ),
+      )
+      .limit(1);
+    const [globalSource] = existingGlobalSource
+      ? [existingGlobalSource]
+      : await tx
+          .insert(globalCareerSources)
+          .values({
+            organizationId,
+            connectorKind: resolved.kind,
+            tenantId: resolved.tenantId,
+            baseUrl: resolved.officialUrl,
+            normalizedUrl: resolved.officialUrl,
+            publicConfig,
+            parsingConfidence: resolved.kind.startsWith("custom_") ? 55 : 90,
+          })
+          .returning({ id: globalCareerSources.id });
+    if (!globalSource) throw new Error("Global career source could not be saved");
+    await tx
+      .insert(globalSourcePolicies)
+      .values({
+        careerSourceId: globalSource.id,
+        provider: resolved.kind,
+        policyVersion: "2026-08-04.1",
+        status: resolved.kind.startsWith("custom_")
+          ? "conditional_reviewed_source"
+          : "approved_official_public_source",
+        mayRequest: true,
+        mayUseTransiently: true,
+        mayPersist: true,
+        mayDisplay: true,
+        mayResolveRedirects: false,
+        expectedOrganization: input.company,
+        closureMethod:
+          resolved.kind === "custom_jsonld"
+            ? "reviewed_page_verification"
+            : resolved.kind === "custom_sitemap"
+              ? "complete_sitemap_with_leaf_jsonld_verification"
+              : resolved.kind === "custom_feed"
+                ? "complete_reviewed_structured_feed"
+                : "complete_official_feed",
+        reviewedBy: "owner-server-action",
+        activatedAt: new Date(),
+      })
+      .onConflictDoNothing();
     const [source] = await tx
       .insert(careerSources)
       .values({
@@ -87,12 +186,13 @@ export async function addWatchCompany(
         connectorKind: resolved.kind,
         baseUrl: resolved.officialUrl,
         normalizedUrl: resolved.officialUrl,
-        publicConfig: {},
-        parsingConfidence: resolved.kind === "custom_jsonld" ? 55 : 90,
+        publicConfig,
+        parsingConfidence: resolved.kind.startsWith("custom_") ? 55 : 90,
+        globalSourceId: globalSource.id,
       })
       .onConflictDoUpdate({
         target: [careerSources.userId, careerSources.normalizedUrl],
-        set: { active: true, updatedAt: new Date() },
+        set: { active: true, globalSourceId: globalSource.id, updatedAt: new Date() },
       })
       .returning();
     if (!source) throw new Error("Career source could not be saved");
@@ -139,16 +239,55 @@ export async function addWatchCompany(
         },
       });
     await tx
+      .insert(globalScanSchedules)
+      .values({
+        careerSourceId: globalSource.id,
+        monitoringTier: input.interested || input.referralPerson ? "priority" : "standard",
+        cadenceMinutes: input.interested || input.referralPerson ? 15 : 60,
+        nextRunAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: globalScanSchedules.careerSourceId,
+        set: {
+          monitoringTier: input.interested || input.referralPerson ? "priority" : "standard",
+          cadenceMinutes: input.interested || input.referralPerson ? 15 : 60,
+          nextRunAt: new Date(),
+          active: true,
+          updatedAt: new Date(),
+        },
+      });
+    await tx
+      .insert(userCompanyFollows)
+      .values({
+        userId: owner.id,
+        organizationId,
+        interested: Boolean(input.interested),
+        scope: "personal",
+        active: true,
+        stickyDismissed: false,
+        notes: input.notes || null,
+      })
+      .onConflictDoUpdate({
+        target: [userCompanyFollows.userId, userCompanyFollows.organizationId],
+        set: {
+          interested: Boolean(input.interested),
+          scope: "personal",
+          active: true,
+          stickyDismissed: false,
+          notes: input.notes || null,
+          updatedAt: new Date(),
+        },
+      });
+    await tx
       .insert(sourcePolicyReviews)
       .values({
         userId: owner.id,
         careerSourceId: source.id,
         hostname: url.hostname.toLowerCase(),
-        status: resolved.kind === "custom_jsonld" ? "conditional" : "approved",
-        rationale:
-          resolved.kind === "custom_jsonld"
-            ? "Public JSON-LD only; no generic HTML scraping."
-            : "Official public ATS endpoint.",
+        status: resolved.kind.startsWith("custom_") ? "conditional" : "approved",
+        rationale: resolved.kind.startsWith("custom_")
+          ? "Owner-reviewed public structured source only; no generic HTML scraping."
+          : "Official public ATS endpoint.",
       })
       .onConflictDoUpdate({
         target: [sourcePolicyReviews.userId, sourcePolicyReviews.hostname],

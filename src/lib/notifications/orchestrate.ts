@@ -17,6 +17,7 @@ import { serverEnv } from "@/lib/env/server";
 import { deliverPendingNotification } from "./slack";
 import { digestPayload, exceptionalPayload, payloadHash, type DigestJob } from "./slack-payload";
 import { hoursUntilQuietEnd, inQuietHours, zonedParts } from "./time";
+import { deliverDueWebPush, queueWebPushDeliveries } from "./web-push";
 
 export async function queueExceptionalAlert(options: {
   userId: string;
@@ -71,7 +72,30 @@ export async function queueExceptionalAlert(options: {
     })
     .onConflictDoNothing()
     .returning({ id: notifications.id, status: notifications.status });
-  if (!notification || quiet) return notification ?? null;
+  if (!notification) return null;
+  if (rolloutFlags().webPush) {
+    const [job] = await db
+      .select({ globalJobId: canonicalJobs.globalJobId })
+      .from(canonicalJobs)
+      .where(and(eq(canonicalJobs.userId, options.userId), eq(canonicalJobs.id, options.jobId)))
+      .limit(1);
+    await queueWebPushDeliveries({
+      userId: options.userId,
+      logicalNotificationId: notification.id,
+      globalJobId: job?.globalJobId ?? null,
+      reason: "fresh_exceptional_match",
+      message: {
+        path: `/jobs/${options.jobId}`,
+        tag: `firstseen-job-${options.jobId}`,
+        urgency: options.urgency,
+        detailedTitle: `${options.band === "hot" ? "Hot" : "Strong"} match · ${options.company}`,
+        detailedBody: options.title,
+      },
+      notBefore: quiet ? new Date(now.getTime() + deferHours * 3_600_000) : now,
+    });
+    if (!quiet) await deliverDueWebPush(options.userId, now);
+  }
+  if (quiet) return notification;
   await deliverPendingNotification(notification.id, payload);
   return notification;
 }

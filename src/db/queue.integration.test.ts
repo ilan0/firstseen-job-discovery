@@ -20,6 +20,8 @@ const admin = createClient(
 describe.runIf(enabled)("queue lifecycle and dynamic freshness", () => {
   let user: User;
   let jobId: string;
+  let companyId: string;
+  let sourceId: string;
 
   beforeAll(async () => {
     const created = await admin.auth.admin.createUser({
@@ -41,6 +43,7 @@ describe.runIf(enabled)("queue lifecycle and dynamic freshness", () => {
       .select("id")
       .single();
     if (company.error) throw company.error;
+    companyId = company.data.id;
     const source = await admin
       .from("career_sources")
       .insert({
@@ -53,6 +56,7 @@ describe.runIf(enabled)("queue lifecycle and dynamic freshness", () => {
       .select("id")
       .single();
     if (source.error) throw source.error;
+    sourceId = source.data.id;
 
     const officialUrl = `https://jobs.lever.co/queue-integration/${randomUUID()}`;
     const listing: NormalizedListing = {
@@ -167,5 +171,92 @@ describe.runIf(enabled)("queue lifecycle and dynamic freshness", () => {
     expect(await listQueue(user.id, "saved")).toEqual([
       expect.objectContaining({ jobId, lifecycleStatus: "closed" }),
     ]);
+  });
+
+  it("paginates the active queue with a stable keyset cursor", async () => {
+    const now = Date.now();
+    const jobs = await admin
+      .from("canonical_jobs")
+      .insert(
+        Array.from({ length: 61 }, (_, index) => ({
+          user_id: user.id,
+          company_id: companyId,
+          authoritative_source_id: sourceId,
+          external_job_id: `page-${index}-${randomUUID()}`,
+          title: `Paged Software Engineer ${index}`,
+          normalized_title: `paged software engineer ${index}`,
+          employment_type: "full_time",
+          official_url: `https://jobs.lever.co/queue-integration/page-${randomUUID()}`,
+          normalized_official_url: `https://jobs.lever.co/queue-integration/page-${randomUUID()}`,
+          lifecycle_status: "open",
+          posted_at: new Date(now - index * 60_000).toISOString(),
+          posted_at_confidence: "high",
+          verified_at: new Date(now).toISOString(),
+        })),
+      )
+      .select("id");
+    if (jobs.error) throw jobs.error;
+    const snapshots = await admin
+      .from("job_description_snapshots")
+      .insert(
+        jobs.data.map((job, index) => ({
+          user_id: user.id,
+          job_id: job.id,
+          material_hash: `page-hash-${index}-${randomUUID()}`,
+          description_text: "Full-time early-career software engineering role in Miami.",
+          normalized_facts: { locations: { value: ["Miami, FL"] } },
+        })),
+      )
+      .select("id,job_id");
+    if (snapshots.error) throw snapshots.error;
+    const decisions = await admin
+      .from("eligibility_decisions")
+      .insert(
+        snapshots.data.map((snapshot) => ({
+          user_id: user.id,
+          job_id: snapshot.job_id,
+          snapshot_id: snapshot.id,
+          outcome: "eligible",
+          rule_version: ELIGIBILITY_RULE_VERSION,
+        })),
+      )
+      .select("id,job_id,snapshot_id");
+    if (decisions.error) throw decisions.error;
+    const recommendations = await admin.from("recommendations").insert(
+      decisions.data.map((decision) => ({
+        user_id: user.id,
+        job_id: decision.job_id,
+        snapshot_id: decision.snapshot_id,
+        eligibility_decision_id: decision.id,
+        band: "strong",
+        urgency: 80,
+        headline: "Pagination fixture",
+        ranking_version: RANKING_VERSION,
+      })),
+    );
+    if (recommendations.error) throw recommendations.error;
+    const queued = await admin
+      .from("queue_states")
+      .insert(jobs.data.map((job) => ({ user_id: user.id, job_id: job.id, status: "active" })));
+    if (queued.error) throw queued.error;
+
+    const { listQueuePage } = await import("@/lib/jobs/queue");
+    const first = await listQueuePage(user.id, "active", {
+      postedWithin: "7d",
+      sort: "posted_newest",
+    });
+    expect(first.items).toHaveLength(60);
+    expect(first.nextCursor).toEqual(expect.any(String));
+    const second = await listQueuePage(user.id, "active", {
+      postedWithin: "7d",
+      sort: "posted_newest",
+      cursor: first.nextCursor!,
+    });
+    expect(second.items).toHaveLength(1);
+    expect(second.nextCursor).toBeNull();
+    expect(new Set([...first.items, ...second.items].map((item) => item.jobId))).toHaveProperty(
+      "size",
+      61,
+    );
   });
 });

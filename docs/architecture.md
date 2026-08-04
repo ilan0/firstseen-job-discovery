@@ -4,158 +4,146 @@
 
 ```mermaid
 flowchart LR
-  U["Ilan on mobile or desktop"] --> V["Next.js on Vercel"]
+  U["Owner PWA or browser"] --> V["Next.js on Vercel"]
   V --> A["Supabase Auth"]
-  V --> P["Supabase PostgreSQL + RLS"]
+  V --> P["Supabase PostgreSQL and RLS"]
+  V --> ST["Private Supabase Storage"]
   I["Inngest schedules and durable steps"] <--> V
-  I --> O["Official employer / ATS sources"]
-  I --> B["Brave and Adzuna sensors"]
-  I --> M["OpenAI structured extraction"]
+  I --> O["Official employer and ATS sources"]
+  I --> B["Transient Brave URL sensor"]
+  I --> M["Luna and selective Terra extraction"]
   I --> S["Slack webhook"]
+  I --> W["Browser Web Push services"]
   V -. "redacted errors" .-> E["Optional Sentry"]
 ```
 
-Next.js owns the authenticated portal, server actions, official Apply redirect, JSON export, and
-Inngest serving endpoint. Supabase is authoritative for identity and state. Inngest owns time,
-retries, concurrency, partial-failure recovery, and duplicate-safe step replay; Vercel Cron is not
-used because its Hobby schedule precision is insufficient. Provider clients are server-only.
+Next.js owns authenticated UI, server actions, application-session handoff, export, push APIs, PWA
+metadata, and the Inngest endpoint. Supabase is authoritative for identity and state. Inngest owns
+time, retries, fan-out, partial-failure recovery, and duplicate-safe replay. Provider clients and
+private capability keys are server-only.
+
+Supply entities are global and service-managed so one employer source is fetched once. Candidate
+profiles, follows, contacts, resumes, eligibility/ranking overlays, queues, applications, and
+notification devices are user-private. The global path is additive and feature-flagged during
+dual-write/read reconciliation; the legacy source path remains a rollback surface until production
+soak finishes.
 
 ## Discovery-to-recommendation flow
 
 ```mermaid
 sequenceDiagram
-  participant C as Inngest cron
+  participant C as Inngest scheduler
   participant DB as PostgreSQL
-  participant ATS as Official ATS
-  participant AI as OpenAI
-  participant Slack as Slack
-  C->>DB: Atomically lease due watchlists
-  C->>C: Fan out one event per active source
-  C->>ATS: Fetch/paginate with conditions, timeout, retry
-  C->>DB: Stage observations and touch unchanged jobs
-  loop Each new, materially changed, or reopened listing
-    C->>DB: Canonicalize, dedupe, snapshot
-    C->>DB: Run deterministic eligibility
-    opt New/changed eligible-review plausible SWE and budget available
-      C->>AI: Structured extraction from untrusted text
-      AI-->>C: Strict schema result
-    end
-    C->>DB: Persist decision, dimensions, recommendation, queue
+  participant ATS as Official source
+  participant AI as Shared requirement extraction
+  participant Match as Per-user deterministic matching
+  participant Delivery as Slack or Web Push
+  C->>DB: Claim oldest-due global sources and outbox
+  C->>C: Fan out one event per claimed source
+  C->>ATS: Conditional bounded request and pagination
+  ATS-->>C: Complete official data or isolated failure
+  C->>DB: Persist observations, jobs, snapshots, lifecycle
+  loop Each new or materially changed plausible role
+    C->>AI: Candidate-neutral extraction from untrusted text
+    AI-->>C: Strict evidence-backed requirements
+    C->>Match: Fan out to potentially eligible users
+    Match->>DB: Persist hard decision, dimensions, queue
   end
-  C->>DB: Apply closure misses only after successful complete fetch
-  C->>DB: Finalize source/scan atomically
-  opt Exceptional idempotent match
-    C->>Slack: Immediate Block Kit alert
+  C->>DB: Apply closure only after a complete fetch
+  opt Deterministically eligible occurrence alert
+    C->>Delivery: Logical notification and device/channel deliveries
   end
 ```
 
-Descriptions never travel through orchestration state: the official fetch step stores them as
-short-lived observations and returns only observation IDs plus lifecycle identity. Only listings
-whose material hash is new/changed, whose policy is stale, or whose official lifecycle has reopened
-get independent `step.run` executions. A reopening reuses its validated cached extraction. This
-keeps each hosted invocation bounded, avoids unchanged AI cost, and allows a deployment or retry to
-resume after the last completed listing.
+Descriptions do not travel in orchestration state. Official fetch stores short-lived observations
+and returns row identities. Only new/changed snapshots, stale policy versions, or reopenings run
+independent durable processing. A reopening can reuse a valid candidate-neutral extraction.
 
-Broad discovery follows the same authority boundary: sensors return candidate URLs; only supported
-official ATS URLs create provisional company/source records and verification events. Sensor text
-cannot create a job, eligibility decision, recommendation, or notification.
+Broad discovery observes the same authority boundary: all twelve role/location cohorts run every
+four hours and the active sensor returns transient candidate URLs. Only independently verified ATS
+or official structured employer facts enter an event or durable supply. Sensor text cannot create a
+job, decision, recommendation, closure, or notification.
 
 ## Module map
 
-- `src/app`: protected portal routes, Auth UI, server actions, Apply/export APIs, and Inngest route.
-- `src/components`: responsive navigation, queue cards/filters/actions, forms, feedback, and states.
-- `src/db/schema` and `supabase/migrations`: typed database objects, grants, RLS, indexes, and seed.
-- `src/connectors`: connector contract, registry, Greenhouse/Lever/Ashby/JSON-LD implementations,
-  unsupported-source policy, and contract fixtures.
-- `src/discovery` and `src/lib/discovery`: broad provider normalization, quotas, and official URL
-  promotion.
-- `src/domain`: pure deterministic eligibility, lifecycle, identity/material hashing, shared
-  freshness, company monitoring policy, status transitions, and ranking.
-- `src/ai`: versioned prompt, Responses API schema, evidence checks, and token-cost estimation.
-- `src/lib/scans`: source loading, pagination, changed-listing staging/processing, and finalization.
-- `src/inngest`: cron/event workflows, concurrency, retries, failures, and retention.
-- `src/lib/notifications`: Slack formatting, exact-time-zone digest selection, idempotency, quiet
-  deferral, and retry.
-- `src/lib/http`, `src/lib/security`, `next.config.ts`: SSRF defenses, rate limits, sanitization, and
-  browser security headers.
+- `src/app`: protected portal, owner/invite Auth, jobs, People, Applications, Apply/session, push,
+  export, offline/manifest, and Inngest routes.
+- `src/components`: responsive queue, CRM, application, PWA, push, navigation, and feedback UI.
+- `src/db/schema` and `supabase/migrations`: typed objects, grants, RLS, indexes, additive backfill,
+  and rollout policy.
+- `src/connectors`: safe HTTP and Greenhouse, Lever, Ashby, Recruitee, Pinpoint, and reviewed
+  structured connectors with contract fixtures.
+- `src/discovery` and `src/lib/discovery`: query cohorts, transient providers, safe redirects,
+  organization authority, quotas, and independently verified source registration.
+- `src/domain`: deterministic eligibility, ranking, freshness, lifecycle, monitoring, queue,
+  relationship, and application policy.
+- `src/ai`: candidate-neutral prompts, Responses schema/evidence checks, Luna/Terra routing,
+  evaluation metrics, and versioned prices.
+- `src/lib/supply`: global ingest, source scheduling/outbox, fan-out, and legacy dual-write.
+- `src/lib/notifications`: logical/channel/device orchestration, Slack, encrypted Web Push,
+  digest selection, quiet deferral, retry, and expiry.
+- `src/connectors/http.ts`, `src/lib/security`, and `next.config.ts`: SSRF/redirect/content-type/size
+  defenses, rate limits, capability encryption, sanitization, and security headers.
 
 ## Durable workflows
 
-| Function              | Trigger                 | Responsibility                                                                           | Retry/isolation                                    |
-| --------------------- | ----------------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| Watchlist scheduler   | every 15 minutes        | Rebalance only Cold cadence, lease due tiered watches, and fan out active sources        | Conditional lease prevents duplicate schedules     |
-| Source scan           | event                   | Start run, official fetch/stage, per-changed-listing processing, closure/finalize, alert | Four retries; concurrency 3/user; one source/event |
-| Broad discovery       | minute 17 every 4 hours | Provider sensors, provisional sources, verification fan-out                              | Two retries; singleton                             |
-| Notification schedule | minute 0 hourly         | Exact-time digest, deferred alerts, failed delivery retry                                | Three retries; per-user steps                      |
-| Retention cleanup     | 03:43 UTC daily         | Expired observations and stale HMAC counters                                             | Two retries                                        |
+| Function              | Trigger                    | Responsibility                                                                          | Isolation                                  |
+| --------------------- | -------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------ |
+| Supply scheduler      | Every 15 minutes           | Claim oldest-due sources and durable outbox; reserve priority capacity                  | Lease/outbox prevents loss and duplication |
+| Source scan           | Event                      | Official fetch/stage, changed extraction, user fan-out, closure/finalize, logical alert | One global source per event                |
+| Broad discovery       | Minute 17 every four hours | Twelve cohorts, transient sensor, independent official verification                     | Two retries; singleton                     |
+| Notification schedule | Minute 0 hourly            | Digest, deferred Slack/push, failed delivery retry                                      | Per logical/channel/device identity        |
+| Retention cleanup     | 03:43 UTC daily            | Expired observations, security counters, and bounded cleanup                            | Independently retryable                    |
 
-All workflow identity is derived from stable user/source/scheduled times or snapshot/rule/prompt
-versions. Database unique constraints and upserts protect duplicate delivery. Failure handling
-records a safe dead letter and marks only the affected source scan failed. Replays use a new event
-ID while preserving owner/source validation. No database transaction encloses HTTP or model calls.
+Workflow identity derives from source/scheduled time, snapshot/rule/prompt versions, logical
+notification occurrence, and channel/device. A lease and outbox row are claimed together; expired
+leases are reclaimable. Constraints protect duplicate delivery. Failure handling records redacted
+diagnostics and fails only the affected source/delivery. HTTP and model calls are never inside a
+database transaction.
 
-Cadence derives from independent interest, active referrals, personal/discovered scope, and a
-recent viable recommendation. Priority watches run every 15 minutes, personal Standard and
-discovered Warm every 60, and discovered Cold every 240. Dismissal is sticky quarantine. A workload
-forecast may lengthen only Cold cadence when protected work plus the catalog would exceed the
-configured daily execution budget.
+Priority demand sets source cadence without duplicate fetches. Priority sources run every 15
+minutes, Standard/Warm hourly, and Cold every four hours. Dismissal is sticky quarantine. Capacity
+forecasting may stop admitting new Cold sources but never silently slows Priority demand.
 
 ## Authorization and trust boundaries
 
-- The owner enters a four-digit code. Server-side scrypt verification, durable per-address/global
-  throttles, and an Auth-admin magic link create a normal Supabase cookie session without sending
-  email or storing the plaintext code. `getUser` validates the owner on each protected request; the
-  configured owner email remains an independent single-user allowlist.
-- Server actions validate form input, require the owner, and scope every lookup/mutation by user.
-- RLS provides defense in depth for browser data access. User-owned rows require `auth.uid() =
-user_id`; system security counters have no anon/authenticated grants.
-- The Supabase secret key and direct database URL exist only in server/deployment environments.
-- Outbound URLs permit HTTPS public destinations only. URL parsing, DNS resolution, redirect
-  revalidation, private/reserved address rejection, response limits, content checks, timeouts,
-  retry/backoff, and per-host pacing mitigate SSRF and resource abuse.
-- Job HTML is sanitized/converted to text. Descriptions are delimited as untrusted model data;
-  prompts forbid following embedded instructions. Strict schemas and evidence validation reject
-  unsupported output. Deterministic code retains final authority.
-- Sentry is optional and disabled without DSNs. Request context and exception messages are removed
-  before transmission; stacks/types remain useful. Application logs and persisted diagnostics do
-  not include provider secrets or raw Auth material.
+- Four-digit owner access uses server-side scrypt, durable address/global throttles, and a normal
+  Supabase cookie session. The plaintext code is never stored. Invite-only email foundations are
+  disabled by default; open signup stays disabled.
+- Every server mutation independently validates and authorizes the user. RLS protects all private
+  overlays. Global raw/supply mutation is service-only.
+- The Supabase secret key, database URL, VAPID private key, subscription-encryption key, provider
+  keys, and Slack webhook are absent from browser bundles.
+- Resumes use private Storage, strict file validation, sanitized names, and short-lived signed
+  access. Push endpoints/browser keys are encrypted; uniqueness and expiry use endpoint hashes.
+- Outbound URLs permit HTTPS public destinations only. DNS and redirects are revalidated; private
+  addresses, credentials, non-default ports, loops, disallowed content types, oversized bodies, and
+  timeouts fail safely.
+- Official HTML and descriptions are untrusted. Content is sanitized and delimited for the model;
+  schemas and evidence offsets reject unsupported output. Deterministic code owns hard decisions.
+- Default push payloads are generic and contain no contact, referral, resume, weakness, or
+  application data.
 
 ## Performance, cost, and failure design
 
-Conditional ATS requests, source content metadata, normalized material hashes, changed-only durable
-steps, deterministic early exits, compact structured outputs, and provider usage ledgers constrain
-work. OpenAI reservations enforce a hard application-level monthly budget before calls. Broad
-providers have hard monthly request caps; one provider error is recorded and does not suppress the
-other.
+Conditional requests, normalized hashes, changed-only processing, deterministic early exits,
+compact outputs, and provider ledgers constrain work. OpenAI budget is durably reserved before a
+call. Unknown model aliases fail closed. Brave is transient and breaker-limited; Adzuna automated
+promotion is disabled.
 
-### Initial monthly cost model
+Current model accounting uses Luna at $0.20/$1.20 and Terra at $2/$12 per million input/output
+tokens. At 4,000 input and 600 output tokens with 10% Terra escalation, the planning target is about
+$0.003 per analyzed snapshot. The application-level AI ceiling remains $25/month. No paid upgrade
+or licensed feed is automatic.
 
-| Service     |                                       Prototype |                        Reliable production | Control/assumption                                                                                                                                                                                                                                                                             |
-| ----------- | ----------------------------------------------: | -----------------------------------------: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Vercel      |                                        $0 Hobby | $0 initially; $20 Pro if plan/use requires | Inngest supplies precision schedules; each step stays below Hobby's 60-second function ceiling. [Vercel Hobby](https://vercel.com/docs/plans/hobby) is personal/noncommercial and [Hobby cron](https://vercel.com/docs/cron-jobs/usage-and-pricing) is only daily, so native cron is not used. |
-| Supabase    |                  $0 Free if a slot is available |                        $25 Pro recommended | Free has 500 MB database, two active projects, pausing, and no managed backup guarantee; [Pro pricing/backups](https://supabase.com/pricing) provide 8 GB and daily retention.                                                                                                                 |
-| Inngest     |                                        $0 Hobby |    $0 expected; Pro starts $99 if exceeded | [Hobby limits](https://www.inngest.com/pricing): 50,000 executions, concurrency 5, 24-hour traces. Changed-only steps and source concurrency protect the allowance.                                                                                                                            |
-| Brave       | About $3.60 usage, covered by monthly $5 credit |                                $0 expected | 720 searches × $0.005; 900-request breaker. Re-check [Brave pricing](https://brave.com/search/api/) before cadence increases.                                                                                                                                                                  |
-| Adzuna      |                                              $0 |                                $0 expected | 720 requests is below personal API limits; 900-request breaker.                                                                                                                                                                                                                                |
-| OpenAI Luna |                                  Usually $2–$12 |                       Hard app ceiling $25 | Changed plausible SWE roles only. At 1,000 analyses averaging 4k input/600 output, Luna rates imply about $7.60; compact outputs, hashing, reservations. [Current model pricing](https://developers.openai.com/api/docs/models) is versioned in code and rechecked before release.             |
-| Slack       |                                      $0 webhook |                                $0 expected | One destination; idempotent alerts/digest.                                                                                                                                                                                                                                                     |
-| Sentry      |                          $0 Developer, optional |                                $0 expected | Low trace samples and redaction; provider quotas apply. Vercel/Inngest/DB diagnostics are primary.                                                                                                                                                                                             |
-| **Total**   |                            **$0 cash expected** |                  **$25/month recommended** | Typical variable usage remains inside credits/free tiers; maximum app-controlled AI spend adds $25. Vercel Pro/Inngest Pro are not initially required.                                                                                                                                         |
-
-Database rows record provider request/token units and estimated/actual cost with idempotency keys.
-Spend breakers are independent of provider dashboards and intentionally fail closed into Review or
-skip broad discovery rather than producing surprise charges.
-
-Network/model work occurs before or after short database transactions. Source finalization and
-closure happen only after all changed listing steps finish. Therefore a partial worker failure
-cannot mark unseen jobs closed, and a successful retry safely continues from persisted step and row
-identity. Saved/Applied/Dismissed history survives closure.
+Network/model work occurs around short transactions. Closure happens only after all changed rows
+and a complete source result finalize. Partial failure cannot mark unseen jobs closed, and Saved,
+Applied, Dismissed, contacts, applications, and history survive lifecycle changes.
 
 ## Backup, release, and rollback
 
-Migrations are forward-only SQL under `supabase/migrations` and are applied before compatible app
-code. Production should use Supabase Pro daily backups; on Free, execute authenticated CLI logical
-dumps on a separate durable schedule. Release rollback uses the prior immutable Vercel deployment;
-schema changes remain backward compatible for at least one release. Inngest functions use stable
-IDs and idempotent row constraints so in-flight runs can finish against either deployment. See
-`OPERATIONS.md` for concrete recovery checks.
+Migrations are forward-only and additive. New paths dual-write until counts, hashes, lifecycle,
+queue history, and ownership reconcile. Rollback disables the relevant flag and can restore the
+prior immutable Vercel deployment; it never destructively reverses schema. A protected logical
+backup remains outside the repository and requires an isolated restore test before production
+cutover. See `OPERATIONS.md` for the exercised commands and `PLAN.md` for gates not yet claimed.

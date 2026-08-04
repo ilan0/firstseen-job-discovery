@@ -1,5 +1,5 @@
 import type { JobAnalysis } from "@/ai";
-import { evaluateLocations } from "./location";
+import { evaluateLocations, type LocationPolicy } from "./location";
 import type { Evidence, ExtractedJobFacts } from "./types";
 
 function evidence(items: JobAnalysis["employment"]["evidence"]): Evidence[] {
@@ -9,6 +9,7 @@ function evidence(items: JobAnalysis["employment"]["evidence"]): Evidence[] {
 export function mergeAiFacts(
   deterministic: ExtractedJobFacts,
   analysis: JobAnalysis,
+  locationPolicy: LocationPolicy = {},
 ): ExtractedJobFacts {
   const employment =
     deterministic.employment.value === "unknown"
@@ -38,7 +39,12 @@ export function mergeAiFacts(
     sponsorship: { ...analysis.sponsorship, evidence: evidence(analysis.sponsorship.evidence) },
     workArrangement,
     locations,
-    locationEligibility: evaluateLocations(locations.value, workArrangement.value, ""),
+    locationEligibility: evaluateLocations(
+      locations.value,
+      workArrangement.value,
+      "",
+      locationPolicy,
+    ),
     roleFamily: { ...analysis.roleFamily, evidence: evidence(analysis.roleFamily.evidence) },
   };
 }

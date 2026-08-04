@@ -3,11 +3,24 @@ import type { DecisionReason, EligibilityDecision, ExtractedJobFacts } from "./t
 export const ELIGIBILITY_RULE_VERSION = "2026-08-04.2";
 export const MAX_REQUIRED_YEARS = 2;
 
-export function evaluateEligibility(facts: ExtractedJobFacts): EligibilityDecision {
+export type EligibilityPolicy = {
+  fullTimeOnly?: boolean;
+  eligibleRequiredYearsMax?: number;
+  rejectClearance?: boolean;
+  rejectPublicTrust?: boolean;
+  needsUsSponsorship?: boolean;
+};
+
+export function evaluateEligibility(
+  facts: ExtractedJobFacts,
+  policy: EligibilityPolicy = {},
+): EligibilityDecision {
   const reasons: DecisionReason[] = [];
   const uncertainFields = new Set<string>();
+  const maximumRequiredYears = policy.eligibleRequiredYearsMax ?? MAX_REQUIRED_YEARS;
+  const fullTimeOnly = policy.fullTimeOnly ?? true;
 
-  if (facts.employment.value === "unknown") {
+  if (fullTimeOnly && facts.employment.value === "unknown") {
     uncertainFields.add("employment_type");
     reasons.push({
       code: "EMPLOYMENT_UNKNOWN",
@@ -15,7 +28,7 @@ export function evaluateEligibility(facts: ExtractedJobFacts): EligibilityDecisi
       hard: false,
       evidence: facts.employment.evidence,
     });
-  } else if (facts.employment.value !== "full_time") {
+  } else if (fullTimeOnly && facts.employment.value !== "full_time") {
     reasons.push({
       code: "NOT_FULL_TIME",
       message: "The role is not full-time employment.",
@@ -28,12 +41,13 @@ export function evaluateEligibility(facts: ExtractedJobFacts): EligibilityDecisi
     (requirement) => !requirement.preferred,
   );
   const excessive = requiredExperience.filter(
-    (requirement) => requirement.minimumYears > MAX_REQUIRED_YEARS && !requirement.alternativePath,
+    (requirement) =>
+      requirement.minimumYears > maximumRequiredYears && !requirement.alternativePath,
   );
   if (excessive.length) {
     reasons.push({
       code: "REQUIRED_EXPERIENCE_EXCEEDS_MAXIMUM",
-      message: `The role requires more than ${MAX_REQUIRED_YEARS} years of experience.`,
+      message: `The role requires more than ${maximumRequiredYears} years of experience.`,
       hard: true,
       evidence: excessive.map((requirement) => requirement.evidence),
     });
@@ -49,36 +63,36 @@ export function evaluateEligibility(facts: ExtractedJobFacts): EligibilityDecisi
     });
   }
 
-  if (facts.clearance.value === "required") {
+  if ((policy.rejectClearance ?? true) && facts.clearance.value === "required") {
     reasons.push({
       code: "SECURITY_CLEARANCE_REQUIRED",
       message: "The role requires a security clearance or the ability to obtain one.",
       hard: true,
       evidence: facts.clearance.evidence,
     });
-  } else if (facts.clearance.value === "uncertain") {
+  } else if ((policy.rejectClearance ?? true) && facts.clearance.value === "uncertain") {
     uncertainFields.add("security_clearance");
   }
 
-  if (facts.publicTrust.value === "required") {
+  if ((policy.rejectPublicTrust ?? true) && facts.publicTrust.value === "required") {
     reasons.push({
       code: "PUBLIC_TRUST_REQUIRED",
       message: "The role requires Public Trust or an equivalent suitability determination.",
       hard: true,
       evidence: facts.publicTrust.evidence,
     });
-  } else if (facts.publicTrust.value === "uncertain") {
+  } else if ((policy.rejectPublicTrust ?? true) && facts.publicTrust.value === "uncertain") {
     uncertainFields.add("public_trust");
   }
 
-  if (facts.sponsorship.value === "incompatible") {
+  if (policy.needsUsSponsorship && facts.sponsorship.value === "incompatible") {
     reasons.push({
       code: "WORK_AUTHORIZATION_INCOMPATIBLE",
       message: "The employment authorization requirement is incompatible.",
       hard: true,
       evidence: facts.sponsorship.evidence,
     });
-  } else if (facts.sponsorship.value === "uncertain") {
+  } else if (policy.needsUsSponsorship && facts.sponsorship.value === "uncertain") {
     uncertainFields.add("work_authorization");
   }
 
