@@ -21,8 +21,9 @@ const ashbyJobSchema = z
     department: z.string().optional(),
     team: z.string().optional(),
     isListed: z.boolean().optional().default(true),
-    isRemote: z.boolean().optional(),
-    workplaceType: z.string().optional(),
+    // Older postings on otherwise valid public boards can return these as null.
+    isRemote: z.boolean().nullish(),
+    workplaceType: z.string().nullish(),
     descriptionPlain: z.string(),
     publishedAt: z.string().datetime({ offset: true }).optional(),
     employmentType: z.string().optional(),

@@ -1,9 +1,10 @@
 import { and, eq, lt, lte, sql } from "drizzle-orm";
+import { NonRetriableError } from "inngest";
 import { z } from "zod";
+import { ConnectorError } from "@/connectors/errors";
 import { db } from "@/db/client";
 import {
   candidateProfiles,
-  careerSources,
   deadLetterRecords,
   rawObservations,
   scanRuns,
@@ -25,6 +26,7 @@ import {
   processStagedListing,
   stageStoredSource,
 } from "@/lib/scans/scan-source";
+import { recordSourceScanFailure } from "@/lib/scans/record-failure";
 import { inngest } from "./client";
 
 const sourceEventSchema = z.object({
@@ -87,33 +89,14 @@ export const sourceScan = inngest.createFunction(
       if (!original.success) return;
       const data = original.data;
       const idempotencyKey = `source:${data.sourceId}:${data.scheduledFor}`;
-      const now = new Date();
-      await db.transaction(async (tx) => {
-        await tx
-          .insert(deadLetterRecords)
-          .values({
-            userId: data.userId,
-            workflowName: "source-scan",
-            eventId: event.data.run_id,
-            eventName: "firstseen/source.scan.requested",
-            eventPayload: data,
-            errorCode: error.name.toUpperCase().slice(0, 80),
-            errorMessageSafe: "Source scan exhausted its durable retries.",
-            failedAt: now,
-          })
-          .onConflictDoNothing();
-        await tx
-          .update(scanRuns)
-          .set({ status: "failed", finishedAt: now, failureCount: 1, updatedAt: now })
-          .where(eq(scanRuns.idempotencyKey, idempotencyKey));
-        await tx
-          .update(careerSources)
-          .set({
-            lastAttemptAt: now,
-            lastErrorCode: error.name.toUpperCase().slice(0, 80),
-            updatedAt: now,
-          })
-          .where(and(eq(careerSources.userId, data.userId), eq(careerSources.id, data.sourceId)));
+      await recordSourceScanFailure({
+        userId: data.userId,
+        sourceId: data.sourceId,
+        idempotencyKey,
+        failureEventId: event.data.run_id,
+        originalEventId: event.data.event.id,
+        eventPayload: data,
+        error,
       });
     },
   },
@@ -188,9 +171,15 @@ export const sourceScan = inngest.createFunction(
       return activeSource;
     });
     const observedAt = new Date(data.scheduledFor);
-    const staged = await step.run("discover-and-stage", () =>
-      stageStoredSource(source, observedAt, started.sourceRunId),
-    );
+    const staged = await step.run("discover-and-stage", async () => {
+      try {
+        return await stageStoredSource(source, observedAt, started.sourceRunId);
+      } catch (error) {
+        if (error instanceof ConnectorError && !error.retryable)
+          throw new NonRetriableError(error.message, { cause: error });
+        throw error;
+      }
+    });
     const processed: Awaited<ReturnType<typeof processStagedListing>>[] = [];
     for (const observationId of staged.observationIds)
       processed.push(

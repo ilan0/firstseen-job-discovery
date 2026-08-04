@@ -4,6 +4,7 @@ import type {
   JobConnector,
   NormalizedListing,
 } from "@/connectors/types";
+import { ConnectorError } from "@/connectors/errors";
 
 export async function discoverAllPages(
   connector: JobConnector,
@@ -24,5 +25,9 @@ export async function discoverAllPages(
     cursor = page.nextCursor;
     if (!cursor) return { listings, nextCursor: null, etag, lastModified, notModified: false };
   }
-  throw new Error(`Connector pagination exceeded ${maxPages} pages`);
+  throw new ConnectorError(
+    "CONNECTOR_PAGINATION_LIMIT",
+    `The source exceeded the ${maxPages}-page safety limit.`,
+    false,
+  );
 }

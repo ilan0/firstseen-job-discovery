@@ -1,7 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { htmlToText } from "./normalize";
+import { htmlToText, requiredTenant } from "./normalize";
 
 describe("connector normalization", () => {
+  it("accepts a dotted public ATS tenant without accepting path syntax", () => {
+    const source = {
+      id: "source",
+      kind: "lever" as const,
+      companyName: "Jito",
+      baseUrl: "https://jobs.lever.co/jito.wtf",
+      tenantId: "jito.wtf",
+    };
+    expect(requiredTenant(source)).toBe("jito.wtf");
+    expect(() => requiredTenant({ ...source, tenantId: "../private" })).toThrow(
+      expect.objectContaining({ code: "INVALID_TENANT" }),
+    );
+  });
   it("turns ordinary HTML into readable text and drops executable content", () => {
     expect(
       htmlToText("<h2>Requirements</h2><script>ignore()</script><ul><li>Build APIs</li></ul>"),

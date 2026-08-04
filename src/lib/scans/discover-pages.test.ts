@@ -65,4 +65,17 @@ describe("connector pagination", () => {
     } satisfies JobConnector;
     expect((await discoverAllPages(connector, source)).notModified).toBe(true);
   });
+  it("fails safely instead of accepting an incomplete oversized source", async () => {
+    const connector = {
+      kind: "lever",
+      version: "test",
+      discover: async () => page(["a"], "next"),
+      verify: async () => ({ state: "uncertain" as const, evidence: "test" }),
+    } satisfies JobConnector;
+
+    await expect(discoverAllPages(connector, source, 2)).rejects.toMatchObject({
+      code: "CONNECTOR_PAGINATION_LIMIT",
+      retryable: false,
+    });
+  });
 });

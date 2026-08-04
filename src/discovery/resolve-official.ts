@@ -7,6 +7,14 @@ export type ResolvedOfficialSource = {
   officialUrl: string;
 };
 
+// These tenants publish jobs for many unrelated employers. Their ATS pages are
+// useful discovery signals, but they are not authoritative employer listings.
+const NON_EMPLOYER_ATS_TENANTS = new Set(["jobgether"]);
+
+function isAuthoritativeTenant(tenantId: string | null) {
+  return tenantId !== null && !NON_EMPLOYER_ATS_TENANTS.has(tenantId.toLowerCase());
+}
+
 export function resolveOfficialSource(value: string): ResolvedOfficialSource | null {
   let url: URL;
   try {
@@ -24,25 +32,27 @@ export function resolveOfficialSource(value: string): ResolvedOfficialSource | n
       jobsIndex >= 0
         ? (parts[jobsIndex + 1] ?? url.searchParams.get("gh_jid"))
         : url.searchParams.get("gh_jid");
-    return tenantId
+    return isAuthoritativeTenant(tenantId)
       ? { kind: "greenhouse", tenantId, externalId, officialUrl: url.toString() }
       : null;
   }
   if (["jobs.lever.co", "jobs.eu.lever.co"].includes(host)) {
-    return parts[0]
+    const tenantId = parts[0] ?? null;
+    return isAuthoritativeTenant(tenantId)
       ? {
           kind: "lever",
-          tenantId: parts[0],
+          tenantId,
           externalId: parts[1] ?? null,
           officialUrl: url.toString(),
         }
       : null;
   }
   if (host === "jobs.ashbyhq.com") {
-    return parts[0]
+    const tenantId = parts[0] ?? null;
+    return isAuthoritativeTenant(tenantId)
       ? {
           kind: "ashby",
-          tenantId: parts[0],
+          tenantId,
           externalId: parts[1] ?? null,
           officialUrl: url.toString(),
         }

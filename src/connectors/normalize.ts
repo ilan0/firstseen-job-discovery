@@ -28,7 +28,7 @@ export function htmlToText(html: string): string {
 
 export function requiredTenant(source: ConnectorSource): string {
   const tenant = source.tenantId?.trim();
-  if (!tenant || !/^[a-zA-Z0-9_-]+$/.test(tenant)) {
+  if (!tenant || !/^[a-zA-Z0-9](?:[a-zA-Z0-9._-]{0,98}[a-zA-Z0-9])?$/.test(tenant)) {
     throw new ConnectorError("INVALID_TENANT", "The source tenant identifier is invalid.", false);
   }
   return tenant;

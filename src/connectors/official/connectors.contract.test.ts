@@ -290,16 +290,29 @@ describe("Ashby connector contract", () => {
           applyUrl: "https://jobs.ashbyhq.com/example/remote/apply",
           compensation: { compensationTierSummary: "Tier A" },
         },
+        {
+          title: "Legacy workplace metadata",
+          location: "Miami, FL",
+          isRemote: null,
+          workplaceType: null,
+          descriptionPlain: "Build software.",
+          jobUrl: "https://jobs.ashbyhq.com/example/legacy",
+          applyUrl: "https://jobs.ashbyhq.com/example/legacy/apply",
+        },
       ],
     };
     const page = await new AshbyConnector(
       vi.fn<SafeGet>().mockResolvedValue(fixtureResponse(200, payload)),
     ).discover(source("ashby"));
-    expect(page.listings).toHaveLength(1);
+    expect(page.listings).toHaveLength(2);
     expect(page.listings[0]).toMatchObject({
       workplaceType: "Remote",
       salaryText: "Tier A",
       locations: [],
+    });
+    expect(page.listings[1]).toMatchObject({
+      workplaceType: null,
+      locations: ["Miami, FL"],
     });
   });
 

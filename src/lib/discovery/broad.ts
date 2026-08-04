@@ -101,10 +101,11 @@ async function registerCandidate(userId: string, candidate: DiscoveryCandidate) 
       })
       .onConflictDoUpdate({
         target: [companies.userId, companies.normalizedName],
-        set: { active: true, updatedAt: new Date() },
+        // User dismissal and automated safety quarantine are sticky.
+        set: { updatedAt: new Date() },
       })
       .returning();
-    if (!company) return null;
+    if (!company?.active) return null;
     const officialIndex =
       resolved.kind === "greenhouse"
         ? `https://boards.greenhouse.io/${resolved.tenantId}`
@@ -123,10 +124,10 @@ async function registerCandidate(userId: string, candidate: DiscoveryCandidate) 
       })
       .onConflictDoUpdate({
         target: [careerSources.userId, careerSources.normalizedUrl],
-        set: { active: true, updatedAt: new Date() },
+        set: { updatedAt: new Date() },
       })
       .returning();
-    if (!source) return null;
+    if (!source?.active) return null;
     await tx
       .insert(connectorRegistrations)
       .values({

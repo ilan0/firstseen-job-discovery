@@ -125,4 +125,8 @@ describe("official source resolution", () => {
   it("does not bless an arbitrary aggregator URL as official", () => {
     expect(resolveOfficialSource("https://example.com/listing/123")).toBeNull();
   });
+
+  it("rejects an aggregator ATS tenant that republishes unrelated employers", () => {
+    expect(resolveOfficialSource("https://jobs.lever.co/jobgether/republished-job")).toBeNull();
+  });
 });
