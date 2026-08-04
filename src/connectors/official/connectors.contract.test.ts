@@ -405,6 +405,68 @@ describe("JSON-LD connector contract", () => {
     });
   });
 
+  it.each([
+    "http://fixture.firstseen.test/jobs/unsafe",
+    "https://user:password@fixture.firstseen.test/jobs/unsafe",
+    "https://fixture.firstseen.test:8443/jobs/unsafe",
+    "https://%",
+  ])("keeps the fetched HTTPS page authoritative over unsafe structured URL %s", async (url) => {
+    const html = `<script type="application/ld+json">${JSON.stringify({
+      "@type": "JobPosting",
+      title: "Software Engineer",
+      description: "Full-time role.",
+      url,
+    })}</script>`;
+    const page = await new JsonLdConnector(
+      vi.fn<SafeGet>().mockResolvedValue(fixtureResponse(200, html)),
+    ).discover(source("custom_jsonld", ""));
+    expect(page.listings[0]?.officialUrl).toBe("https://fixture.firstseen.test/jobs");
+  });
+
+  it("accepts a same-host relative structured URL and ignores an invalid expiration", async () => {
+    const html = `<script type="application/ld+json">${JSON.stringify({
+      "@type": "JobPosting",
+      title: "Software Engineer",
+      description: "Full-time role.",
+      url: "/jobs/relative-1",
+      validThrough: "not-a-date",
+    })}</script>`;
+    const page = await new JsonLdConnector(
+      vi.fn<SafeGet>().mockResolvedValue(fixtureResponse(200, html)),
+    ).discover(source("custom_jsonld", ""));
+    expect(page.listings[0]).toMatchObject({
+      externalId: "relative-1",
+      officialUrl: "https://fixture.firstseen.test/jobs/relative-1",
+    });
+  });
+
+  it("excludes expired structured postings and verifies them as explicitly closed", async () => {
+    const html = `<script type="application/ld+json">${JSON.stringify({
+      "@type": "JobPosting",
+      title: "Software Engineer",
+      description: "Full-time role.",
+      identifier: "expired-1",
+      validThrough: "2000-01-01T00:00:00Z",
+    })}</script>`;
+    const connector = new JsonLdConnector(
+      vi.fn<SafeGet>().mockResolvedValue(fixtureResponse(200, html)),
+    );
+    await expect(connector.discover(source("custom_jsonld", ""))).resolves.toMatchObject({
+      listings: [],
+      notModified: false,
+    });
+    await expect(
+      connector.verify(
+        source("custom_jsonld", ""),
+        "https://example.com/jobs/expired-1",
+        "expired-1",
+      ),
+    ).resolves.toEqual({
+      state: "closed",
+      evidence: "Official JobPosting validThrough has expired.",
+    });
+  });
+
   it("requires the reviewed hiring organization when authority matching is enabled", async () => {
     const html = `<script type="application/ld+json">${JSON.stringify({
       "@type": "JobPosting",

@@ -33,7 +33,27 @@ export function deriveMonitoringPolicy(input: {
 }
 
 export function isActiveReferralStatus(status: string): boolean {
-  return status === "available" || status === "requested" || status === "submitted";
+  return (
+    status === "available" ||
+    status === "requested" ||
+    status === "agreed" ||
+    status === "submitted"
+  );
+}
+
+export function deriveGlobalMonitoringDemand(
+  demands: Array<{ tier: MonitoringTier; cadenceMinutes: number }>,
+): { tier: MonitoringTier; cadenceMinutes: number } {
+  const active = demands.filter((demand) => demand.tier !== "quarantined");
+  if (!active.length) return { tier: "cold", cadenceMinutes: monitoringCadenceMinutes.cold };
+  const tierOrder: MonitoringTier[] = ["priority", "standard", "warm", "cold"];
+  return {
+    tier: tierOrder.find((tier) => active.some((demand) => demand.tier === tier))!,
+    cadenceMinutes: Math.max(
+      monitoringCadenceMinutes.priority,
+      Math.min(...active.map((demand) => demand.cadenceMinutes)),
+    ),
+  };
 }
 
 export function isRecentViableRecommendation(input: {

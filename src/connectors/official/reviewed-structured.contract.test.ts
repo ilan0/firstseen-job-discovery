@@ -1,13 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { SafeGet, SafeResponse } from "../http";
 import type { ConnectorSource } from "../types";
 import { ReviewedFeedConnector } from "./reviewed-feed";
-import { ReviewedSitemapConnector, sitemapJobUrls } from "./reviewed-sitemap";
+import { ReviewedSitemapConnector, safeJobUrlPattern, sitemapJobUrls } from "./reviewed-sitemap";
 
-function response(url: string, body: string, contentType: string): SafeResponse {
+function response(url: string, body: string, contentType: string, status = 200): SafeResponse {
   const bytes = new TextEncoder().encode(body);
   return {
-    status: 200,
+    status,
     url,
     headers: new Headers({ "content-type": contentType, etag: '"fixture"' }),
     body: bytes,
@@ -17,6 +17,18 @@ function response(url: string, body: string, contentType: string): SafeResponse 
 }
 
 describe("reviewed structured employer connectors", () => {
+  it("rejects repeating or advanced sitemap expressions", () => {
+    expect(safeJobUrlPattern("^/jobs/")).toBeInstanceOf(RegExp);
+    expect(safeJobUrlPattern("(?:jobs|careers|positions|openings)")).toBeInstanceOf(RegExp);
+    expect(safeJobUrlPattern("(a+)+$")).toBeNull();
+    expect(safeJobUrlPattern("jobs?")).toBeNull();
+    expect(safeJobUrlPattern("[a-z]")).toBeNull();
+    expect(safeJobUrlPattern("(?=jobs)")).toBeNull();
+    expect(safeJobUrlPattern("(jobs)\\1")).toBeNull();
+    expect(safeJobUrlPattern("a".repeat(201))).toBeNull();
+    expect(safeJobUrlPattern("(")).toBeNull();
+  });
+
   it("parses same-host RSS jobs and rejects an unreviewed feed", async () => {
     const xml = `<?xml version="1.0"?><rss><channel><item>
       <guid>eng-1</guid><title>Software Engineer I</title>
@@ -54,6 +66,7 @@ describe("reviewed structured employer connectors", () => {
       <url><loc>https://careers.example.com/jobs/eng-1</loc></url>
       <url><loc>https://careers.example.com/about</loc></url>
       <url><loc>https://attacker.example/jobs/eng-2</loc></url>
+      <url><loc>not a URL</loc></url>
     </urlset>`;
     expect(sitemapJobUrls(sitemap, "https://careers.example.com/jobs.xml", /^\/jobs\//)).toEqual([
       "https://careers.example.com/jobs/eng-1",
@@ -86,5 +99,48 @@ describe("reviewed structured employer connectors", () => {
       title: "Junior Software Engineer",
       locations: ["Miami, FL"],
     });
+  });
+
+  it("fails closed on sitemap HTTP errors and reviewed URL-limit violations", async () => {
+    const source: ConnectorSource = {
+      id: "sitemap",
+      kind: "custom_sitemap",
+      companyName: "Example",
+      baseUrl: "https://careers.example.com/jobs.xml",
+      publicConfig: { reviewed: true, jobUrlPattern: "^/jobs/", maximumJobUrls: 1 },
+    };
+    await expect(
+      new ReviewedSitemapConnector(async () =>
+        response(source.baseUrl, "unavailable", "application/xml", 503),
+      ).discover(source),
+    ).rejects.toMatchObject({ code: "SITEMAP_HTTP_ERROR" });
+
+    const xml = `<?xml version="1.0"?><urlset>
+      <url><loc>https://careers.example.com/jobs/one</loc></url>
+      <url><loc>https://careers.example.com/jobs/two</loc></url>
+    </urlset>`;
+    await expect(
+      new ReviewedSitemapConnector(async () =>
+        response(source.baseUrl, xml, "application/xml"),
+      ).discover(source),
+    ).rejects.toMatchObject({ code: "SITEMAP_LIMIT_EXCEEDED" });
+  });
+
+  it("refuses sitemap verification outside the reviewed employer host", async () => {
+    const get = vi.fn<SafeGet>();
+    const connector = new ReviewedSitemapConnector(get);
+    await expect(
+      connector.verify(
+        {
+          id: "sitemap",
+          kind: "custom_sitemap",
+          companyName: "Example",
+          baseUrl: "https://careers.example.com/jobs.xml",
+          publicConfig: { reviewed: true, jobUrlPattern: "^/jobs/" },
+        },
+        "https://attacker.example/jobs/one",
+      ),
+    ).resolves.toMatchObject({ state: "uncertain" });
+    expect(get).not.toHaveBeenCalled();
   });
 });

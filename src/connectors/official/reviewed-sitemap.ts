@@ -20,6 +20,25 @@ const sitemapConfigSchema = z.object({
   maximumJobUrls: z.number().int().min(1).max(100).default(100),
 });
 
+export function safeJobUrlPattern(value: string): RegExp | null {
+  // Source policy needs only anchored paths, grouping, and alternation—not a
+  // general-purpose expression engine. Repetition, lookarounds,
+  // backreferences, and character classes can create pathological runtime.
+  const withoutNonCapturingGroups = value.replaceAll("(?:", "(");
+  if (
+    value.length > 200 ||
+    /[+*?{}\[\]]/.test(withoutNonCapturingGroups) ||
+    /\\[1-9]/.test(value) ||
+    /\(\?(?!:)/.test(value)
+  )
+    return null;
+  try {
+    return new RegExp(value, "i");
+  } catch {
+    return null;
+  }
+}
+
 export function sitemapJobUrls(xml: string, sitemapUrl: string, pattern: RegExp) {
   const sitemapHost = new URL(sitemapUrl).hostname.toLowerCase();
   const $ = load(xml, { xmlMode: true });
@@ -62,16 +81,13 @@ export class ReviewedSitemapConnector implements JobConnector {
         "The job sitemap has not completed source review.",
         false,
       );
-    let pattern: RegExp;
-    try {
-      pattern = new RegExp(config.data.jobUrlPattern, "i");
-    } catch {
+    const pattern = safeJobUrlPattern(config.data.jobUrlPattern);
+    if (!pattern)
       throw new ConnectorError(
         "INVALID_JOB_URL_PATTERN",
-        "The reviewed sitemap job URL pattern is invalid.",
+        "The reviewed sitemap job URL pattern is invalid or unsafe.",
         false,
       );
-    }
     const hostname = new URL(source.baseUrl).hostname.toLowerCase();
     const response = await this.get(source.baseUrl, {
       allowedHosts: [hostname],

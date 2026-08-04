@@ -79,6 +79,21 @@ describe("persisted company monitoring refresh", () => {
     });
   });
 
+  it("keeps an agreed referral company on priority cadence", async () => {
+    mocks.selectResponses.push([{ interested: false }], [watch()], [{ id: "agreed-referral" }], []);
+
+    await expect(refreshCompanyMonitoring(userId, companyId, now)).resolves.toMatchObject({
+      tier: "priority",
+      cadenceMinutes: 15,
+      active: true,
+    });
+    expect(mocks.saved[0]).toMatchObject({
+      monitoringTier: "priority",
+      cadenceMinutes: 15,
+      nextScanAt: now,
+    });
+  });
+
   it("warms a discovered company only for a recent viable eligible match", async () => {
     mocks.selectResponses.push(
       [{ interested: false }],

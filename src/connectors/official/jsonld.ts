@@ -31,7 +31,7 @@ const jobPostingSchema = z
     "@type": z.union([z.literal("JobPosting"), z.array(z.string())]),
     title: z.string(),
     description: z.string(),
-    url: z.string().url().optional(),
+    url: z.string().min(1).max(2_048).optional(),
     identifier: z
       .union([
         z.string(),
@@ -77,7 +77,7 @@ function locationName(location: z.infer<typeof jobLocationSchema>): string | nul
 function identifier(job: z.infer<typeof jobPostingSchema>, officialUrl: string): string | null {
   if (typeof job.identifier === "string") return job.identifier;
   if (job.identifier?.value !== undefined) return String(job.identifier.value);
-  return idFromUrl(job.url ?? officialUrl);
+  return idFromUrl(officialUrl);
 }
 
 function hiringOrganizationName(job: z.infer<typeof jobPostingSchema>) {
@@ -100,15 +100,31 @@ function organizationMatches(actual: string, expected: string) {
   );
 }
 
+function safeStructuredJobUrl(value: string, fetchedUrl: string): string | null {
+  try {
+    const url = new URL(value, fetchedUrl);
+    return url.protocol === "https:" &&
+      !url.username &&
+      !url.password &&
+      !url.port &&
+      url.hostname.toLowerCase() === new URL(fetchedUrl).hostname.toLowerCase()
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function validThroughExpired(listing: NormalizedListing, now = new Date()) {
+  const value = listing.rawMetadata.validThrough;
+  if (typeof value !== "string" || !value.trim()) return false;
+  const parsed = new Date(value);
+  return !Number.isNaN(parsed.getTime()) && parsed.getTime() <= now.getTime();
+}
+
 function normalize(job: z.infer<typeof jobPostingSchema>, fetchedUrl: string): NormalizedListing {
   let officialUrl = fetchedUrl;
-  if (job.url) {
-    try {
-      if (new URL(job.url).hostname === new URL(fetchedUrl).hostname) officialUrl = job.url;
-    } catch {
-      /* The fetched page remains authoritative. */
-    }
-  }
+  if (job.url) officialUrl = safeStructuredJobUrl(job.url, fetchedUrl) ?? fetchedUrl;
   const rawLocations = job.jobLocation
     ? Array.isArray(job.jobLocation)
       ? job.jobLocation
@@ -217,7 +233,12 @@ export class JsonLdConnector implements JobConnector {
         false,
       );
     }
-    return { listings, nextCursor: null, ...headers, notModified: false };
+    return {
+      listings: listings.filter((listing) => !validThroughExpired(listing)),
+      nextCursor: null,
+      ...headers,
+      notModified: false,
+    };
   }
 
   async verify(
@@ -253,11 +274,13 @@ export class JsonLdConnector implements JobConnector {
         candidate.officialUrl === officialUrl ||
         listings.length === 1,
     );
-    return listing
-      ? { state: "open", listing }
-      : {
-          state: "uncertain",
-          evidence: "The page loaded but valid matching JobPosting data was absent.",
-        };
+    return listing && validThroughExpired(listing)
+      ? { state: "closed", evidence: "Official JobPosting validThrough has expired." }
+      : listing
+        ? { state: "open", listing }
+        : {
+            state: "uncertain",
+            evidence: "The page loaded but valid matching JobPosting data was absent.",
+          };
   }
 }

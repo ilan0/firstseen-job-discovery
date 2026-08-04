@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -62,10 +63,12 @@ export const notificationPreferences = pgTable(
     ...timestamps,
   },
   (table) => [
-    uniqueIndex("notification_preferences_channel_org_unique").on(
-      table.channelId,
-      table.organizationId,
-    ),
+    uniqueIndex("notification_preferences_channel_global_unique")
+      .on(table.channelId)
+      .where(sql`${table.organizationId} is null`),
+    uniqueIndex("notification_preferences_channel_org_unique")
+      .on(table.channelId, table.organizationId)
+      .where(sql`${table.organizationId} is not null`),
   ],
 );
 

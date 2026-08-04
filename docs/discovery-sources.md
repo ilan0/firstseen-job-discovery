@@ -118,6 +118,13 @@ provisional official sources verify immediately; dismissed/unsafe/quarantined so
 Review-only, excluded, stale, or unrelated jobs cannot warm a source. Capacity may stop new Cold
 admission but never silently reduces Priority cadence.
 
+When multiple users or private overlays demand the same canonical source, the global scheduler uses
+the strictest active demand and still fetches the source only once. Interest, Follow, active referral
+(`available`, `requested`, `agreed`, or `submitted`), removal, and contact archival all recompute that
+demand. A promotion never postpones an already-due scan; removing the last watcher returns the
+verified catalog source to Cold rather than deleting it. Demand changes never reactivate a globally
+disabled or quarantined schedule.
+
 FirstSeen measures supported-connector contract recall and maintains a minimized independent
 benchmark using URL hashes, source family, eligibility labels, and observation times. It never
 claims a literal union of every board-exclusive posting. The 85% accepted-market recall target is a

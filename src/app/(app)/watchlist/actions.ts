@@ -4,6 +4,7 @@ import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { connectorVersions } from "@/connectors/versions";
+import { rolloutFlags } from "@/config/rollout";
 import { db } from "@/db/client";
 import {
   careerSources,
@@ -22,6 +23,7 @@ import {
 import { resolveOfficialSource } from "@/discovery/resolve-official";
 import { refreshCompanyMonitoring } from "@/lib/companies/monitoring";
 import { requireOwner } from "@/lib/auth/owner";
+import { refreshGlobalSourceDemand } from "@/lib/supply/demand";
 import { inngest } from "@/inngest/client";
 
 const addSchema = z.object({
@@ -73,7 +75,7 @@ export async function addWatchCompany(
         : resolved.kind === "custom_jsonld"
           ? { expectedOrganization: input.company, requireHiringOrganization: true }
           : {};
-  const sourceId = await db.transaction(async (tx) => {
+  const source = await db.transaction(async (tx) => {
     const now = new Date();
     const sourceIdentity = `${resolved.kind}:${resolved.tenantId ?? resolved.officialUrl}`;
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${sourceIdentity}))`);
@@ -81,6 +83,7 @@ export async function addWatchCompany(
       .select({
         id: globalCareerSources.id,
         organizationId: globalCareerSources.organizationId,
+        active: globalCareerSources.active,
       })
       .from(globalCareerSources)
       .where(
@@ -95,6 +98,8 @@ export async function addWatchCompany(
         ),
       )
       .limit(1);
+    if (existingGlobalSource && !existingGlobalSource.active)
+      throw new Error("This career source is quarantined and cannot be monitored.");
     const canonicalDomain = resolved.kind.startsWith("custom_")
       ? url.hostname.toLowerCase().replace(/^www\./, "")
       : null;
@@ -152,6 +157,7 @@ export async function addWatchCompany(
           .returning({
             id: globalCareerSources.id,
             organizationId: globalCareerSources.organizationId,
+            active: globalCareerSources.active,
           });
     if (!globalSource) throw new Error("Global career source could not be saved");
     await tx.execute(
@@ -306,7 +312,6 @@ export async function addWatchCompany(
           monitoringTier: input.interested || input.referralPerson ? "priority" : "standard",
           cadenceMinutes: input.interested || input.referralPerson ? 15 : 60,
           nextRunAt: new Date(),
-          active: true,
           updatedAt: new Date(),
         },
       });
@@ -372,16 +377,18 @@ export async function addWatchCompany(
           notes: input.notes || null,
         });
     }
-    return source.id;
+    return { id: source.id, globalSourceId: globalSource.id };
   });
-  try {
-    await inngest.send({
-      name: "firstseen/source.scan.requested",
-      data: { userId: owner.id, sourceId, scheduledFor: new Date().toISOString() },
-    });
-  } catch {
-    // The due watchlist remains durable and the scheduler will dispatch it within 15 minutes.
-  }
+  await refreshGlobalSourceDemand([source.globalSourceId]);
+  if (!rolloutFlags().globalSupply)
+    try {
+      await inngest.send({
+        name: "firstseen/source.scan.requested",
+        data: { userId: owner.id, sourceId: source.id, scheduledFor: new Date().toISOString() },
+      });
+    } catch {
+      // The due watchlist remains durable and the legacy scheduler will dispatch it.
+    }
   revalidatePath("/watchlist");
   return { success: `${input.company} is now monitored.` };
 }
@@ -468,7 +475,11 @@ export async function removeCompanyReferral(formData: FormData) {
 export async function removeWatchCompany(formData: FormData) {
   const owner = await requireOwner();
   const companyId = await ownedCompanyId(formData, owner.id);
-  await db.transaction(async (tx) => {
+  const globalSourceIds = await db.transaction(async (tx) => {
+    const linkedSources = await tx
+      .select({ id: careerSources.globalSourceId })
+      .from(careerSources)
+      .where(and(eq(careerSources.userId, owner.id), eq(careerSources.companyId, companyId)));
     await tx
       .update(watchlists)
       .set({ active: false, monitoringTier: "quarantined", updatedAt: new Date() })
@@ -481,6 +492,8 @@ export async function removeWatchCompany(formData: FormData) {
       .update(careerSources)
       .set({ active: false, updatedAt: new Date() })
       .where(and(eq(careerSources.userId, owner.id), eq(careerSources.companyId, companyId)));
+    return linkedSources.flatMap((source) => (source.id ? [source.id] : []));
   });
+  await refreshGlobalSourceDemand(globalSourceIds);
   revalidatePath("/watchlist");
 }

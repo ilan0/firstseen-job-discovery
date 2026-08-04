@@ -1,13 +1,13 @@
 "use server";
 
 import { TZDate } from "@date-fns/tz";
-import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/db/client";
 import {
-  companies,
   careerSources,
+  companies,
   contactCompanyLinks,
   contactInteractions,
   contactMethods,
@@ -310,7 +310,10 @@ export async function updateReferralStatus(formData: FormData) {
       updatedAt: now,
     })
     .where(and(eq(referralRequests.userId, owner.id), eq(referralRequests.id, input.requestId)))
-    .returning({ contactId: referralRequests.contactId });
+    .returning({
+      contactId: referralRequests.contactId,
+      organizationId: referralRequests.organizationId,
+    });
   if (!request) throw new Error("Referral request not found.");
   const contact = await ownedContact(owner.id, request.contactId);
   if (contact.legacyReferralId)
@@ -318,6 +321,15 @@ export async function updateReferralStatus(formData: FormData) {
       .update(referrals)
       .set({ status: input.status, updatedAt: now })
       .where(and(eq(referrals.userId, owner.id), eq(referrals.id, contact.legacyReferralId)));
+  const linkedCompanies = await db
+    .select({ id: companies.id })
+    .from(companies)
+    .where(
+      and(eq(companies.userId, owner.id), eq(companies.organizationId, request.organizationId)),
+    );
+  await Promise.all(
+    linkedCompanies.map((company) => refreshCompanyMonitoring(owner.id, company.id)),
+  );
   revalidatePath("/relationships");
   revalidatePath("/watchlist");
 }
@@ -326,9 +338,54 @@ export async function archiveContact(formData: FormData) {
   requireRelationshipCrm();
   const owner = await requireOwner();
   const id = idSchema.parse(formData.get("contactId"));
-  await db
-    .update(contacts)
-    .set({ active: false, updatedAt: new Date() })
-    .where(and(eq(contacts.userId, owner.id), eq(contacts.id, id)));
+  const now = new Date();
+  const affected = await db.transaction(async (tx) => {
+    const [contact] = await tx
+      .select({ legacyReferralId: contacts.legacyReferralId })
+      .from(contacts)
+      .where(and(eq(contacts.userId, owner.id), eq(contacts.id, id)))
+      .limit(1);
+    if (!contact) throw new Error("Contact not found.");
+    const links = await tx
+      .select({ organizationId: contactCompanyLinks.organizationId })
+      .from(contactCompanyLinks)
+      .where(and(eq(contactCompanyLinks.userId, owner.id), eq(contactCompanyLinks.contactId, id)));
+    await tx
+      .update(contacts)
+      .set({ active: false, updatedAt: now })
+      .where(and(eq(contacts.userId, owner.id), eq(contacts.id, id)));
+    await tx
+      .update(referralRequests)
+      .set({ status: "expired", updatedAt: now })
+      .where(
+        and(
+          eq(referralRequests.userId, owner.id),
+          eq(referralRequests.contactId, id),
+          inArray(referralRequests.status, ["available", "requested", "agreed", "submitted"]),
+        ),
+      );
+    if (contact.legacyReferralId)
+      await tx
+        .update(referrals)
+        .set({ status: "unknown", updatedAt: now })
+        .where(
+          and(
+            eq(referrals.userId, owner.id),
+            eq(referrals.id, contact.legacyReferralId),
+            inArray(referrals.status, ["available", "requested", "agreed", "submitted"]),
+          ),
+        );
+    return [...new Set(links.map((link) => link.organizationId))];
+  });
+  const linkedCompanies = affected.length
+    ? await db
+        .select({ id: companies.id })
+        .from(companies)
+        .where(and(eq(companies.userId, owner.id), inArray(companies.organizationId, affected)))
+    : [];
+  await Promise.all(
+    linkedCompanies.map((company) => refreshCompanyMonitoring(owner.id, company.id)),
+  );
   revalidatePath("/relationships");
+  revalidatePath("/watchlist");
 }

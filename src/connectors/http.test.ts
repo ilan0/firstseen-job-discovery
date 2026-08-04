@@ -9,6 +9,7 @@ afterEach(() => {
 
 describe("safe connector HTTP", () => {
   it.each([
+    ["::1", false],
     ["::ffff:127.0.0.1", false],
     ["::ffff:7f00:1", false],
     ["::ffff:8.8.8.8", true],

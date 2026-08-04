@@ -78,7 +78,7 @@ export function isPublicIp(address: string): boolean {
   // protocol-assignment space. Restrict IPv6 to global unicast (2000::/3),
   // then exclude the special-purpose ranges that sit inside that block.
   const [firstPart, secondPart] = normalized.split(":", 2);
-  const firstHextet = Number.parseInt(firstPart!, 16);
+  const firstHextet = Number.parseInt(firstPart || "0", 16);
   const secondHextet = Number.parseInt(secondPart || "0", 16);
   if (firstHextet < 0x2000 || firstHextet > 0x3fff) return false;
   return !(

@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   adaptiveColdCadenceMinutes,
+  deriveGlobalMonitoringDemand,
   deriveMonitoringPolicy,
   isActiveReferralStatus,
   isRecentViableRecommendation,
@@ -39,8 +40,27 @@ describe("company monitoring policy", () => {
   });
 
   it("uses only actionable referral statuses", () => {
-    expect(["available", "requested", "submitted"].every(isActiveReferralStatus)).toBe(true);
+    expect(["available", "requested", "agreed", "submitted"].every(isActiveReferralStatus)).toBe(
+      true,
+    );
     expect(["declined", "unknown"].some(isActiveReferralStatus)).toBe(false);
+  });
+
+  it("uses the strictest active watcher for shared source demand", () => {
+    expect(
+      deriveGlobalMonitoringDemand([
+        { tier: "cold", cadenceMinutes: 240 },
+        { tier: "warm", cadenceMinutes: 60 },
+        { tier: "priority", cadenceMinutes: 15 },
+      ]),
+    ).toEqual({ tier: "priority", cadenceMinutes: 15 });
+    expect(
+      deriveGlobalMonitoringDemand([
+        { tier: "quarantined", cadenceMinutes: 240 },
+        { tier: "standard", cadenceMinutes: 60 },
+      ]),
+    ).toEqual({ tier: "standard", cadenceMinutes: 60 });
+    expect(deriveGlobalMonitoringDemand([])).toEqual({ tier: "cold", cadenceMinutes: 240 });
   });
 
   it("warms only eligible recent Hot, Strong, or Possible roles", () => {
@@ -64,6 +84,9 @@ describe("company monitoring policy", () => {
   });
 
   it("adapts only the cold cadence when protected monitoring consumes capacity", () => {
+    expect(adaptiveColdCadenceMinutes({ protectedScansPerDay: 900, coldCompanyCount: 0 })).toBe(
+      240,
+    );
     expect(adaptiveColdCadenceMinutes({ protectedScansPerDay: 500, coldCompanyCount: 50 })).toBe(
       240,
     );

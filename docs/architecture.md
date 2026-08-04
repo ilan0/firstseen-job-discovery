@@ -104,6 +104,8 @@ database transaction.
 Priority demand sets source cadence without duplicate fetches. Priority sources run every 15
 minutes, Standard/Warm hourly, and Cold every four hours. Dismissal is sticky quarantine. Capacity
 forecasting may stop admitting new Cold sources but never silently slows Priority demand.
+The global schedule is derived from all active private watches after interest/referral/follow/remove
+mutations; the strictest watcher wins and an overdue source remains due.
 
 ## Authorization and trust boundaries
 

@@ -40,23 +40,14 @@ async function enforceMutationRateLimit(userId: string) {
 }
 
 async function webPushChannel(userId: string) {
-  const [existing] = await db
-    .select({ id: notificationChannels.id })
-    .from(notificationChannels)
-    .where(
-      and(
-        eq(notificationChannels.userId, userId),
-        eq(notificationChannels.kind, "web_push"),
-        eq(notificationChannels.label, "Browser push"),
-      ),
-    )
-    .limit(1);
-  const [channel] = existing
-    ? [existing]
-    : await db
-        .insert(notificationChannels)
-        .values({ userId, kind: "web_push", label: "Browser push", enabled: true })
-        .returning({ id: notificationChannels.id });
+  const [channel] = await db
+    .insert(notificationChannels)
+    .values({ userId, kind: "web_push", label: "Browser push", enabled: true })
+    .onConflictDoUpdate({
+      target: [notificationChannels.userId, notificationChannels.kind, notificationChannels.label],
+      set: { enabled: true, updatedAt: new Date() },
+    })
+    .returning({ id: notificationChannels.id });
   if (!channel) throw new Error("Push channel could not be configured.");
   const [preference] = await db
     .select({ id: notificationPreferences.id })
@@ -70,7 +61,10 @@ async function webPushChannel(userId: string) {
     )
     .limit(1);
   if (!preference)
-    await db.insert(notificationPreferences).values({ userId, channelId: channel.id });
+    await db
+      .insert(notificationPreferences)
+      .values({ userId, channelId: channel.id })
+      .onConflictDoNothing();
   return channel.id;
 }
 
@@ -118,15 +112,40 @@ export async function POST(request: Request) {
         updatedAt: new Date(),
       })
       .where(and(eq(pushSubscriptions.userId, owner.id), eq(pushSubscriptions.id, existing.id)));
-  else
-    await db.insert(pushSubscriptions).values({
-      userId: owner.id,
-      channelId,
-      endpointHash,
-      encryptedCapability,
-      expirationTime,
-      userAgentSafe: request.headers.get("user-agent")?.slice(0, 160) ?? null,
-    });
+  else {
+    const [inserted] = await db
+      .insert(pushSubscriptions)
+      .values({
+        userId: owner.id,
+        channelId,
+        endpointHash,
+        encryptedCapability,
+        expirationTime,
+        userAgentSafe: request.headers.get("user-agent")?.slice(0, 160) ?? null,
+      })
+      .onConflictDoNothing()
+      .returning({ id: pushSubscriptions.id });
+    if (!inserted) {
+      const [raced] = await db
+        .select({ id: pushSubscriptions.id, userId: pushSubscriptions.userId })
+        .from(pushSubscriptions)
+        .where(eq(pushSubscriptions.endpointHash, endpointHash))
+        .limit(1);
+      if (!raced || raced.userId !== owner.id) return untrusted();
+      await db
+        .update(pushSubscriptions)
+        .set({
+          channelId,
+          encryptedCapability,
+          expirationTime,
+          revokedAt: null,
+          failureCount: 0,
+          userAgentSafe: request.headers.get("user-agent")?.slice(0, 160) ?? null,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(pushSubscriptions.userId, owner.id), eq(pushSubscriptions.id, raced.id)));
+    }
+  }
   return NextResponse.json({ ok: true }, { status: existing ? 200 : 201 });
 }
 

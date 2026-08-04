@@ -7,24 +7,24 @@ physical-device work.
 
 ## Daily-Driver master-plan milestones
 
-|   # | Milestone                                       | Status           | Objective evidence or remaining gate                                                                                                                                       |
-| --: | ----------------------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-|   0 | Baseline/compliance containment                 | Complete locally | Brave result fields removed from persistence; Adzuna promotion disabled by provider policy; backup/token discrepancies documented                                          |
-|   1 | Policy, contracts, and benchmark foundation     | Complete locally | Versioned provider capabilities/licenses and minimized URL-hash coverage benchmarks implemented; no fabricated independent recall claim                                    |
-|   2 | Detection, redirects, authority, query overhaul | Complete locally | Twelve stable cohorts; DNS-pinned, per-hop SSRF-safe redirects; organization authority contracts; custom JSON-LD independently verified                                    |
-|   3 | Public ATS connectors                           | Complete locally | Greenhouse, Lever, Ashby, Recruitee, and Pinpoint contract and live bounded smoke checks pass                                                                              |
-|   4 | Reviewed structured/licensed sensor foundation  | Partial          | Reviewed JSON-LD/RSS/Atom/sitemap contracts implemented; licensed-vendor bakeoff awaits a user-authorized account/contract                                                 |
-|   5 | Shared supply and private overlays              | Complete locally | Additive global schema/backfill/dual write; fair scheduler/outbox; per-snapshot extraction and per-user ranking events; DB-driven profiles; SQL indexes tested             |
-|   6 | Relationship CRM                                | Complete locally | Contacts, methods, company links, interactions, reminders, referral requests, best-contact rules, migration compatibility, UI and RLS coverage                             |
-|   7 | Applications and packet                         | Complete locally | Sessions, private resume metadata/storage policy, packet, application/stage/follow-up records, return prompt and outcome analytics; Apply never marks Applied              |
-|   8 | Installable PWA                                 | Complete locally | Manifest/icons, narrow service worker, no private response caching, offline/update UI, install and lifecycle tests                                                         |
-|   9 | Channel orchestration and Web Push              | Complete locally | Encrypted per-device subscriptions, VAPID delivery, channel/device idempotency, privacy payload, retries and 404/410 cleanup; production/device rollout pending            |
-|  10 | Mobile detail and Simplify handoff              | Complete locally | Deep-link recovery, mobile action parity, referral/application packet context, Continue Later/Desktop behavior; physical extension/device checks pending                   |
-|  11 | Shared AI extraction and escalation             | Complete locally | Explicit Luna, strict evidence, selective capped Terra, current pricing, cost/budget ledgers and regression evaluator; 300-item human corpus remains a human-labeling gate |
-|  12 | Invite-only multi-user foundations              | Complete locally | Individual email route/onboarding and per-user runtime preferences implemented behind disabled flags; custom SMTP/public signup remain out of scope                        |
-|  13 | Integrated local certification                  | Complete         | From-zero migration/bootstrap, 311 tests, strengthened coverage floor, focused suites, zero-vulnerability audit, build, and retry-free four-viewport browser suite pass    |
-|  14 | Production rollout and seven-day soak           | Pending rollout  | Isolated backup restore passes; requires safe FirstSeen-only deployment, Web Push/iPhone acceptance, then seven consecutive scheduled days                                 |
-|  15 | Final evidence audit                            | Pending          | Runs after the soak; current documentation intentionally lists remaining blind spots                                                                                       |
+|   # | Milestone                                       | Status           | Objective evidence or remaining gate                                                                                                                                         |
+| --: | ----------------------------------------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|   0 | Baseline/compliance containment                 | Complete locally | Brave result fields removed from persistence; Adzuna promotion disabled by provider policy; backup/token discrepancies documented                                            |
+|   1 | Policy, contracts, and benchmark foundation     | Complete locally | Versioned provider capabilities/licenses and minimized URL-hash coverage benchmarks implemented; no fabricated independent recall claim                                      |
+|   2 | Detection, redirects, authority, query overhaul | Complete locally | Twelve stable cohorts; DNS-pinned, per-hop SSRF-safe redirects; organization authority contracts; custom JSON-LD independently verified                                      |
+|   3 | Public ATS connectors                           | Complete locally | Greenhouse, Lever, Ashby, Recruitee, and Pinpoint contract and live bounded smoke checks pass                                                                                |
+|   4 | Reviewed structured/licensed sensor foundation  | Partial          | Reviewed JSON-LD/RSS/Atom/sitemap contracts implemented; licensed-vendor bakeoff awaits a user-authorized account/contract                                                   |
+|   5 | Shared supply and private overlays              | Complete locally | Additive global schema/backfill/dual write; fair scheduler/outbox; strictest shared watcher cadence; per-snapshot extraction and per-user ranking events; DB-driven profiles |
+|   6 | Relationship CRM                                | Complete locally | Contacts, methods, company links, interactions, reminders, referral requests, best-contact rules, migration compatibility, UI and RLS coverage                               |
+|   7 | Applications and packet                         | Complete locally | Sessions, private resume metadata/storage policy, packet, application/stage/follow-up records, return prompt and outcome analytics; Apply never marks Applied                |
+|   8 | Installable PWA                                 | Complete locally | Manifest/icons, narrow service worker, no private response caching, offline/update UI, install and lifecycle tests                                                           |
+|   9 | Channel orchestration and Web Push              | Complete locally | Encrypted per-device subscriptions, VAPID delivery, channel/device idempotency, privacy payload, retries and 404/410 cleanup; production/device rollout pending              |
+|  10 | Mobile detail and Simplify handoff              | Complete locally | Deep-link recovery, mobile action parity, referral/application packet context, Continue Later/Desktop behavior; physical extension/device checks pending                     |
+|  11 | Shared AI extraction and escalation             | Complete locally | Explicit Luna, strict evidence, selective capped Terra, current pricing, cost/budget ledgers and regression evaluator; 300-item human corpus remains a human-labeling gate   |
+|  12 | Invite-only multi-user foundations              | Complete locally | Individual email route/onboarding and per-user runtime preferences implemented behind disabled flags; custom SMTP/public signup remain out of scope                          |
+|  13 | Integrated local certification                  | Complete         | From-zero migration/bootstrap, 376 tests, strengthened coverage floor, focused suites, zero-vulnerability audit, build, and retry-free four-viewport browser suite pass      |
+|  14 | Production rollout and seven-day soak           | Pending rollout  | Isolated backup restore passes; requires safe FirstSeen-only deployment, Web Push/iPhone acceptance, then seven consecutive scheduled days                                   |
+|  15 | Final evidence audit                            | Pending          | Runs after the soak; current documentation intentionally lists remaining blind spots                                                                                         |
 
 ## Freshness-first milestones
 
@@ -92,16 +92,27 @@ physical-device work.
     attempting immediate Inngest delivery. A five-minute dispatcher recovers a failed delivery, and
     snapshot-pinned legacy rematching keeps pre-rollout recommendations profile-driven without network
     refetches. Queue actions update legacy and global private state in the same database transaction.
+12. Shared source cadence is recomputed from every active watcher after interest, referral, follow,
+    removal, or CRM archival changes. An `agreed` referral is active demand. The strictest watcher
+    wins without duplicate source fetches, and an overdue scan is never postponed by promotion.
+    Demand refresh also preserves an operationally disabled schedule, so private actions cannot
+    reactivate a quarantined global source.
+13. Reviewed sitemap patterns reject repetition and advanced regular-expression features, structured
+    posting URLs cannot escape the exact verified HTTPS host, expired `validThrough` listings close
+    explicitly, and compressed IPv6 loopback addresses fail the public-address gate.
+14. Web Push channel/subscription creation is race-safe. Partial unique indexes enforce exactly one
+    global notification preference and one per-organization preference per channel, including the
+    otherwise-duplicate nullable global scope.
 
 ## Local release evidence
 
-- A clean `supabase db reset --local --no-seed` applied every migration through
-  `20260804162700_invite_only_account_access.sql`; `pnpm db:bootstrap` then created the local owner,
+- A clean `supabase db reset --local` applied every migration through
+  `20260804162800_notification_preference_integrity.sql`; `pnpm db:bootstrap` then created the local owner,
   database-backed candidate profile/preferences, and browser fixture from zero.
-- Formatting, zero-warning lint, strict types, all 311 tests in 49 files, coverage, focused
+- Formatting, zero-warning lint, strict types, all 376 tests in 63 files, coverage, focused
   connector/evaluation/worker/PWA/security/load suites, zero-vulnerability audit, and optimized
   build pass.
-- Coverage: 88.21% statements, 77.65% branches, 89.76% functions, and 89.63% lines. Configuration
+- Coverage: 87.90% statements, 77.55% branches, 89.47% functions, and 89.58% lines. Configuration
   now enforces at least the prior-release baseline (87.15/77.45/88.98/89.21) so future expansion
   cannot silently lower it.
 - Playwright: 17 passed and three intentional viewport-independent skips in approximately three

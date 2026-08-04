@@ -3,6 +3,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
 import {
   canonicalJobs,
+  careerSources,
   companies,
   eligibilityDecisions,
   queueStates,
@@ -15,6 +16,7 @@ import {
   isRecentViableRecommendation,
 } from "@/domain/companies/monitoring";
 import { freshness } from "@/domain/jobs";
+import { refreshGlobalSourceDemand } from "@/lib/supply/demand";
 
 export async function refreshCompanyMonitoring(
   userId: string,
@@ -41,7 +43,7 @@ export async function refreshCompanyMonitoring(
       and(
         eq(referrals.userId, userId),
         eq(referrals.companyId, companyId),
-        inArray(referrals.status, ["available", "requested", "submitted"]),
+        inArray(referrals.status, ["available", "requested", "agreed", "submitted"]),
       ),
     )
     .limit(1);
@@ -109,5 +111,19 @@ export async function refreshCompanyMonitoring(
       updatedAt: now,
     })
     .where(and(eq(watchlists.userId, userId), eq(watchlists.companyId, companyId)));
+  const globalSources = await db
+    .select({ id: careerSources.globalSourceId })
+    .from(careerSources)
+    .where(
+      and(
+        eq(careerSources.userId, userId),
+        eq(careerSources.companyId, companyId),
+        eq(careerSources.active, true),
+      ),
+    );
+  await refreshGlobalSourceDemand(
+    globalSources.flatMap((source) => (source.id ? [source.id] : [])),
+    now,
+  );
   return policy;
 }

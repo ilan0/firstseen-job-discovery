@@ -11,16 +11,16 @@ local Supabase PostgreSQL/Auth in Docker, Next.js 16.2.12, React 19.2.8, and Inn
 | Lint                    | `pnpm lint`                                  | Pass; zero warnings                                                |
 | Strict TypeScript       | `pnpm typecheck`                             | Pass                                                               |
 | Unit/component/contract | `pnpm test`                                  | Pass                                                               |
-| PostgreSQL/Auth/RLS     | `RUN_DATABASE_TESTS=true pnpm test`          | 311 passed in 49 files                                             |
-| Coverage                | `RUN_DATABASE_TESTS=true pnpm test:coverage` | 88.21% statements, 77.65% branches, 89.76% functions, 89.63% lines |
+| PostgreSQL/Auth/RLS     | `RUN_DATABASE_TESTS=true pnpm test`          | 376 passed in 63 files                                             |
+| Coverage                | `RUN_DATABASE_TESTS=true pnpm test:coverage` | 87.90% statements, 77.55% branches, 89.47% functions, 89.58% lines |
 | Dependency security     | `pnpm audit --audit-level=low`               | Pass; zero known vulnerabilities                                   |
 | Production compile      | `pnpm build`                                 | Pass; 20 routes plus Proxy                                         |
 | Real browser/Axe        | `pnpm test:e2e`                              | 17 passed, 3 intentional skips; retries disabled                   |
 
 Coverage enforces at least the prior-release baseline: 87.15% statements, 77.45% branches, 88.98%
 functions, and 89.21% lines. New AI escalation, global supply, CRM, application, Web Push, PWA,
-discovery-security, and scheduler paths are included. Focused commands also passed: 73 connector
-tests, 84 AI/eligibility tests, nine worker tests, three PWA tests, 15 security tests, and two load
+discovery-security, and scheduler paths are included. Focused commands also passed: 91 connector
+tests, 84 AI/eligibility tests, 43 worker/database tests, three PWA tests, 30 security tests, and two load
 tests.
 
 ## Risk coverage
@@ -43,9 +43,12 @@ tests.
 - Four-digit sign-in failure/success/sign-out, durable throttling, owner authorization, anon and
   cross-user RLS denial, CSRF/input validation, export, settings, and queue persistence after reload.
 - Shared global source fetch/fan-out, oldest-due scheduling, candidate-neutral extraction reuse,
-  private overlays, contact/referral recommendations, application sessions/stages/follow-ups,
+  strictest-watcher cadence propagation, private overlays, contact/referral recommendations,
+  application sessions/stages/follow-ups,
   private resume policy, encrypted push subscriptions, channel/device deduplication, and service
   worker lifecycle/privacy.
+- Structured-source URL authority, `validThrough` closure, bounded sitemap patterns, compressed IPv6
+  loopback rejection, nullable notification-preference uniqueness, and concurrent push registration.
 
 ## Browser matrix
 

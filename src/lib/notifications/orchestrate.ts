@@ -168,7 +168,7 @@ export async function deliverMorningDigest(userId: string, now = new Date()) {
     .where(
       and(
         eq(referrals.userId, userId),
-        inArray(referrals.status, ["available", "requested", "submitted"]),
+        inArray(referrals.status, ["available", "requested", "agreed", "submitted"]),
       ),
     );
   const referred = new Set(referralRows.map((row) => row.companyId));
