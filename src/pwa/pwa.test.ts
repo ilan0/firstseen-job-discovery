@@ -31,6 +31,8 @@ describe("PWA static contract", () => {
     expect(worker).not.toMatch(/cache\.match\s*\(event\.request/);
     expect(worker).toContain('event.request.mode !== "navigate"');
     expect(worker).not.toContain("self.clients.claim()");
+    expect(worker).toContain('key.startsWith("firstseen-static-")');
+    expect(worker).not.toMatch(/keys\.filter\(\(key\) => key !== CACHE_VERSION/);
   });
 
   it("validates notification click paths as same-origin relative paths", () => {

@@ -6,6 +6,7 @@ import { notificationReads, notifications } from "@/db/schema";
 import { currentOwner } from "@/lib/auth/owner";
 import { serverEnv } from "@/lib/env/server";
 import { hasTrustedMutationOrigin } from "@/lib/security/request-origin";
+import { consumeRateLimit } from "@/lib/security/rate-limit";
 import { rolloutFlags } from "@/config/rollout";
 
 const bodySchema = z.object({ notificationId: z.string().uuid() });
@@ -16,6 +17,18 @@ export async function POST(request: Request) {
   if (!owner) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!hasTrustedMutationOrigin(request, serverEnv().NEXT_PUBLIC_APP_URL))
     return NextResponse.json({ error: "Untrusted request origin" }, { status: 403 });
+  const limit = await consumeRateLimit({
+    namespace: "notification_read_mutation",
+    identifier: owner.id,
+    maximum: 120,
+    windowMinutes: 10,
+    blockMinutes: 10,
+  });
+  if (!limit.allowed)
+    return NextResponse.json(
+      { error: "Too many notification updates" },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
+    );
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid notification" }, { status: 400 });
   const [notification] = await db

@@ -11,6 +11,7 @@ import {
   pushEndpointHash,
 } from "@/lib/notifications/push-capability";
 import { encryptCapability } from "@/lib/security/encrypted-capability";
+import { consumeRateLimit } from "@/lib/security/rate-limit";
 import { hasTrustedMutationOrigin } from "@/lib/security/request-origin";
 import { rolloutFlags } from "@/config/rollout";
 
@@ -20,6 +21,22 @@ function unauthorized() {
 
 function untrusted() {
   return NextResponse.json({ error: "Untrusted request origin" }, { status: 403 });
+}
+
+async function enforceMutationRateLimit(userId: string) {
+  const limit = await consumeRateLimit({
+    namespace: "push_subscription_mutation",
+    identifier: userId,
+    maximum: 30,
+    windowMinutes: 10,
+    blockMinutes: 10,
+  });
+  return limit.allowed
+    ? null
+    : NextResponse.json(
+        { error: "Too many push-setting changes" },
+        { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
+      );
 }
 
 async function webPushChannel(userId: string) {
@@ -63,6 +80,8 @@ export async function POST(request: Request) {
   if (!owner) return unauthorized();
   const env = serverEnv();
   if (!hasTrustedMutationOrigin(request, env.NEXT_PUBLIC_APP_URL)) return untrusted();
+  const limited = await enforceMutationRateLimit(owner.id);
+  if (limited) return limited;
   if (!env.PUSH_SUBSCRIPTION_ENCRYPTION_KEY)
     return NextResponse.json({ error: "Push is not configured" }, { status: 503 });
   const parsed = pushCapabilitySchema.safeParse(await request.json().catch(() => null));
@@ -119,6 +138,8 @@ export async function DELETE(request: Request) {
   if (!owner) return unauthorized();
   const env = serverEnv();
   if (!hasTrustedMutationOrigin(request, env.NEXT_PUBLIC_APP_URL)) return untrusted();
+  const limited = await enforceMutationRateLimit(owner.id);
+  if (limited) return limited;
   const parsed = deleteSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid endpoint" }, { status: 400 });
   const endpointHash = pushEndpointHash(parsed.data.endpoint);
@@ -139,6 +160,8 @@ export async function PATCH(request: Request) {
   if (!owner) return unauthorized();
   const env = serverEnv();
   if (!hasTrustedMutationOrigin(request, env.NEXT_PUBLIC_APP_URL)) return untrusted();
+  const limited = await enforceMutationRateLimit(owner.id);
+  if (limited) return limited;
   const parsed = preferenceSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid preference" }, { status: 400 });
   const [channel] = await db

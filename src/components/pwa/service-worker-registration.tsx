@@ -25,18 +25,27 @@ export function ServiceWorkerRegistration({ enabled }: { enabled: boolean }) {
     if (!("serviceWorker" in navigator)) return;
     if (!enabled) {
       void Promise.all([
-        navigator.serviceWorker
-          .getRegistrations()
-          .then((registrations) => Promise.all(registrations.map((item) => item.unregister()))),
-        caches
-          .keys()
-          .then((names) =>
-            Promise.all(
-              names
-                .filter((name) => name.startsWith("firstseen-static-"))
-                .map((name) => caches.delete(name)),
-            ),
+        navigator.serviceWorker.getRegistrations().then((registrations) =>
+          Promise.all(
+            registrations
+              .filter((item) => {
+                const worker = item.active ?? item.waiting ?? item.installing;
+                return worker ? new URL(worker.scriptURL).pathname === "/sw.js" : false;
+              })
+              .map((item) => item.unregister()),
           ),
+        ),
+        "caches" in window
+          ? caches
+              .keys()
+              .then((names) =>
+                Promise.all(
+                  names
+                    .filter((name) => name.startsWith("firstseen-static-"))
+                    .map((name) => caches.delete(name)),
+                ),
+              )
+          : Promise.resolve([]),
       ]);
       return;
     }

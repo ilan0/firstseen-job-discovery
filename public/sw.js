@@ -26,7 +26,11 @@ self.addEventListener("activate", (event) => {
     caches
       .keys()
       .then((keys) =>
-        Promise.all(keys.filter((key) => key !== CACHE_VERSION).map((key) => caches.delete(key))),
+        Promise.all(
+          keys
+            .filter((key) => key.startsWith("firstseen-static-") && key !== CACHE_VERSION)
+            .map((key) => caches.delete(key)),
+        ),
       ),
   );
 });
