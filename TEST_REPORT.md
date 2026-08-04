@@ -64,12 +64,22 @@ fixing the root cause, the same durable run resumed and succeeded with six disco
 changed/analyzed, zero failures, and no exceptional duplicate alert. A database regression test also
 caught and fixed the same class of raw SQL timestamp binding in security throttling.
 
-## Remaining production validation
+## Production validation
 
-No production web-deployment claim is made yet. Dedicated Supabase and GitHub provisioning are
-complete; Vercel deployment remains externally blocked as recorded in `PLAN.md`. Once that account
-is remediated, the release still requires cloud
-migrations/RLS verification, encrypted environment review, Inngest sync, authenticated production
-browser/provider/Slack checks, telemetry/database inspection, backup and rollback rehearsal, and a
-24-hour scheduled-scan/digest soak. These results must be appended rather than inferred from local
-success.
+The private Vercel production deployment is live at `https://firstseen-job-discovery.vercel.app`.
+After replacing the direct IPv6 Supabase host with the verified transaction pooler, owner sign-in and
+the protected Matches, Watchlist, Health, and Settings routes succeeded with no browser warnings or
+errors. Vercel runtime telemetry shows HTTP 200 for those routes.
+
+The cloud database contains 33 public tables with RLS enabled on all 33, exactly one Auth owner,
+profile, and preference record, and zero unresolved dead letters. The production Inngest endpoint
+registered successfully by PUT and accepted a subsequent signed callback by POST, both HTTP 200.
+The expected 401 from one deliberately unsigned diagnostic GET is not a worker failure. A Free-tier
+logical-backup check produced non-empty mode-600 roles, schema, and data artifacts; the temporary
+plaintext artifacts were permanently removed.
+
+Time-based validation remains in progress. A full release-soak claim requires 24 hours of scheduled
+execution plus evidence for broad discovery, notification scheduling, retention, and the 08:00
+America/New_York digest. These results will be appended rather than inferred from registration or
+local success. The previously exposed Vercel token also remains a required provider-side revocation,
+although it was not used for deployment.

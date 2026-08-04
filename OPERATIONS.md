@@ -147,7 +147,8 @@ This command sends a real Slack message. Never print or inspect the webhook valu
 - Optional Sentry events delete request context and redact exception messages; keep default PII
   disabled. Use provider-side retention and access controls.
 
-The previously exposed Vercel token is not safe to use and must be revoked before deployment.
+The previously exposed Vercel token was not used for deployment. It is not safe to use and must be
+revoked in Vercel, then removed or replaced in the ignored consolidated secrets file.
 
 ## Retention, export, deletion, and backup
 
@@ -158,9 +159,26 @@ The previously exposed Vercel token is not safe to use and must be revoked befor
   store it encrypted if retained.
 - Account deletion requires the exact confirmation phrase, independently authorizes the owner, and
   cascades user-owned rows/Auth identity. It is destructive and not recoverable without backup.
-- Use Supabase Pro daily backups for production. A Free project has no managed backup guarantee;
-  an authenticated logical dump procedure must be verified and added here before operating
-  production on Free.
+- Use Supabase Pro daily backups when managed point-in-time recovery is required. A Free project has
+  no managed backup guarantee. The following logical-dump sequence was verified against the
+  dedicated production database; run it only to a mode-700 directory on an encrypted volume, never
+  inside the repository, and protect every output as mode 600:
+
+```bash
+source /Users/ilannabatkhorian/.nvm/nvm.sh
+nvm use 22
+set -a
+source /Users/ilannabatkhorian/Documents/Codex/personal-api-secrets.env
+set +a
+umask 077
+npx --yes supabase@latest db dump --db-url "$DATABASE_URL" --role-only --file "$FIRSTSEEN_BACKUP_DIR/roles.sql"
+npx --yes supabase@latest db dump --db-url "$DATABASE_URL" --file "$FIRSTSEEN_BACKUP_DIR/schema.sql"
+npx --yes supabase@latest db dump --db-url "$DATABASE_URL" --data-only --use-copy --file "$FIRSTSEEN_BACKUP_DIR/data.sql"
+```
+
+Confirm all three files are non-empty, encrypt the backup as one set, test restoration in an
+isolated project before relying on it, and enforce an owner-defined retention policy. The initial
+verification artifacts were permanently deleted rather than retained as plaintext.
 
 ## Release and rollback gate
 

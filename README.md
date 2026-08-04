@@ -100,9 +100,11 @@ failure recovery.
   candidates. Sentry is optional; Vercel, Inngest, and database diagnostics remain available if it
   is disabled.
 
-The dedicated production Supabase project and private GitHub history are provisioned. Web
-deployment is gated only by the external Vercel credential item recorded in `PLAN.md`; unrelated
-existing projects are deliberately not reused.
+The private production portal is live at
+[firstseen-job-discovery.vercel.app](https://firstseen-job-discovery.vercel.app). It uses the
+dedicated FirstSeen Supabase project, a unique Inngest app, and the private GitHub repository;
+unrelated existing projects are deliberately not reused. See `PLAN.md` for current soak evidence and
+release follow-up.
 
 ## Configuration
 
