@@ -22,6 +22,8 @@ try {
       private_tables_without_rls: string;
       global_raw_browser_read: boolean;
       global_outbox_browser_read: boolean;
+      duplicate_user_organizations: string;
+      identity_indexes_present: boolean;
       latest_migration_present: boolean;
     }>
   >`
@@ -50,9 +52,28 @@ try {
       has_table_privilege('authenticated', 'public.global_outbox_events', 'select')
         or has_table_privilege('anon', 'public.global_outbox_events', 'select')
         as global_outbox_browser_read,
+      (
+        select count(*)::text
+        from (
+          select user_id, organization_id
+          from public.companies
+          where organization_id is not null
+          group by user_id, organization_id
+          having count(*) > 1
+        ) duplicates
+      ) as duplicate_user_organizations,
+      (
+        select count(*) = 2
+        from pg_indexes
+        where schemaname = 'public'
+          and indexname = any(array[
+            'companies_user_organization_unique',
+            'companies_user_legacy_name_unique'
+          ])
+      ) as identity_indexes_present,
       exists(
         select 1 from supabase_migrations.schema_migrations
-        where version = '20260804162400'
+        where version = '20260804162500'
       ) as latest_migration_present
   `;
 
@@ -62,6 +83,8 @@ try {
         result?.private_tables_without_rls === "0" &&
         result.global_raw_browser_read === false &&
         result.global_outbox_browser_read === false &&
+        result.duplicate_user_organizations === "0" &&
+        result.identity_indexes_present &&
         result.latest_migration_present,
       target: "dedicated-firstseen",
       ...result,
