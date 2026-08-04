@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { connectorVersions } from "@/connectors/versions";
@@ -15,6 +15,7 @@ import {
 } from "@/db/schema";
 import { resolveOfficialSource } from "@/discovery/resolve-official";
 import { requireOwner } from "@/lib/auth/owner";
+import { inngest } from "@/inngest/client";
 
 const addSchema = z.object({
   company: z.string().trim().min(2).max(160),
@@ -50,7 +51,7 @@ export async function addWatchCompany(
       error:
         "This URL is not a recognized official ATS or careers page. Use an official Greenhouse, Lever, Ashby, or structured employer careers URL.",
     };
-  await db.transaction(async (tx) => {
+  const sourceId = await db.transaction(async (tx) => {
     const [company] = await tx
       .insert(companies)
       .values({
@@ -65,6 +66,7 @@ export async function addWatchCompany(
         target: [companies.userId, companies.normalizedName],
         set: {
           name: input.company,
+          origin: input.referralPerson ? "referral" : "manual",
           priority: input.priority,
           notes: input.notes || null,
           active: true,
@@ -90,6 +92,12 @@ export async function addWatchCompany(
       })
       .returning();
     if (!source) throw new Error("Career source could not be saved");
+    await tx
+      .update(careerSources)
+      .set({ active: false, updatedAt: new Date() })
+      .where(
+        and(eq(careerSources.companyId, company.id), sql`${careerSources.id} <> ${source.id}`),
+      );
     await tx
       .insert(connectorRegistrations)
       .values({
@@ -138,14 +146,41 @@ export async function addWatchCompany(
         target: [sourcePolicyReviews.userId, sourcePolicyReviews.hostname],
         set: { careerSourceId: source.id, reviewedAt: new Date(), updatedAt: new Date() },
       });
-    if (input.referralPerson)
-      await tx.insert(referrals).values({
-        userId: owner.id,
-        companyId: company.id,
-        personName: input.referralPerson,
-        notes: input.notes || null,
-      });
+    if (input.referralPerson) {
+      const [existingReferral] = await tx
+        .select({ id: referrals.id })
+        .from(referrals)
+        .where(
+          and(
+            eq(referrals.userId, owner.id),
+            eq(referrals.companyId, company.id),
+            sql`lower(${referrals.personName}) = lower(${input.referralPerson})`,
+          ),
+        )
+        .limit(1);
+      if (existingReferral)
+        await tx
+          .update(referrals)
+          .set({ notes: input.notes || null, updatedAt: new Date() })
+          .where(eq(referrals.id, existingReferral.id));
+      else
+        await tx.insert(referrals).values({
+          userId: owner.id,
+          companyId: company.id,
+          personName: input.referralPerson,
+          notes: input.notes || null,
+        });
+    }
+    return source.id;
   });
+  try {
+    await inngest.send({
+      name: "firstseen/source.scan.requested",
+      data: { userId: owner.id, sourceId, scheduledFor: new Date().toISOString() },
+    });
+  } catch {
+    // The due watchlist remains durable and the scheduler will dispatch it within 15 minutes.
+  }
   revalidatePath("/watchlist");
   return { success: `${input.company} is now monitored.` };
 }
@@ -163,6 +198,10 @@ export async function removeWatchCompany(formData: FormData) {
       .update(companies)
       .set({ active: false, updatedAt: new Date() })
       .where(and(eq(companies.userId, owner.id), eq(companies.id, companyId)));
+    await tx
+      .update(careerSources)
+      .set({ active: false, updatedAt: new Date() })
+      .where(and(eq(careerSources.userId, owner.id), eq(careerSources.companyId, companyId)));
   });
   revalidatePath("/watchlist");
 }

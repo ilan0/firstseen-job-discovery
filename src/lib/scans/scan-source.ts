@@ -11,10 +11,14 @@ import {
   careerSources,
   companies,
   connectorRegistrations,
+  eligibilityDecisions,
   rawObservations,
+  recommendations,
   referrals,
 } from "@/db/schema";
+import { ELIGIBILITY_RULE_VERSION } from "@/domain/eligibility";
 import { materialHash, normalizeOfficialUrl, transitionLifecycle } from "@/domain/jobs";
+import { RANKING_VERSION } from "@/domain/ranking";
 import { analyzeAndRankListing } from "@/lib/jobs/analyze-and-rank";
 import { ingestListing } from "@/lib/jobs/ingest";
 import { discoverAllPages } from "./discover-pages";
@@ -148,10 +152,21 @@ export async function stageStoredSource(
   const existing = normalizedUrls.length
     ? await db
         .select({
+          jobId: canonicalJobs.id,
           normalizedUrl: canonicalJobs.normalizedOfficialUrl,
           materialHash: canonicalJobs.currentMaterialHash,
+          ruleVersion: eligibilityDecisions.ruleVersion,
+          rankingVersion: recommendations.rankingVersion,
         })
         .from(canonicalJobs)
+        .leftJoin(
+          recommendations,
+          and(eq(recommendations.jobId, canonicalJobs.id), eq(recommendations.active, true)),
+        )
+        .leftJoin(
+          eligibilityDecisions,
+          eq(recommendations.eligibilityDecisionId, eligibilityDecisions.id),
+        )
         .where(
           and(
             eq(canonicalJobs.userId, source.userId),
@@ -160,9 +175,19 @@ export async function stageStoredSource(
         )
     : [];
   const existingHashes = new Map(existing.map((job) => [job.normalizedUrl, job.materialHash]));
+  const processingIsCurrent = new Set(
+    existing
+      .filter(
+        (job) =>
+          job.ruleVersion === ELIGIBILITY_RULE_VERSION && job.rankingVersion === RANKING_VERSION,
+      )
+      .map((job) => job.normalizedUrl),
+  );
   const stagedRows = page.listings.map((listing) => {
+    const normalizedUrl = normalizeOfficialUrl(listing.officialUrl);
     const unchanged =
-      existingHashes.get(normalizeOfficialUrl(listing.officialUrl)) === materialHash(listing);
+      existingHashes.get(normalizedUrl) === materialHash(listing) &&
+      processingIsCurrent.has(normalizedUrl);
     return {
       userId: source.userId,
       scanSourceRunId: scanSourceRunId ?? null,

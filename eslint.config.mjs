@@ -9,6 +9,7 @@ export default defineConfig([
     ".next/**",
     "coverage/**",
     "playwright-report/**",
+    "tmp/**",
     "supabase/.temp/**",
     "test-results/**",
   ]),

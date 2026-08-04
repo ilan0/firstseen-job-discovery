@@ -6,7 +6,7 @@ import type {
   Recommendation,
 } from "./types";
 
-export const RANKING_VERSION = "2026-08-03.1";
+export const RANKING_VERSION = "2026-08-03.2";
 
 function clamp(value: number): number {
   return Math.max(0, Math.min(100, Math.round(value)));
@@ -57,9 +57,9 @@ function experienceDimension(input: RankingInput): RankingDimensionResult {
   if (!required.length) {
     return dimension(
       "required_experience_alignment",
-      82,
+      70,
       60,
-      "No minimum years requirement was found; this favors an early-career application.",
+      "No explicit minimum-years requirement was found; experience fit is treated as neutral.",
     );
   }
   const minimum = Math.max(...required.map((item) => item.minimumYears));

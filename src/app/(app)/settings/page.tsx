@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import Link from "next/link";
 import { deleteAccount, updateNotifications } from "./actions";
 import { ConfirmSubmit } from "@/components/forms/confirm-submit";
+import { SubmitButton } from "@/components/forms/submit-button";
 import { db } from "@/db/client";
 import { candidateProfiles, searchPreferences } from "@/db/schema";
 import { requireOwner } from "@/lib/auth/owner";
@@ -95,12 +96,13 @@ export default async function SettingsPage({
             </select>
           </label>
         </div>
-        <button
+        <SubmitButton
           className="mt-5 min-h-11 rounded-xl bg-[var(--green)] px-5 text-sm font-black text-white"
+          pendingLabel="Saving…"
           type="submit"
         >
           Save notification settings
-        </button>
+        </SubmitButton>
       </form>
       <section className="mt-6 rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-6">
         <h2 className="text-lg font-black">Your data</h2>

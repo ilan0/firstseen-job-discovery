@@ -104,6 +104,7 @@ export class LeverConnector implements JobConnector {
       `https://${api}/v0/postings/${tenant}?mode=json&skip=${skip}&limit=${limit}`,
       {
         allowedHosts: allowed,
+        maximumBytes: 5_000_000,
         headers: conditionalHeaders(source),
         ...(context.signal ? { signal: context.signal } : {}),
       },

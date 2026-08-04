@@ -80,6 +80,7 @@ export class AshbyConnector implements JobConnector {
       `https://api.ashbyhq.com/posting-api/job-board/${tenant}?includeCompensation=true`,
       {
         allowedHosts: ["api.ashbyhq.com"],
+        maximumBytes: 5_000_000,
         headers: conditionalHeaders(source),
         ...(context.signal ? { signal: context.signal } : {}),
       },

@@ -22,6 +22,7 @@
     "db:seed": "tsx scripts/seed.ts",
     "db:fixture": "NODE_OPTIONS=--conditions=react-server tsx scripts/seed-browser-fixture.ts",
     "db:owner": "tsx scripts/create-local-owner.ts",
+    "db:bootstrap": "pnpm db:migrate && pnpm db:owner && pnpm db:seed && pnpm db:fixture",
     "env:local": "tsx scripts/configure-local-env.ts",
     "smoke:openai": "tsx scripts/smoke-openai.ts",
     "smoke:connectors": "tsx scripts/smoke-connectors.ts",

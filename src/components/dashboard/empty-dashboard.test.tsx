@@ -10,5 +10,13 @@ describe("EmptyDashboard", () => {
       screen.getByRole("heading", { name: "Good jobs, while they are still fresh." }),
     ).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Add companies" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Add a priority company" })).toHaveAttribute(
+      "href",
+      "/watchlist",
+    );
+    expect(screen.getByRole("link", { name: "Check discovery health" })).toHaveAttribute(
+      "href",
+      "/operations",
+    );
   });
 });

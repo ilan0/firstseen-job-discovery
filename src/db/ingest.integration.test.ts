@@ -104,6 +104,10 @@ describe.runIf(enabled)("canonical ingestion persistence", () => {
       { ...context, observedAt: new Date("2026-08-03T16:00:00Z") },
       {
         ...listing,
+        title: "Software Engineer, Platform",
+        employmentType: "Contract",
+        requisitionId: "REQ-UPDATED",
+        postedAt: "2026-08-04T12:00:00Z",
         officialUrl: "https://jobs.lever.co/integration/alternate-url",
         applyUrl: "https://jobs.lever.co/integration/alternate-url",
         descriptionText: `${listing.descriptionText} TypeScript required.`,
@@ -111,11 +115,23 @@ describe.runIf(enabled)("canonical ingestion persistence", () => {
     );
     expect(duplicate.jobId).toBe(first.jobId);
     const jobs = await admin.from("canonical_jobs").select("id").eq("user_id", user.id);
+    const canonical = await admin
+      .from("canonical_jobs")
+      .select("title,employment_type,requisition_id,posted_at,official_url")
+      .eq("id", first.jobId)
+      .single();
     const snapshots = await admin
       .from("job_description_snapshots")
       .select("id")
       .eq("user_id", user.id);
     expect(jobs.data).toHaveLength(1);
     expect(snapshots.data).toHaveLength(3);
+    expect(canonical.data).toMatchObject({
+      title: "Software Engineer, Platform",
+      employment_type: "contract",
+      requisition_id: "REQ-UPDATED",
+      official_url: "https://jobs.lever.co/integration/alternate-url",
+    });
+    expect(canonical.data?.posted_at).toContain("2026-08-04");
   });
 });

@@ -5,40 +5,42 @@ PostgreSQL/Auth in Docker, Next.js 16.2.12, React 19.2.8, and Inngest CLI 1.40.0
 
 ## Final local release gate
 
-| Check                           | Command                                                                | Result                         |
-| ------------------------------- | ---------------------------------------------------------------------- | ------------------------------ |
-| Formatting                      | `pnpm format:check`                                                    | Pass, all tracked files        |
-| Lint                            | `pnpm lint`                                                            | Pass, zero warnings            |
-| Strict TypeScript               | `pnpm typecheck`                                                       | Pass                           |
-| Unit/component/contract tests   | `pnpm test`                                                            | 113 passed; 7 DB-gated skipped |
-| PostgreSQL/Auth/RLS integration | `RUN_DATABASE_TESTS=true pnpm vitest run src/db/*.integration.test.ts` | 7 passed in 5 files            |
-| Production compile              | `pnpm build`                                                           | Pass; 12 app routes + Proxy    |
-| Real browser E2E/Axe            | `pnpm test:e2e`                                                        | 12 passed, 59.9 seconds        |
+| Check                           | Command                                                                | Result                           |
+| ------------------------------- | ---------------------------------------------------------------------- | -------------------------------- |
+| Formatting                      | `pnpm format:check`                                                    | Pass, all tracked files          |
+| Lint                            | `pnpm lint`                                                            | Pass, zero warnings              |
+| Strict TypeScript               | `pnpm typecheck`                                                       | Pass                             |
+| Unit/component/contract tests   | `pnpm test`                                                            | 163 passed; 10 DB-gated skipped  |
+| PostgreSQL/Auth/RLS integration | `RUN_DATABASE_TESTS=true pnpm vitest run src/db/*.integration.test.ts` | 10 passed in 6 files             |
+| Coverage                        | `pnpm test:coverage`                                                   | 93.02% statements; 94.62% lines  |
+| Dependency security             | `pnpm audit --audit-level=low`                                         | Pass; zero known vulnerabilities |
+| Production compile              | `pnpm build`                                                           | Pass; 12 app routes + Proxy      |
+| Real browser E2E/Axe            | `pnpm exec playwright test --retries=0`                                | 16 passed, 1.6 minutes           |
 
 ## Test coverage by risk
 
-| Area                     | Evidence                                                                                                                                                                                                                                                                             |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Hard eligibility         | Required vs preferred experience, ranges and >2 exclusion; full-time vs other employment; clearance, ability to obtain, negative phrases, Public Trust, ordinary background checks; sponsorship; accepted/uncertain/outside locations, NYC vs NJ, remote restrictions; role families |
-| AI boundary              | Strict structured schema, refused/malformed output, evidence validation, deterministic merge authority, prompt hash/version, injection-like description instructions, token/cost calculation, budget failure→Review                                                                  |
-| Connectors               | Greenhouse/Lever/Ashby normalization and live smoke; JSON-LD parsing/same-host rules; pagination, 304, malformed records, retries/backoff, rate pacing, error isolation, verify open/closed/uncertain, unsupported providers                                                         |
-| Identity/lifecycle       | URL/source/fallback fingerprints, canonical dedupe, idempotent ingest, material hash/snapshot only on change, first/last seen, successful misses, possible close/close/reopen, stale dynamic urgency, closed hidden only from Active                                                 |
-| Durable work             | Watchlist lease, stable scan key, source fan-out, changed-only observation IDs, duplicate-safe rows, partial-failure retry, dead-letter capture/replay, notification uniqueness, retention                                                                                           |
-| Authentication/security  | Supabase Auth, single-owner checks, anon/cross-user RLS denial, server-write model, HMAC rate limit atomics/reset/clear, safe URL/SSRF rules, headers/CSP build, model-output validation                                                                                             |
-| Product actions          | Sign-in/out, band/referral filters, details and all dimensions, Save→reload→Restore, route revalidation, watch URL error recovery, Apply lifecycle guards, settings success, JSON export headers/data                                                                                |
-| Slack/time               | Exact IANA time-zone hour, quiet-hour deferral with original payload, digest local-date uniqueness, retry/delivery dedupe, closed job exclusion                                                                                                                                      |
-| Accessibility/responsive | Main content Axe scan on every core route; labelled inputs/actions; focus/keyboard semantics; visible two-row mobile navigation; long cards/details; no horizontal overflow                                                                                                          |
+| Area                     | Evidence                                                                                                                                                                                                                                                                                                       |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Hard eligibility         | Required vs preferred experience, ranges and >2 exclusion; full-time vs other employment; clearance, ability to obtain, negative phrases, Public Trust, ordinary background checks; sponsorship; accepted/uncertain/outside locations, NYC vs NJ, remote restrictions; role families                           |
+| AI boundary              | Strict structured schema, refused/malformed output, evidence validation, deterministic merge authority, prompt hash/version, injection-like description instructions, token/cost calculation, budget failure→Review                                                                                            |
+| Connectors               | Greenhouse/Lever/Ashby normalization and live smoke; JSON-LD parsing/same-host rules; pagination, 304, malformed records, retries/backoff, rate pacing, error isolation, verify open/closed/uncertain, unsupported providers                                                                                   |
+| Identity/lifecycle       | URL/source/fallback fingerprints, canonical dedupe, idempotent ingest, material hash/snapshot only on change, first/last seen, successful misses, possible close/close/reopen, stale dynamic urgency, closed hidden only from Active                                                                           |
+| Durable work             | Watchlist lease, stable scan key, source fan-out, changed-only observation IDs, duplicate-safe rows, partial-failure retry, dead-letter capture/replay, notification uniqueness, retention                                                                                                                     |
+| Authentication/security  | Exact four-digit validation, wrong/correct code, versioned scrypt hashing/fail-closed verification, address/global durable throttles, server-created Supabase session, sign-out, single-owner checks, anon/cross-user RLS denial, safe URL/SSRF/DNS/redirect rules, headers/CSP build, model-output validation |
+| Product actions          | Access-code sign-in/out, search/reset/sort, band/referral filters, details and current dimensions, detail/card Save/Applied/Dismiss→reload→Restore, official Apply redirect, watch add/remove recovery, custom confirmation dialog, settings persistence, JSON export headers/data                             |
+| Slack/time               | Exact IANA time-zone hour, quiet-hour deferral with original payload, digest local-date uniqueness, retry/delivery dedupe, closed job exclusion                                                                                                                                                                |
+| Accessibility/responsive | Main content Axe scan on every core route; labelled inputs/actions; focus/keyboard semantics; visible two-row mobile navigation; long cards/details; no horizontal overflow                                                                                                                                    |
 
 ## Browser matrix
 
-The same three scenarios ran serially at each required viewport:
+The same four scenarios ran serially at each required viewport with retries disabled:
 
-| Viewport  | Portal/action flow | Core routes + Axe/export/settings | Responsive visual capture |
-| --------- | ------------------ | --------------------------------- | ------------------------- |
-| 390×844   | Pass               | Pass                              | Pass                      |
-| 768×1024  | Pass               | Pass                              | Pass                      |
-| 1440×900  | Pass               | Pass                              | Pass                      |
-| 1920×1080 | Pass               | Pass                              | Pass                      |
+| Viewport  | Access-code gate | Portal/action flow | Core routes + Axe/export/settings | Responsive visual capture |
+| --------- | ---------------- | ------------------ | --------------------------------- | ------------------------- |
+| 390×844   | Pass             | Pass               | Pass                              | Pass                      |
+| 768×1024  | Pass             | Pass               | Pass                              | Pass                      |
+| 1440×900  | Pass             | Pass               | Pass                              | Pass                      |
+| 1920×1080 | Pass             | Pass               | Pass                              | Pass                      |
 
 Failure observers checked uncaught page exceptions, browser console errors, failed requests, and
 HTTP 5xx responses. None occurred. Responsive screenshots were visually inspected. A separate live
@@ -49,9 +51,9 @@ errors/warnings. Server request logs and persisted queue/settings rows were chec
 
 | Provider     | Result                                                                                         |
 | ------------ | ---------------------------------------------------------------------------------------------- |
-| Greenhouse   | Pass; 178 public Figma listings normalized                                                     |
+| Greenhouse   | Pass; 176 public Figma listings normalized and sample verified open                            |
 | Lever        | Pass; 100 public Palantir listings with pagination                                             |
-| Ashby        | Pass; 23 public Linear listings normalized                                                     |
+| Ashby        | Pass; 24 public Linear listings normalized and sample verified open                            |
 | Brave Search | Pass; 11 candidates in credential check                                                        |
 | Adzuna       | Pass; valid credentialed response, zero candidates for narrow check                            |
 | OpenAI       | Pass; configured `gpt-5.6-luna` structured analysis accepted                                   |

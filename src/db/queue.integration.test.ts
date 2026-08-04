@@ -124,6 +124,18 @@ describe.runIf(enabled)("queue lifecycle and dynamic freshness", () => {
     expect(active).toHaveLength(1);
     expect(active[0]).toMatchObject({ jobId, freshnessBand: "stale", urgency: 25 });
 
+    const hidden = await admin
+      .from("recommendations")
+      .update({ band: "not_recommended" })
+      .eq("job_id", jobId);
+    if (hidden.error) throw hidden.error;
+    expect(await listQueue(user.id, "active")).toHaveLength(0);
+    const restored = await admin
+      .from("recommendations")
+      .update({ band: "hot" })
+      .eq("job_id", jobId);
+    if (restored.error) throw restored.error;
+
     const closed = await admin
       .from("canonical_jobs")
       .update({ lifecycle_status: "closed", closed_at: new Date().toISOString() })

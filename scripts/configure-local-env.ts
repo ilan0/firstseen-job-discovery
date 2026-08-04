@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { resolve } from "node:path";
+import { hashAccessCode } from "../src/lib/auth/access-code";
 
 type LocalStatus = {
   API_URL: string;
@@ -40,6 +41,11 @@ function requireValue(values: Record<string, string>, key: string): string {
 }
 
 const providerValues = parseEnv(readFileSync(resolve(secretsPath), "utf8"));
+const localAccessCode = execFileSync(
+  "security",
+  ["find-generic-password", "-a", "ilannabatkhorian", "-s", "firstseen-local-access-code", "-w"],
+  { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+).trim();
 const status = JSON.parse(
   execFileSync("npx", ["--yes", "supabase@latest", "status", "--output", "json"], {
     encoding: "utf8",
@@ -61,11 +67,14 @@ const copiedProviderKeys = [
 
 const output: Record<string, string> = {
   NEXT_PUBLIC_APP_URL: "http://127.0.0.1:3000",
+  // Never let local browser tests enqueue events into the production Inngest app.
+  INNGEST_DEV: "1",
   NEXT_PUBLIC_SUPABASE_URL: status.API_URL,
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: status.PUBLISHABLE_KEY,
   SUPABASE_SECRET_KEY: status.SECRET_KEY,
   DATABASE_URL: status.DB_URL,
   OWNER_EMAIL: "inabatkhorian@gmail.com",
+  ACCESS_CODE_HASH: await hashAccessCode(localAccessCode),
   RATE_LIMIT_SALT: randomBytes(32).toString("base64url"),
   OPENAI_ESCALATION_MODEL: providerValues.OPENAI_MODEL || "gpt-5.6",
   OPENAI_MONTHLY_BUDGET_USD: "25",

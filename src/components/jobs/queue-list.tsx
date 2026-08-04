@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
+import Link from "next/link";
 import { JobCard } from "./job-card";
 import type { QueueStatus, listQueue } from "@/lib/jobs/queue";
 
@@ -32,6 +33,14 @@ export function QueueList({ jobs, status }: { jobs: Jobs; status: QueueStatus })
             ? "Add priority companies to the watchlist. Verified matches will appear here automatically."
             : "Jobs move here immediately when you take that action."}
         </p>
+        {status === "active" ? (
+          <Link
+            className="mt-5 inline-flex min-h-11 items-center rounded-xl bg-[var(--green)] px-5 text-sm font-black text-white"
+            href="/watchlist"
+          >
+            Add a priority company
+          </Link>
+        ) : null}
       </section>
     );
   return (
@@ -76,6 +85,25 @@ export function QueueList({ jobs, status }: { jobs: Jobs; status: QueueStatus })
           <option value="urgency">Most urgent</option>
           <option value="fresh">Newest seen</option>
         </select>
+      </div>
+      <div className="mb-4 flex min-h-8 flex-wrap items-center justify-between gap-3 text-xs font-bold text-[var(--muted)]">
+        <p aria-live="polite">
+          Showing {filtered.length} of {jobs.length} {jobs.length === 1 ? "job" : "jobs"}
+        </p>
+        {query || band !== "all" || referralsOnly || sort !== "urgency" ? (
+          <button
+            className="rounded-lg px-2 py-1 font-black text-[var(--green)] hover:bg-[var(--surface)]"
+            onClick={() => {
+              setQuery("");
+              setBand("all");
+              setReferralsOnly(false);
+              setSort("urgency");
+            }}
+            type="button"
+          >
+            Reset filters
+          </button>
+        ) : null}
       </div>
       {filtered.length ? (
         <div className="space-y-4">

@@ -94,6 +94,29 @@ describe("Greenhouse connector contract", () => {
       code: "GREENHOUSE_SCHEMA_ERROR",
     });
   });
+
+  it("handles conditional discovery and all verification outcomes", async () => {
+    const notModified = new GreenhouseConnector(
+      vi.fn<SafeGet>().mockResolvedValue(fixtureResponse(304, {})),
+    );
+    await expect(notModified.discover(source("greenhouse"))).resolves.toMatchObject({
+      notModified: true,
+      listings: [],
+    });
+    const unexpected = new GreenhouseConnector(
+      vi.fn<SafeGet>().mockResolvedValue(fixtureResponse(418, {})),
+    );
+    await expect(unexpected.discover(source("greenhouse"))).rejects.toMatchObject({
+      code: "GREENHOUSE_HTTP_ERROR",
+      status: 418,
+    });
+    await expect(
+      unexpected.verify(source("greenhouse"), "https://example.com", null),
+    ).resolves.toMatchObject({ state: "uncertain" });
+    await expect(
+      unexpected.verify(source("greenhouse"), "https://example.com", "42"),
+    ).resolves.toMatchObject({ state: "uncertain" });
+  });
 });
 
 describe("Lever connector contract", () => {
@@ -140,6 +163,62 @@ describe("Lever connector contract", () => {
     await new LeverConnector(get).discover(source("lever"), { cursor: "100" });
 
     expect(get.mock.calls[0]?.[0]).toContain("skip=100&limit=100");
+  });
+
+  it("normalizes fallback fields, EU routing, salary ranges, and created dates", async () => {
+    const item = posting(1);
+    const get = vi.fn<SafeGet>().mockResolvedValue(
+      fixtureResponse(200, [
+        {
+          ...item,
+          categories: { location: "New York, NY", commitment: "Full-time" },
+          descriptionPlain: undefined,
+          description: "<p>Build products.</p>",
+          salaryRange: { currency: "USD", min: 80_000, max: 100_000, interval: "year" },
+          createdAt: 1_786_000_000_000,
+        },
+      ]),
+    );
+    const page = await new LeverConnector(get).discover({
+      ...source("lever"),
+      publicConfig: { region: "eu" },
+    });
+    expect(get.mock.calls[0]?.[0]).toContain("api.eu.lever.co");
+    expect(page.listings[0]).toMatchObject({
+      locations: ["New York, NY"],
+      salaryText: "USD 80000-100000 year",
+      postedAtConfidence: "medium",
+    });
+    expect(page.listings[0]?.descriptionText).toContain("Build products.");
+  });
+
+  it("handles conditional, invalid, and verification responses", async () => {
+    await expect(
+      new LeverConnector(vi.fn<SafeGet>().mockResolvedValue(fixtureResponse(304, []))).discover(
+        source("lever"),
+      ),
+    ).resolves.toMatchObject({ notModified: true });
+    await expect(
+      new LeverConnector(vi.fn<SafeGet>().mockResolvedValue(fixtureResponse(418, []))).discover(
+        source("lever"),
+      ),
+    ).rejects.toMatchObject({ code: "LEVER_HTTP_ERROR" });
+    const malformed = new LeverConnector(
+      vi.fn<SafeGet>().mockResolvedValue(fixtureResponse(200, [{ id: "bad" }])),
+    );
+    await expect(malformed.discover(source("lever"))).rejects.toMatchObject({
+      code: "LEVER_SCHEMA_ERROR",
+    });
+    await expect(
+      malformed.verify(source("lever"), "https://example.com", "bad/id"),
+    ).resolves.toMatchObject({ state: "uncertain" });
+    await expect(
+      new LeverConnector(vi.fn<SafeGet>().mockResolvedValue(fixtureResponse(410, {}))).verify(
+        source("lever"),
+        "https://example.com",
+        "posting-1",
+      ),
+    ).resolves.toMatchObject({ state: "closed" });
   });
 });
 
@@ -189,6 +268,57 @@ describe("Ashby connector contract", () => {
         "missing",
       ),
     ).resolves.toMatchObject({ state: "closed" });
+  });
+
+  it("filters unlisted jobs and handles fallback remote and compensation fields", async () => {
+    const payload = {
+      apiVersion: "1",
+      jobs: [
+        {
+          title: "Hidden",
+          isListed: false,
+          descriptionPlain: "Hidden",
+          jobUrl: "https://jobs.ashbyhq.com/example/hidden",
+          applyUrl: "https://jobs.ashbyhq.com/example/hidden/apply",
+        },
+        {
+          title: "Remote Engineer",
+          location: "",
+          isRemote: true,
+          descriptionPlain: "Build software.",
+          jobUrl: "https://jobs.ashbyhq.com/example/remote",
+          applyUrl: "https://jobs.ashbyhq.com/example/remote/apply",
+          compensation: { compensationTierSummary: "Tier A" },
+        },
+      ],
+    };
+    const page = await new AshbyConnector(
+      vi.fn<SafeGet>().mockResolvedValue(fixtureResponse(200, payload)),
+    ).discover(source("ashby"));
+    expect(page.listings).toHaveLength(1);
+    expect(page.listings[0]).toMatchObject({
+      workplaceType: "Remote",
+      salaryText: "Tier A",
+      locations: [],
+    });
+  });
+
+  it("handles conditional and invalid board responses", async () => {
+    await expect(
+      new AshbyConnector(vi.fn<SafeGet>().mockResolvedValue(fixtureResponse(304, {}))).discover(
+        source("ashby"),
+      ),
+    ).resolves.toMatchObject({ notModified: true });
+    await expect(
+      new AshbyConnector(vi.fn<SafeGet>().mockResolvedValue(fixtureResponse(418, {}))).discover(
+        source("ashby"),
+      ),
+    ).rejects.toMatchObject({ code: "ASHBY_HTTP_ERROR" });
+    await expect(
+      new AshbyConnector(
+        vi.fn<SafeGet>().mockResolvedValue(fixtureResponse(200, { jobs: [] })),
+      ).discover(source("ashby")),
+    ).rejects.toMatchObject({ code: "ASHBY_SCHEMA_ERROR" });
   });
 });
 
@@ -251,5 +381,73 @@ describe("JSON-LD connector contract", () => {
 
     expect(result.state).toBe("uncertain");
     expect(get).not.toHaveBeenCalled();
+  });
+
+  it("flattens graphs, ignores malformed blocks, and normalizes optional schema fields", async () => {
+    const posting = {
+      "@type": ["Thing", "JobPosting"],
+      title: "Remote Software Engineer",
+      description: "<p>Full-time role.</p>",
+      identifier: "REQ-GRAPH",
+      datePosted: "2026-08-03",
+      employmentType: ["FULL_TIME", "PERMANENT"],
+      jobLocationType: "TELECOMMUTE",
+      jobLocation: [
+        { name: "Remote - US" },
+        {
+          address: {
+            addressLocality: "Miami",
+            addressRegion: "FL",
+            addressCountry: { name: "US" },
+          },
+        },
+      ],
+    };
+    const html = `<script type="application/ld+json">invalid</script><script type="application/ld+json">${JSON.stringify({ "@graph": [posting] })}</script>`;
+    const page = await new JsonLdConnector(
+      vi.fn<SafeGet>().mockResolvedValue(fixtureResponse(200, html)),
+    ).discover(source("custom_jsonld", ""));
+    expect(page.listings[0]).toMatchObject({
+      externalId: "REQ-GRAPH",
+      workplaceType: "Remote",
+      employmentType: "FULL_TIME, PERMANENT",
+      locations: ["Remote - US", "Miami, FL, US"],
+    });
+  });
+
+  it("handles conditional, missing posting, and verification states", async () => {
+    await expect(
+      new JsonLdConnector(vi.fn<SafeGet>().mockResolvedValue(fixtureResponse(304, ""))).discover(
+        source("custom_jsonld", ""),
+      ),
+    ).resolves.toMatchObject({ notModified: true });
+    await expect(
+      new JsonLdConnector(vi.fn<SafeGet>().mockResolvedValue(fixtureResponse(418, ""))).discover(
+        source("custom_jsonld", ""),
+      ),
+    ).rejects.toMatchObject({ code: "JSONLD_HTTP_ERROR" });
+    const empty = new JsonLdConnector(
+      vi.fn<SafeGet>().mockResolvedValue(fixtureResponse(200, "<html></html>")),
+    );
+    await expect(empty.discover(source("custom_jsonld", ""))).rejects.toMatchObject({
+      code: "JOBPOSTING_NOT_FOUND",
+    });
+    await expect(
+      new JsonLdConnector(vi.fn<SafeGet>().mockResolvedValue(fixtureResponse(404, ""))).verify(
+        source("custom_jsonld", ""),
+        "https://example.com/jobs/1",
+        "1",
+      ),
+    ).resolves.toMatchObject({ state: "closed" });
+    await expect(
+      new JsonLdConnector(vi.fn<SafeGet>().mockResolvedValue(fixtureResponse(500, ""))).verify(
+        source("custom_jsonld", ""),
+        "https://example.com/jobs/1",
+        "1",
+      ),
+    ).resolves.toMatchObject({ state: "uncertain" });
+    await expect(
+      empty.verify(source("custom_jsonld", ""), "https://example.com/jobs/1", "1"),
+    ).resolves.toMatchObject({ state: "uncertain" });
   });
 });

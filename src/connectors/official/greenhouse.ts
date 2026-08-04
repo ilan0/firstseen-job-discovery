@@ -79,6 +79,9 @@ export class GreenhouseConnector implements JobConnector {
       `https://boards-api.greenhouse.io/v1/boards/${tenant}/jobs?content=true`,
       {
         allowedHosts: ["boards-api.greenhouse.io"],
+        // Large employers can legitimately return several megabytes when the
+        // official board API includes every description in one response.
+        maximumBytes: 8_000_000,
         headers: conditionalHeaders(source),
         ...(context.signal ? { signal: context.signal } : {}),
       },

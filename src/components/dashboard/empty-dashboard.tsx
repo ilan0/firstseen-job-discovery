@@ -1,4 +1,5 @@
 import { ArrowRight, BellRing, Building2, Radar } from "lucide-react";
+import Link from "next/link";
 
 export function EmptyDashboard() {
   return (
@@ -13,9 +14,23 @@ export function EmptyDashboard() {
               Good jobs, while they are still fresh.
             </h1>
             <p className="mt-5 max-w-2xl leading-7 text-white/70">
-              FirstSeen is ready to watch official career pages and bring suitable early-career
-              software roles here.
+              FirstSeen scans broadly for suitable early-career software roles, verifies them on
+              official career pages, and prioritizes the companies you care about most.
             </p>
+            <div className="mt-7 flex flex-wrap gap-3">
+              <Link
+                className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[var(--lime)] px-5 text-sm font-black text-[var(--green-dark)]"
+                href="/watchlist"
+              >
+                Add a priority company <ArrowRight aria-hidden="true" size={17} />
+              </Link>
+              <Link
+                className="inline-flex min-h-11 items-center rounded-xl border border-white/20 px-5 text-sm font-black text-white"
+                href="/operations"
+              >
+                Check discovery health
+              </Link>
+            </div>
           </div>
           <div className="rounded-3xl border border-white/15 bg-white/8 p-5">
             <div className="flex items-center gap-3">
@@ -24,7 +39,7 @@ export function EmptyDashboard() {
               </span>
               <div>
                 <p className="font-bold">Discovery status</p>
-                <p className="text-sm text-white/60">Awaiting first watchlist</p>
+                <p className="text-sm text-white/60">Scheduled discovery is active</p>
               </div>
             </div>
           </div>
@@ -36,7 +51,7 @@ export function EmptyDashboard() {
           Getting started
         </h2>
         <StepCard
-          description="Add employers you care about, including companies where you know someone."
+          description="Add employers you care about, especially companies where you know someone."
           icon={<Building2 aria-hidden="true" size={21} />}
           label="Add companies"
           number="01"

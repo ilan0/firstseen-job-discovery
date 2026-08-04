@@ -3,17 +3,27 @@ import { ConnectorError } from "./errors";
 import type { ConnectorSource } from "./types";
 
 export function htmlToText(html: string): string {
-  const $ = load(`<main>${html}</main>`);
-  $("br").replaceWith("\n");
-  $("p,li,h1,h2,h3,h4,h5,h6").each((_, element) => {
-    $(element).append("\n");
-  });
-  return $("main")
-    .text()
-    .replace(/\u00a0/g, " ")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  function extract(markup: string) {
+    const $ = load(`<main>${markup}</main>`);
+    $("script,style,noscript").remove();
+    $("br").replaceWith("\n");
+    $("p,li,h1,h2,h3,h4,h5,h6").each((_, element) => {
+      $(element).append("\n");
+    });
+    return $("main")
+      .text()
+      .replace(/\u00a0/g, " ")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  const firstPass = extract(html);
+  // Greenhouse can return entity-encoded HTML inside JSON. Decode and parse that markup once more
+  // rather than persisting visible tags or paying to send them to the model.
+  return /&lt;\/?[a-z][^&]*&gt;/i.test(html) && /<\/?[a-z][^>]*>/i.test(firstPass)
+    ? extract(firstPass)
+    : firstPass;
 }
 
 export function requiredTenant(source: ConnectorSource): string {

@@ -3,8 +3,10 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
 import {
   canonicalJobs,
+  careerSources,
   companies,
   eligibilityDecisions,
+  jobDescriptionSnapshots,
   queueStates,
   rankingDimensions,
   recommendations,
@@ -32,22 +34,35 @@ export async function listQueue(userId: string, status: QueueStatus) {
       strengths: recommendations.strengths,
       weaknesses: recommendations.weaknesses,
       routingReasons: recommendations.routingReasons,
+      eligibilityFacts: eligibilityDecisions.normalizedFacts,
+      snapshotFacts: jobDescriptionSnapshots.normalizedFacts,
+      sourceKind: careerSources.connectorKind,
+      sourceConfidence: careerSources.parsingConfidence,
       queueStatus: queueStates.status,
       rowVersion: queueStates.rowVersion,
     })
     .from(queueStates)
     .innerJoin(canonicalJobs, eq(queueStates.jobId, canonicalJobs.id))
     .innerJoin(companies, eq(canonicalJobs.companyId, companies.id))
+    .innerJoin(careerSources, eq(canonicalJobs.authoritativeSourceId, careerSources.id))
     .leftJoin(
       recommendations,
       and(eq(recommendations.jobId, canonicalJobs.id), eq(recommendations.active, true)),
     )
+    .leftJoin(
+      eligibilityDecisions,
+      eq(recommendations.eligibilityDecisionId, eligibilityDecisions.id),
+    )
+    .leftJoin(jobDescriptionSnapshots, eq(recommendations.snapshotId, jobDescriptionSnapshots.id))
     .where(
       and(
         eq(queueStates.userId, userId),
         eq(queueStates.status, status),
         ...(status === "active"
-          ? [inArray(canonicalJobs.lifecycleStatus, ["open", "reopened"])]
+          ? [
+              inArray(canonicalJobs.lifecycleStatus, ["open", "reopened"]),
+              inArray(recommendations.band, ["hot", "strong", "possible", "review"]),
+            ]
           : []),
       ),
     )
@@ -83,10 +98,30 @@ export async function listQueue(userId: string, status: QueueStatus) {
         row.postedAtConfidence,
         row.firstSeenAt,
       );
+      const eligibilityFacts = row.eligibilityFacts as {
+        locations?: { value?: unknown };
+        workArrangement?: { value?: unknown };
+      } | null;
+      const snapshotFacts = row.snapshotFacts as { salary?: unknown } | null;
+      const locations = Array.isArray(eligibilityFacts?.locations?.value)
+        ? eligibilityFacts.locations.value.filter(
+            (location): location is string => typeof location === "string" && Boolean(location),
+          )
+        : [];
       return {
         ...row,
+        eligibilityFacts: undefined,
+        snapshotFacts: undefined,
         urgency: row.urgency === null ? null : Math.min(row.urgency, currentFreshness.value),
         freshnessBand: currentFreshness.band,
+        freshnessBasis: currentFreshness.basis,
+        freshnessAgeHours: currentFreshness.ageHours,
+        location: locations.join(" · ") || "Location not provided",
+        workArrangement:
+          typeof eligibilityFacts?.workArrangement?.value === "string"
+            ? eligibilityFacts.workArrangement.value
+            : "unknown",
+        salary: typeof snapshotFacts?.salary === "string" ? snapshotFacts.salary : null,
         hasReferral: referredCompanies.has(companyByJob.get(row.jobId) ?? ""),
       };
     })
@@ -97,14 +132,19 @@ export async function getJobDetail(userId: string, jobId: string) {
   const [job] = await db
     .select({
       id: canonicalJobs.id,
+      companyId: companies.id,
       title: canonicalJobs.title,
       company: companies.name,
       officialUrl: canonicalJobs.officialUrl,
       lifecycleStatus: canonicalJobs.lifecycleStatus,
       employmentType: canonicalJobs.employmentType,
       postedAt: canonicalJobs.postedAt,
+      postedAtConfidence: canonicalJobs.postedAtConfidence,
       firstSeenAt: canonicalJobs.firstSeenAt,
+      lastSeenAt: canonicalJobs.lastSeenAt,
       verifiedAt: canonicalJobs.verifiedAt,
+      sourceKind: careerSources.connectorKind,
+      sourceConfidence: careerSources.parsingConfidence,
       band: recommendations.band,
       urgency: recommendations.urgency,
       headline: recommendations.headline,
@@ -116,9 +156,16 @@ export async function getJobDetail(userId: string, jobId: string) {
       eligibilityOutcome: eligibilityDecisions.outcome,
       eligibilityReasons: eligibilityDecisions.reasons,
       uncertainFields: eligibilityDecisions.uncertainFields,
+      eligibilityFacts: eligibilityDecisions.normalizedFacts,
+      descriptionText: jobDescriptionSnapshots.descriptionText,
+      snapshotCapturedAt: jobDescriptionSnapshots.capturedAt,
+      materialChangeReasons: jobDescriptionSnapshots.materialChangeReasons,
+      recommendationSnapshotId: recommendations.snapshotId,
+      rankingVersion: recommendations.rankingVersion,
     })
     .from(canonicalJobs)
     .innerJoin(companies, eq(canonicalJobs.companyId, companies.id))
+    .innerJoin(careerSources, eq(canonicalJobs.authoritativeSourceId, careerSources.id))
     .leftJoin(queueStates, eq(queueStates.jobId, canonicalJobs.id))
     .leftJoin(
       recommendations,
@@ -128,18 +175,38 @@ export async function getJobDetail(userId: string, jobId: string) {
       eligibilityDecisions,
       eq(recommendations.eligibilityDecisionId, eligibilityDecisions.id),
     )
+    .leftJoin(jobDescriptionSnapshots, eq(recommendations.snapshotId, jobDescriptionSnapshots.id))
     .where(and(eq(canonicalJobs.userId, userId), eq(canonicalJobs.id, jobId)))
     .limit(1);
   if (!job) return null;
   const dimensions = await db
     .select()
     .from(rankingDimensions)
-    .where(and(eq(rankingDimensions.userId, userId), eq(rankingDimensions.jobId, jobId)))
+    .where(
+      and(
+        eq(rankingDimensions.userId, userId),
+        eq(rankingDimensions.jobId, jobId),
+        ...(job.recommendationSnapshotId
+          ? [eq(rankingDimensions.snapshotId, job.recommendationSnapshotId)]
+          : []),
+        ...(job.rankingVersion ? [eq(rankingDimensions.rankingVersion, job.rankingVersion)] : []),
+      ),
+    )
     .orderBy(rankingDimensions.dimension);
   const referralRows = await db
     .select()
     .from(referrals)
-    .innerJoin(companies, eq(referrals.companyId, companies.id))
-    .where(and(eq(referrals.userId, userId), eq(companies.name, job.company)));
-  return { ...job, dimensions, referrals: referralRows.map((row) => row.referrals) };
+    .where(and(eq(referrals.userId, userId), eq(referrals.companyId, job.companyId)));
+  const currentFreshness = freshness(
+    new Date(),
+    job.postedAt,
+    job.postedAtConfidence,
+    job.firstSeenAt,
+  );
+  return {
+    ...job,
+    freshness: currentFreshness,
+    dimensions,
+    referrals: referralRows,
+  };
 }

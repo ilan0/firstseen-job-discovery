@@ -11,8 +11,9 @@ CAPTCHA, or turns an aggregator result directly into a recommendation.
 
 ## What is implemented
 
-- Secure Supabase sign-in for one configured owner, server authorization, PostgreSQL RLS, durable
-  sign-in throttling, account export, and deletion.
+- Private four-digit access-code sign-in for one configured owner, backed by a server-created
+  Supabase session, server authorization, PostgreSQL RLS, durable throttling, account export, and
+  deletion. The plaintext code is never stored by the application.
 - Responsive Active, Saved, Applied, Dismissed, Watchlist, Operations, Settings, and explainable
   job-detail views.
 - Greenhouse, Lever, Ashby, and reviewed JSON-LD connectors with pagination, conditional requests,
@@ -43,10 +44,7 @@ nvm use
 pnpm install --frozen-lockfile
 npx --yes supabase@latest start
 pnpm env:local
-pnpm db:migrate
-pnpm db:seed
-pnpm db:owner
-pnpm db:fixture
+pnpm db:bootstrap
 pnpm dev --hostname 127.0.0.1
 ```
 
@@ -58,7 +56,8 @@ pnpm worker:dev
 ```
 
 The portal is at `http://127.0.0.1:3000`; local Inngest diagnostics are at
-`http://127.0.0.1:8288`. The local owner password is stored in macOS Keychain by `pnpm db:owner`.
+`http://127.0.0.1:8288`. The private four-digit access code and the generated internal Supabase
+owner credential are stored in macOS Keychain; neither is printed or written to the repository.
 
 `pnpm env:local` reads the approved consolidated secrets file outside this repository, writes an
 ignored mode-600 `.env.local`, and replaces cloud Supabase values with local development values.
@@ -115,16 +114,17 @@ deployment tokens are server-only.
 
 Runtime credentials:
 
-| Service           | Required production values                                  | Purpose                                    |
-| ----------------- | ----------------------------------------------------------- | ------------------------------------------ |
-| Supabase          | URL, publishable key, secret key, database URL, project ref | Auth, RLS, server writes, migrations       |
-| Inngest           | event key, signing key                                      | Durable events and authenticated callbacks |
-| OpenAI            | project API key, model, $25 app budget                      | Structured analysis of changed roles       |
-| Brave             | Search API key                                              | Broad discovery sensor                     |
-| Adzuna            | app ID and app key                                          | Secondary broad sensor                     |
-| Slack             | incoming webhook URL                                        | Alerts and morning digest                  |
-| Sentry (optional) | DSN; auth token/org/project only at build                   | Redacted errors and source maps            |
-| Vercel/GitHub     | deployment token or authenticated CLI                       | Bootstrap/deployment, never app runtime    |
+| Service           | Required production values                                  | Purpose                                       |
+| ----------------- | ----------------------------------------------------------- | --------------------------------------------- |
+| Supabase          | URL, publishable key, secret key, database URL, project ref | Auth sessions, RLS, server writes, migrations |
+| Owner access      | scrypt access-code hash, owner email, rate-limit salt       | Private code gate and abuse protection        |
+| Inngest           | event key, signing key                                      | Durable events and authenticated callbacks    |
+| OpenAI            | project API key, model, $25 app budget                      | Structured analysis of changed roles          |
+| Brave             | Search API key                                              | Broad discovery sensor                        |
+| Adzuna            | app ID and app key                                          | Secondary broad sensor                        |
+| Slack             | incoming webhook URL                                        | Alerts and morning digest                     |
+| Sentry (optional) | DSN; auth token/org/project only at build                   | Redacted errors and source maps               |
+| Vercel/GitHub     | deployment token or authenticated CLI                       | Bootstrap/deployment, never app runtime       |
 
 All provider secrets must be stored in Vercel encrypted environment variables and the applicable
 Inngest/Supabase secret store, not in the browser or repository.

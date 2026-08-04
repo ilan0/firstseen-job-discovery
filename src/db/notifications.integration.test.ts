@@ -84,4 +84,31 @@ describe.runIf(enabled)("durable Slack notification delivery", () => {
     expect(delivered.data?.attempt_count).toBe(2);
     expect(delivered.data?.delivered_at).toBeTruthy();
   });
+
+  it("claims a due deferred alert only once under duplicate delivery", async () => {
+    const deferred = await admin
+      .from("notifications")
+      .insert({
+        user_id: user.id,
+        kind: "exceptional_match",
+        idempotency_key: `deferred-${randomUUID()}`,
+        payload_hash: "deferred-test-hash",
+        payload: { text: "Deferred integration test" },
+        status: "deferred",
+        deferred_until: new Date(0).toISOString(),
+      })
+      .select("id")
+      .single();
+    if (deferred.error) throw deferred.error;
+    const deliver = vi.fn(async () => ({ state: "delivered" as const }));
+    const { deliverDeferredAlerts } = await import("@/lib/notifications/orchestrate");
+
+    await Promise.all([
+      deliverDeferredAlerts(user.id, new Date(), deliver),
+      deliverDeferredAlerts(user.id, new Date(), deliver),
+    ]);
+
+    expect(deliver).toHaveBeenCalledOnce();
+    expect(deliver).toHaveBeenCalledWith(deferred.data.id);
+  });
 });

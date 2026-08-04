@@ -134,8 +134,12 @@ This command sends a real Slack message. Never print or inspect the webhook valu
 
 ## Authentication and security response
 
-- Five failed attempts for one IP/email pair in 15 minutes cause a 15-minute block; a successful
-  sign-in clears its counter. Error messages do not reveal whether credentials exist.
+- Five failed code attempts from one network address in 15 minutes cause a 60-minute block. A
+  separate global counter blocks after ten failures to resist distributed guessing; successful
+  sign-in clears both counters. Error messages do not reveal whether the code or owner exists.
+- Rotate the access code by generating a new versioned scrypt hash, replacing only the encrypted
+  `ACCESS_CODE_HASH`, and redeploying. Store the plaintext code in the owner password manager or
+  Keychain, never in source, deployment logs, or documentation.
 - If a secret appears in any output, revoke/rotate it at the provider immediately, replace the
   encrypted/ignored value, redeploy, and inspect repository history/logs. Do not rely on deleting a
   message as remediation.

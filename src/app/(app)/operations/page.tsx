@@ -1,6 +1,7 @@
 import { and, desc, eq, gte, sql } from "drizzle-orm";
-import { Activity, CircleCheck, CircleX, Clock3, RefreshCw } from "lucide-react";
-import { replayDeadLetter, requestSourceScan } from "./actions";
+import { Activity, CircleCheck, CircleX, Clock3, Radar, RefreshCw } from "lucide-react";
+import { replayDeadLetter, requestBroadDiscovery, requestSourceScan } from "./actions";
+import { SubmitButton } from "@/components/forms/submit-button";
 import { db } from "@/db/client";
 import {
   careerSources,
@@ -11,8 +12,21 @@ import {
 } from "@/db/schema";
 import { requireOwner } from "@/lib/auth/owner";
 
-export default async function OperationsPage() {
+export default async function OperationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ started?: string }>;
+}) {
   const owner = await requireOwner();
+  const query = await searchParams;
+  const successMessage =
+    query.started === "scan"
+      ? "Official-source scan queued."
+      : query.started === "discovery"
+        ? "Broad discovery queued. Official sources will be verified before jobs appear."
+        : query.started === "replay"
+          ? "Recovery scan queued."
+          : null;
   const runs = await db
     .select()
     .from(scanRuns)
@@ -57,15 +71,34 @@ export default async function OperationsPage() {
     .limit(10);
   return (
     <div className="mx-auto max-w-6xl">
-      <header>
-        <p className="text-xs font-black tracking-[0.18em] text-[var(--green)] uppercase">
-          Operational diagnostics
-        </p>
-        <h1 className="mt-2 text-4xl font-black tracking-[-0.04em]">Scan health</h1>
-        <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-          Provider failures stay isolated. Safe error codes and source freshness are visible here.
-        </p>
+      <header className="flex flex-wrap items-end justify-between gap-5">
+        <div>
+          <p className="text-xs font-black tracking-[0.18em] text-[var(--green)] uppercase">
+            Operational diagnostics
+          </p>
+          <h1 className="mt-2 text-4xl font-black tracking-[-0.04em]">Scan health</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--muted)]">
+            Provider failures stay isolated. Safe error codes and source freshness are visible here.
+          </p>
+        </div>
+        <form action={requestBroadDiscovery}>
+          <SubmitButton
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[var(--green)] px-4 text-sm font-black text-white transition hover:bg-[var(--green-dark)]"
+            pendingLabel="Starting discovery…"
+            type="submit"
+          >
+            <Radar aria-hidden="true" size={17} /> Discover jobs now
+          </SubmitButton>
+        </form>
       </header>
+      {successMessage ? (
+        <p
+          className="mt-5 rounded-xl border border-[var(--green)] bg-[var(--surface)] p-3 text-sm font-bold text-[var(--green)]"
+          role="status"
+        >
+          {successMessage}
+        </p>
+      ) : null}
       <div className="mt-7 grid gap-4 sm:grid-cols-3">
         <Stat icon={Activity} label="Active sources" value={String(sources.length)} />
         <Stat icon={CircleX} label="Unresolved dead letters" value={String(dead?.count ?? 0)} />
@@ -78,50 +111,107 @@ export default async function OperationsPage() {
       <section className="mt-8">
         <h2 className="text-lg font-black">Sources</h2>
         {sources.length ? (
-          <div className="mt-3 overflow-x-auto rounded-2xl border border-[var(--line)] bg-[var(--surface)]">
-            <table className="w-full min-w-[45rem] text-left text-sm">
-              <thead className="border-b border-[var(--line)] text-xs uppercase">
-                <tr>
-                  <th className="p-4">Company</th>
-                  <th className="p-4">Connector</th>
-                  <th className="p-4">Last success</th>
-                  <th className="p-4">State</th>
-                  <th className="p-4">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sources.map((source) => (
-                  <tr className="border-b border-[var(--line)] last:border-0" key={source.id}>
-                    <td className="p-4 font-black">{source.company}</td>
-                    <td className="p-4">{source.connector}</td>
-                    <td className="p-4 text-[var(--muted)]">
-                      {source.lastSuccessAt?.toLocaleString() ?? "Never"}
-                    </td>
-                    <td className="p-4">
-                      {source.lastError ? (
-                        <span className="text-[var(--danger)]">{source.lastError}</span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-[var(--green)]">
-                          <CircleCheck size={15} /> Ready
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-4">
-                      <form action={requestSourceScan}>
-                        <input name="sourceId" type="hidden" value={source.id} />
-                        <button
-                          className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--line)] px-3 py-2 text-xs font-black"
-                          type="submit"
-                        >
-                          <RefreshCw size={14} /> Scan now
-                        </button>
-                      </form>
-                    </td>
+          <>
+            <div className="mt-3 space-y-3 sm:hidden">
+              {sources.map((source) => (
+                <article
+                  className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4"
+                  key={source.id}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="font-black">{source.company}</h3>
+                      <p className="mt-1 text-xs text-[var(--muted)]">
+                        {source.connector.replaceAll("_", " ")}
+                      </p>
+                    </div>
+                    {source.lastError ? (
+                      <span className="text-xs font-bold text-[var(--danger)]">
+                        {source.lastError}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs font-bold text-[var(--green)]">
+                        <CircleCheck aria-hidden="true" size={14} /> Ready
+                      </span>
+                    )}
+                  </div>
+                  <dl className="mt-4 grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <dt className="font-black">Last success</dt>
+                      <dd className="mt-1 text-[var(--muted)]">
+                        {source.lastSuccessAt?.toLocaleString() ?? "Never"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="font-black">Last attempt</dt>
+                      <dd className="mt-1 text-[var(--muted)]">
+                        {source.lastAttemptAt?.toLocaleString() ?? "Never"}
+                      </dd>
+                    </div>
+                  </dl>
+                  <form action={requestSourceScan} className="mt-4">
+                    <input name="sourceId" type="hidden" value={source.id} />
+                    <SubmitButton
+                      className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-[var(--line)] px-3 text-xs font-black"
+                      pendingLabel="Starting…"
+                      type="submit"
+                    >
+                      <RefreshCw aria-hidden="true" size={14} /> Scan now
+                    </SubmitButton>
+                  </form>
+                </article>
+              ))}
+            </div>
+            <div className="mt-3 hidden overflow-x-auto rounded-2xl border border-[var(--line)] bg-[var(--surface)] sm:block">
+              <table className="w-full min-w-[45rem] text-left text-sm">
+                <thead className="border-b border-[var(--line)] text-xs uppercase">
+                  <tr>
+                    <th className="p-4">Company</th>
+                    <th className="p-4">Connector</th>
+                    <th className="p-4">Last success</th>
+                    <th className="p-4">Last attempt</th>
+                    <th className="p-4">State</th>
+                    <th className="p-4">Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {sources.map((source) => (
+                    <tr className="border-b border-[var(--line)] last:border-0" key={source.id}>
+                      <td className="p-4 font-black">{source.company}</td>
+                      <td className="p-4">{source.connector}</td>
+                      <td className="p-4 text-[var(--muted)]">
+                        {source.lastSuccessAt?.toLocaleString() ?? "Never"}
+                      </td>
+                      <td className="p-4 text-[var(--muted)]">
+                        {source.lastAttemptAt?.toLocaleString() ?? "Never"}
+                      </td>
+                      <td className="p-4">
+                        {source.lastError ? (
+                          <span className="text-[var(--danger)]">{source.lastError}</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[var(--green)]">
+                            <CircleCheck size={15} /> Ready
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-4">
+                        <form action={requestSourceScan}>
+                          <input name="sourceId" type="hidden" value={source.id} />
+                          <SubmitButton
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--line)] px-3 py-2 text-xs font-black"
+                            pendingLabel="Starting…"
+                            type="submit"
+                          >
+                            <RefreshCw size={14} /> Scan now
+                          </SubmitButton>
+                        </form>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         ) : (
           <p className="mt-3 rounded-2xl border border-dashed border-[var(--line)] p-8 text-center text-sm text-[var(--muted)]">
             Add a company to see source diagnostics.
@@ -147,12 +237,13 @@ export default async function OperationsPage() {
                 </div>
                 <form action={replayDeadLetter}>
                   <input name="deadLetterId" type="hidden" value={record.id} />
-                  <button
+                  <SubmitButton
                     className="rounded-xl border border-[var(--line)] px-3 py-2 text-xs font-black"
+                    pendingLabel="Replaying…"
                     type="submit"
                   >
                     Replay safely
-                  </button>
+                  </SubmitButton>
                 </form>
               </article>
             ))}
@@ -184,7 +275,7 @@ export default async function OperationsPage() {
             ))}
           </div>
         ) : (
-          <p className="mt-3 text-sm text-[var(--muted)]">No scheduled runs have completed yet.</p>
+          <p className="mt-3 text-sm text-[var(--muted)]">No scan runs have started yet.</p>
         )}
       </section>
     </div>

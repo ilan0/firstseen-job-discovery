@@ -66,7 +66,8 @@ remote against one another, and application volume is not artificially capped.
 
 ## Interface
 
-- Secure sign-in; responsive behavior at phone, tablet, laptop, and large desktop sizes.
+- Private four-digit access-code sign-in that creates a normal authorized owner session;
+  responsive behavior at phone, tablet, laptop, and large desktop sizes.
 - Active matches, Saved, Applied, Dismissed, job details, Watchlist/Referrals, Operations health,
   Notification/Candidate settings, export, and deletion.
 - Search/filter/sort, referral and band filters, official verification, scan freshness, worker

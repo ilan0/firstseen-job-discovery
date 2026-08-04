@@ -1,36 +1,30 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { parse } from "dotenv";
 import type { Page } from "@playwright/test";
 
-export function ownerCredentials() {
-  const values = parse(readFileSync(resolve(".env.local"), "utf8"));
-  const email = values.OWNER_EMAIL;
-  let password = process.env.E2E_OWNER_PASSWORD;
-  if (!password && process.platform === "darwin")
-    password = execFileSync(
+export function ownerAccessCode() {
+  let code = process.env.E2E_ACCESS_CODE;
+  if (!code && process.platform === "darwin")
+    code = execFileSync(
       "security",
       [
         "find-generic-password",
         "-a",
         "ilannabatkhorian",
         "-s",
-        "firstseen-local-owner-password",
+        "firstseen-local-access-code",
         "-w",
       ],
       { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
     ).trim();
-  if (!email || !password) throw new Error("E2E owner credentials are unavailable");
-  return { email, password };
+  if (!code || !/^\d{4}$/.test(code)) throw new Error("E2E access code is unavailable");
+  return code;
 }
 
 export async function signIn(page: Page) {
-  const credentials = ownerCredentials();
+  const code = ownerAccessCode();
   await page.goto("/");
-  await page.getByRole("textbox", { name: "Email", exact: true }).fill(credentials.email);
-  await page.getByRole("textbox", { name: "Password", exact: true }).fill(credentials.password);
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByLabel("Access code", { exact: true }).fill(code);
+  await page.getByRole("button", { name: "Open FirstSeen", exact: true }).click();
   await page.getByRole("heading", { name: "Today’s matches" }).waitFor();
 }
 

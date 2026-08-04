@@ -84,6 +84,9 @@ restore to Active.
   reopening time. Saved/Applied/Dismissed history is not reset.
 - A material fingerprint includes title, description, locations, workplace/employment, salary, and
   other application-relevant fields. Cosmetic source metadata does not trigger AI.
+- An unchanged listing is deterministically reprocessed when the eligibility or ranking policy
+  version changes. A current, schema-validated AI extraction is reused and preserved; identical
+  content does not consume model budget again.
 
 ## Queue transitions
 

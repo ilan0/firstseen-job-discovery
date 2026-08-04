@@ -1,15 +1,20 @@
 "use client";
-import { useActionState } from "react";
+import { useActionState, useEffect, useRef } from "react";
 import { Building2, Link2, UserRoundPlus } from "lucide-react";
 import { addWatchCompany, type WatchlistFormState } from "@/app/(app)/watchlist/actions";
 
 const initialState: WatchlistFormState = {};
 export function WatchlistForm() {
   const [state, action, pending] = useActionState(addWatchCompany, initialState);
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (state.success) formRef.current?.reset();
+  }, [state.success]);
   return (
     <form
       action={action}
       className="h-fit rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-5"
+      ref={formRef}
     >
       <h2 className="flex items-center gap-2 font-black">
         <Building2 aria-hidden="true" size={19} /> Add a company
@@ -19,6 +24,7 @@ export function WatchlistForm() {
           Company name
           <input
             className="mt-1.5 min-h-11 w-full rounded-xl border border-[var(--line)] bg-white px-3 text-sm"
+            autoComplete="organization"
             name="company"
             required
           />
@@ -29,6 +35,7 @@ export function WatchlistForm() {
             <Link2 className="absolute top-3 left-3 text-[var(--muted)]" size={17} />
             <input
               className="min-h-11 w-full rounded-xl border border-[var(--line)] bg-white pr-3 pl-10 text-sm"
+              autoComplete="url"
               name="careerUrl"
               placeholder="https://jobs.lever.co/company"
               required
@@ -42,6 +49,7 @@ export function WatchlistForm() {
             <UserRoundPlus className="absolute top-3 left-3 text-[var(--muted)]" size={17} />
             <input
               className="min-h-11 w-full rounded-xl border border-[var(--line)] bg-white pr-3 pl-10 text-sm"
+              autoComplete="name"
               name="referralPerson"
             />
           </div>

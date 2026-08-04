@@ -57,7 +57,7 @@ if (existing) {
     email_confirm: true,
   });
   if (error) throw error;
-  console.log("Local owner account already existed and was synchronized.");
+  console.log("Local owner account already existed and its internal credential was synchronized.");
 } else {
   const { error } = await supabase.auth.admin.createUser({
     email,
@@ -65,5 +65,5 @@ if (existing) {
     email_confirm: true,
   });
   if (error) throw error;
-  console.log("Local owner account created; its password is stored in macOS Keychain.");
+  console.log("Local owner account created; its internal credential is stored in macOS Keychain.");
 }

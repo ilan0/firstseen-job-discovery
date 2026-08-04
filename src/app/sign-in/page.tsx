@@ -19,7 +19,7 @@ export default async function SignInPage() {
         </p>
         <h1 className="mt-3 text-4xl font-black tracking-[-0.045em]">Welcome back.</h1>
         <p className="mt-3 leading-7 text-[var(--muted)]">
-          Sign in to review fresh, officially verified opportunities.
+          Enter your private four-digit code to review fresh, officially verified opportunities.
         </p>
         <SignInForm />
       </section>

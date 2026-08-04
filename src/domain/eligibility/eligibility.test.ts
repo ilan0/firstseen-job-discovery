@@ -43,6 +43,40 @@ describe("deterministic eligibility", () => {
     );
   });
 
+  it.each([
+    "5+ years of engineering experience working on production systems.",
+    "3+ years in engineering management.",
+    "Seven years building scalable software platforms.",
+    "4 years of hands-on backend development experience.",
+  ])("rejects common excessive-experience wording: %s", (requirement) => {
+    expect(decide({ description: `Full-time. ${requirement}` }).outcome).toBe("ineligible");
+  });
+
+  it.each([
+    "Five or more years of software engineering experience is required.",
+    "More than 2 years of engineering experience is required.",
+    "Over two years’ professional development experience is required.",
+  ])("understands additional strict experience wording: %s", (requirement) => {
+    expect(decide({ description: `Full-time. ${requirement}` }).outcome).toBe("ineligible");
+  });
+
+  it.each([
+    "We have 10 years of engineering experience serving our customers.",
+    "Our founding team has over 12 years of software engineering experience.",
+    "With over 15 years of industry experience, we build durable products.",
+  ])("does not confuse employer history with a candidate requirement: %s", (description) => {
+    const decision = decide({ description: `Full-time. ${description}` });
+    expect(decision.facts.experienceRequirements).toEqual([]);
+    expect(decision.outcome).toBe("eligible");
+  });
+
+  it("does not treat 'or equivalent' as waiving a required number of years", () => {
+    expect(
+      decide({ description: "Full-time. 5+ years of engineering experience or equivalent." })
+        .outcome,
+    ).toBe("ineligible");
+  });
+
   it("uses the minimum of a required range", () => {
     expect(decide({ description: "Full-time. 2-4 years of software experience." }).outcome).toBe(
       "eligible",

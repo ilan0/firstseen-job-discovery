@@ -257,7 +257,7 @@ export const sourceScan = inngest.createFunction(
 export const broadDiscovery = inngest.createFunction(
   {
     id: "broad-discovery",
-    triggers: [{ cron: "17 */4 * * *" }],
+    triggers: [{ cron: "17 */4 * * *" }, { event: "firstseen/broad-discovery.requested" }],
     retries: 2,
     concurrency: { limit: 1 },
   },

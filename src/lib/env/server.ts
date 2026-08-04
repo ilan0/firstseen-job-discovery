@@ -8,6 +8,7 @@ const serverEnvSchema = z.object({
   SUPABASE_SECRET_KEY: z.string().min(20),
   DATABASE_URL: z.string().min(20),
   OWNER_EMAIL: z.string().email(),
+  ACCESS_CODE_HASH: z.string().startsWith("v1."),
   RATE_LIMIT_SALT: z.string().min(24),
   INNGEST_EVENT_KEY: z.string().min(1),
   INNGEST_SIGNING_KEY: z.string().min(1),

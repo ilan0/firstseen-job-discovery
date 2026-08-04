@@ -155,7 +155,11 @@ export async function deliverMorningDigest(userId: string, now = new Date()) {
   return { state: "delivered" as const, count: jobs.length };
 }
 
-export async function deliverDeferredAlerts(userId: string, now = new Date()) {
+export async function deliverDeferredAlerts(
+  userId: string,
+  now = new Date(),
+  deliver: typeof deliverPendingNotification = deliverPendingNotification,
+) {
   const rows = await db
     .select({ id: notifications.id })
     .from(notifications)
@@ -168,11 +172,19 @@ export async function deliverDeferredAlerts(userId: string, now = new Date()) {
     );
   let delivered = 0;
   for (const row of rows) {
-    await db
+    const [claimed] = await db
       .update(notifications)
       .set({ status: "pending", deferredUntil: now, updatedAt: now })
-      .where(eq(notifications.id, row.id));
-    const result = await deliverPendingNotification(row.id);
+      .where(
+        and(
+          eq(notifications.id, row.id),
+          eq(notifications.status, "deferred"),
+          lte(notifications.deferredUntil, now),
+        ),
+      )
+      .returning({ id: notifications.id });
+    if (!claimed) continue;
+    const result = await deliver(row.id);
     if (result.state === "delivered") delivered += 1;
   }
   return { delivered };

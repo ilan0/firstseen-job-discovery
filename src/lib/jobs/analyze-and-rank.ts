@@ -1,8 +1,9 @@
 import "server-only";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import {
   analyzeJob,
   AI_ANALYSIS_SCHEMA_VERSION,
+  jobAnalysisSchema,
   jobAnalysisPromptHash,
   type JobAnalysis,
 } from "@/ai";
@@ -12,6 +13,7 @@ import { db } from "@/db/client";
 import {
   aiAnalyses,
   eligibilityDecisions,
+  jobDescriptionSnapshots,
   queueStateHistory,
   queueStates,
   rankingDimensions,
@@ -25,7 +27,7 @@ import {
   mergeAiFacts,
   type EligibilityDecision,
 } from "@/domain/eligibility";
-import { rankJob } from "@/domain/ranking";
+import { rankJob, RANKING_VERSION } from "@/domain/ranking";
 import { releaseAiBudget, reserveAiBudget, settleAiBudget } from "@/lib/ai/budget";
 import type { IngestResult } from "./ingest";
 
@@ -49,8 +51,45 @@ export async function analyzeAndRankListing(options: {
   sourceConfidence?: number;
   now?: Date;
 }) {
-  if (!options.ingest.changed || !options.ingest.snapshotId) return { state: "unchanged" as const };
   const now = options.now ?? new Date();
+  const promptHash = jobAnalysisPromptHash();
+  let snapshotId = options.ingest.snapshotId;
+  if (!snapshotId) {
+    const [snapshot] = await db
+      .select({ id: jobDescriptionSnapshots.id })
+      .from(jobDescriptionSnapshots)
+      .where(
+        and(
+          eq(jobDescriptionSnapshots.userId, options.userId),
+          eq(jobDescriptionSnapshots.jobId, options.ingest.jobId),
+        ),
+      )
+      .orderBy(desc(jobDescriptionSnapshots.capturedAt))
+      .limit(1);
+    if (!snapshot) return { state: "unchanged" as const };
+    snapshotId = snapshot.id;
+  }
+  if (!options.ingest.changed) {
+    const [current] = await db
+      .select({ id: recommendations.id })
+      .from(recommendations)
+      .innerJoin(
+        eligibilityDecisions,
+        eq(recommendations.eligibilityDecisionId, eligibilityDecisions.id),
+      )
+      .where(
+        and(
+          eq(recommendations.userId, options.userId),
+          eq(recommendations.jobId, options.ingest.jobId),
+          eq(recommendations.snapshotId, snapshotId),
+          eq(recommendations.rankingVersion, RANKING_VERSION),
+          eq(recommendations.active, true),
+          eq(eligibilityDecisions.ruleVersion, ELIGIBILITY_RULE_VERSION),
+        ),
+      )
+      .limit(1);
+    if (current) return { state: "unchanged" as const };
+  }
   const deterministic = extractDeterministicFacts({
     title: options.listing.title,
     description: options.listing.descriptionText,
@@ -70,41 +109,68 @@ export async function analyzeAndRankListing(options: {
 
   const potentialSoftwareRole = isPotentialSoftwareRole(options.listing.title);
   if (preliminary.outcome !== "ineligible" && potentialSoftwareRole) {
-    const reservationKey = `openai:${options.ingest.snapshotId}:${AI_ANALYSIS_SCHEMA_VERSION}:${jobAnalysisPromptHash()}`;
-    const reservationId = await reserveAiBudget(options.userId, reservationKey);
-    if (!reservationId) {
-      analysisStatus = "budget_blocked";
-      analysisError = "MONTHLY_BUDGET_LIMIT";
+    const [cached] = await db
+      .select()
+      .from(aiAnalyses)
+      .where(
+        and(
+          eq(aiAnalyses.userId, options.userId),
+          eq(aiAnalyses.snapshotId, snapshotId),
+          eq(aiAnalyses.schemaVersion, AI_ANALYSIS_SCHEMA_VERSION),
+          eq(aiAnalyses.promptHash, promptHash),
+        ),
+      )
+      .limit(1);
+    const cachedAnalysis = jobAnalysisSchema.safeParse(cached?.structuredOutput);
+    if (cached?.status === "succeeded" && cachedAnalysis.success) {
+      analysis = cachedAnalysis.data;
+      model = cached.model;
+      finalDecision = evaluateEligibility(mergeAiFacts(deterministic, analysis));
+    } else if (cached) {
+      analysisStatus = cached.status === "budget_blocked" ? "budget_blocked" : "failed";
+      analysisError = cached.errorCode ?? "AI_ANALYSIS_UNAVAILABLE";
       finalDecision = {
         ...preliminary,
         outcome: "review",
-        uncertainFields: [...new Set([...preliminary.uncertainFields, "ai_analysis_budget"])],
+        uncertainFields: [...new Set([...preliminary.uncertainFields, "ai_analysis"])],
       };
     } else {
-      try {
-        const result = await analyzeJob({
-          title: options.listing.title,
-          description: options.listing.descriptionText,
-          employmentType: options.listing.employmentType,
-          locations: options.listing.locations,
-          workplaceType: options.listing.workplaceType,
-        });
-        analysis = result.analysis;
-        model = result.model;
-        usage = result.usage;
-        cost = result.estimatedCostUsd;
-        latencyMs = result.latencyMs;
-        finalDecision = evaluateEligibility(mergeAiFacts(deterministic, analysis));
-        await settleAiBudget(reservationId, cost, { model, ...usage });
-      } catch (error) {
-        analysisStatus = "failed";
-        analysisError = errorCode(error);
+      const reservationKey = `openai:${snapshotId}:${AI_ANALYSIS_SCHEMA_VERSION}:${promptHash}`;
+      const reservationId = await reserveAiBudget(options.userId, reservationKey);
+      if (!reservationId) {
+        analysisStatus = "budget_blocked";
+        analysisError = "MONTHLY_BUDGET_LIMIT";
         finalDecision = {
           ...preliminary,
           outcome: "review",
-          uncertainFields: [...new Set([...preliminary.uncertainFields, "ai_analysis"])],
+          uncertainFields: [...new Set([...preliminary.uncertainFields, "ai_analysis_budget"])],
         };
-        await releaseAiBudget(reservationId, analysisError);
+      } else {
+        try {
+          const result = await analyzeJob({
+            title: options.listing.title,
+            description: options.listing.descriptionText,
+            employmentType: options.listing.employmentType,
+            locations: options.listing.locations,
+            workplaceType: options.listing.workplaceType,
+          });
+          analysis = result.analysis;
+          model = result.model;
+          usage = result.usage;
+          cost = result.estimatedCostUsd;
+          latencyMs = result.latencyMs;
+          finalDecision = evaluateEligibility(mergeAiFacts(deterministic, analysis));
+          await settleAiBudget(reservationId, cost, { model, ...usage });
+        } catch (error) {
+          analysisStatus = "failed";
+          analysisError = errorCode(error);
+          finalDecision = {
+            ...preliminary,
+            outcome: "review",
+            uncertainFields: [...new Set([...preliminary.uncertainFields, "ai_analysis"])],
+          };
+          await releaseAiBudget(reservationId, analysisError);
+        }
       }
     }
   }
@@ -143,7 +209,7 @@ export async function analyzeAndRankListing(options: {
       .values({
         userId: options.userId,
         jobId: options.ingest.jobId,
-        snapshotId: options.ingest.snapshotId!,
+        snapshotId,
         outcome: finalDecision.outcome,
         ruleVersion: ELIGIBILITY_RULE_VERSION,
         normalizedFacts: finalDecision.facts,
@@ -170,11 +236,11 @@ export async function analyzeAndRankListing(options: {
       .values({
         userId: options.userId,
         jobId: options.ingest.jobId,
-        snapshotId: options.ingest.snapshotId!,
+        snapshotId,
         status: preliminary.outcome === "ineligible" ? "succeeded" : analysisStatus,
         model,
         schemaVersion: AI_ANALYSIS_SCHEMA_VERSION,
-        promptHash: jobAnalysisPromptHash(),
+        promptHash,
         structuredOutput: analysis,
         errorCode: analysisError,
         inputTokens: usage?.inputTokens,
@@ -188,7 +254,11 @@ export async function analyzeAndRankListing(options: {
         target: [aiAnalyses.snapshotId, aiAnalyses.schemaVersion, aiAnalyses.promptHash],
         set: {
           status: preliminary.outcome === "ineligible" ? "succeeded" : analysisStatus,
-          structuredOutput: analysis,
+          // A deterministic policy update can make an unchanged listing ineligible
+          // without running AI. Preserve a previously validated extraction so a
+          // later policy revision can safely reuse it instead of paying to analyze
+          // identical content again.
+          structuredOutput: analysis ?? aiAnalyses.structuredOutput,
           errorCode: analysisError,
           completedAt: now,
           updatedAt: now,
@@ -210,7 +280,7 @@ export async function analyzeAndRankListing(options: {
         .values({
           userId: options.userId,
           jobId: options.ingest.jobId,
-          snapshotId: options.ingest.snapshotId!,
+          snapshotId,
           dimension: item.dimension,
           value: item.value,
           confidence: item.confidence,
@@ -237,7 +307,7 @@ export async function analyzeAndRankListing(options: {
       .values({
         userId: options.userId,
         jobId: options.ingest.jobId,
-        snapshotId: options.ingest.snapshotId!,
+        snapshotId,
         eligibilityDecisionId: decision.id,
         band: recommendation.band,
         urgency: recommendation.urgency,

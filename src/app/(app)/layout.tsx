@@ -1,35 +1,18 @@
-import {
-  Bookmark,
-  BriefcaseBusiness,
-  Building2,
-  CircleUserRound,
-  Gauge,
-  Inbox,
-  Settings,
-  XCircle,
-} from "lucide-react";
+import { CircleUserRound, LogOut } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { signOut } from "@/app/sign-in/actions";
+import { ApplicationNavigation } from "@/components/navigation/application-navigation";
+import { SubmitButton } from "@/components/forms/submit-button";
 import { requireOwner } from "@/lib/auth/owner";
-
-const navigation = [
-  { href: "/", label: "Matches", icon: Inbox },
-  { href: "/saved", label: "Saved", icon: Bookmark },
-  { href: "/applied", label: "Applied", icon: BriefcaseBusiness },
-  { href: "/dismissed", label: "Dismissed", icon: XCircle },
-  { href: "/watchlist", label: "Watchlist", icon: Building2 },
-  { href: "/operations", label: "Health", icon: Gauge },
-  { href: "/settings", label: "Settings", icon: Settings },
-];
 
 export default async function ApplicationLayout({ children }: { children: ReactNode }) {
   const owner = await requireOwner();
 
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[15rem_1fr]">
-      <aside className="border-b border-[var(--line)] bg-[var(--surface)] lg:min-h-screen lg:border-r lg:border-b-0">
-        <div className="flex items-center justify-between px-5 py-4 lg:block lg:px-5 lg:py-7">
+      <aside className="border-b border-[var(--line)] bg-[var(--surface)] lg:sticky lg:top-0 lg:flex lg:h-screen lg:min-h-0 lg:flex-col lg:overflow-y-auto lg:border-r lg:border-b-0">
+        <div className="flex items-center justify-between px-5 py-4 lg:block lg:flex-1 lg:px-5 lg:py-7">
           <Link className="flex items-center gap-3" href="/">
             <span className="grid size-10 place-items-center rounded-2xl bg-[var(--green)] font-black text-white">
               F
@@ -38,37 +21,25 @@ export default async function ApplicationLayout({ children }: { children: ReactN
               FirstSeen
             </span>
           </Link>
+          <form action={signOut} className="lg:hidden">
+            <SubmitButton
+              aria-label="Sign out"
+              className="grid size-11 place-items-center rounded-xl text-[var(--muted)] transition hover:bg-[var(--paper)] hover:text-[var(--green)]"
+              pendingLabel="…"
+              type="submit"
+            >
+              <LogOut aria-hidden="true" size={19} />
+            </SubmitButton>
+          </form>
           <div className="hidden lg:mt-10 lg:block">
             <p className="px-3 text-[0.68rem] font-bold tracking-[0.16em] text-[var(--muted)] uppercase">
               Workspace
             </p>
-            <nav aria-label="Primary" className="mt-3 space-y-1">
-              {navigation.map(({ href, icon: Icon, label }) => (
-                <Link
-                  className="flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-bold transition hover:bg-[var(--paper)]"
-                  href={href}
-                  key={href}
-                >
-                  <Icon aria-hidden="true" size={18} />
-                  {label}
-                </Link>
-              ))}
-            </nav>
+            <ApplicationNavigation />
           </div>
         </div>
-        <nav aria-label="Primary mobile" className="grid grid-cols-4 gap-1 px-3 pb-3 lg:hidden">
-          {navigation.map(({ href, icon: Icon, label }) => (
-            <Link
-              className="flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-2 text-[0.68rem] font-bold hover:bg-[var(--paper)] sm:flex-row sm:justify-center sm:gap-2 sm:px-3 sm:text-xs"
-              href={href}
-              key={href}
-            >
-              <Icon aria-hidden="true" size={16} />
-              {label}
-            </Link>
-          ))}
-        </nav>
-        <div className="hidden px-5 lg:fixed lg:bottom-5 lg:block lg:w-[15rem]">
+        <ApplicationNavigation mobile />
+        <div className="hidden px-5 pb-5 lg:block lg:w-[15rem]">
           <div className="rounded-2xl bg-[var(--paper)] p-3">
             <div className="flex items-center gap-3">
               <CircleUserRound aria-hidden="true" size={20} />
@@ -78,9 +49,13 @@ export default async function ApplicationLayout({ children }: { children: ReactN
               </div>
             </div>
             <form action={signOut}>
-              <button className="mt-3 text-xs font-bold text-[var(--green)]" type="submit">
+              <SubmitButton
+                className="mt-3 text-xs font-bold text-[var(--green)]"
+                pendingLabel="Signing out…"
+                type="submit"
+              >
                 Sign out
-              </button>
+              </SubmitButton>
             </form>
           </div>
         </div>

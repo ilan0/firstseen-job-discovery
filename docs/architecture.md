@@ -95,8 +95,10 @@ ID while preserving owner/source validation. No database transaction encloses HT
 
 ## Authorization and trust boundaries
 
-- Supabase Auth cookies are managed server-side; `getUser` validates the owner on each protected
-  request. The configured owner email is an independent single-user allowlist.
+- The owner enters a four-digit code. Server-side scrypt verification, durable per-address/global
+  throttles, and an Auth-admin magic link create a normal Supabase cookie session without sending
+  email or storing the plaintext code. `getUser` validates the owner on each protected request; the
+  configured owner email remains an independent single-user allowlist.
 - Server actions validate form input, require the owner, and scope every lookup/mutation by user.
 - RLS provides defense in depth for browser data access. User-owned rows require `auth.uid() =
 user_id`; system security counters have no anon/authenticated grants.

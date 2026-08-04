@@ -2,6 +2,7 @@ import {
   ArrowUpRight,
   Bookmark,
   BriefcaseBusiness,
+  Building2,
   Clock3,
   MapPin,
   RotateCcw,
@@ -9,6 +10,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { transitionQueue } from "@/app/(app)/jobs/actions";
+import { SubmitButton } from "@/components/forms/submit-button";
 import type { QueueStatus } from "@/lib/jobs/queue";
 
 type JobCardProps = {
@@ -23,6 +25,14 @@ type JobCardProps = {
     postedAt: Date | null;
     lifecycleStatus: "pending_verification" | "open" | "possibly_closed" | "closed" | "reopened";
     freshnessBand: "hot" | "very_fresh" | "current" | "aging" | "stale";
+    freshnessBasis: "posted_at" | "first_seen";
+    freshnessAgeHours: number;
+    location: string;
+    workArrangement: string;
+    salary: string | null;
+    sourceKind: string;
+    sourceConfidence: number;
+    verifiedAt: Date | null;
     rowVersion: number;
     queueStatus: QueueStatus;
     hasReferral: boolean;
@@ -52,12 +62,13 @@ function Action({
       <input name="jobId" type="hidden" value={jobId} />
       <input name="rowVersion" type="hidden" value={rowVersion} />
       <input name="status" type="hidden" value={status} />
-      <button
+      <SubmitButton
         className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-[var(--line)] bg-white px-3 text-xs font-black transition hover:border-[var(--green)]"
+        pendingLabel={`${label}…`}
         type="submit"
       >
         <Icon aria-hidden="true" size={15} /> {label}
-      </button>
+      </SubmitButton>
     </form>
   );
 }
@@ -84,6 +95,9 @@ export function JobCard({ job }: JobCardProps) {
         <span className="inline-flex items-center gap-1 text-[var(--muted)]">
           <Clock3 aria-hidden="true" size={13} /> Seen {timeAgo(job.firstSeenAt)}
         </span>
+        <span className="rounded-full bg-[var(--paper)] px-2.5 py-1 text-[var(--muted)]">
+          {job.freshnessBand.replaceAll("_", " ")}
+        </span>
       </div>
       <div className="mt-4 flex items-start justify-between gap-4">
         <div>
@@ -94,7 +108,10 @@ export function JobCard({ job }: JobCardProps) {
             {job.title}
           </Link>
           <p className="mt-1 flex items-center gap-1.5 text-sm font-bold text-[var(--muted)]">
-            <MapPin aria-hidden="true" size={15} /> {job.company}
+            <Building2 aria-hidden="true" size={15} /> {job.company}
+          </p>
+          <p className="mt-1.5 flex items-start gap-1.5 text-sm text-[var(--muted)]">
+            <MapPin aria-hidden="true" className="mt-0.5 shrink-0" size={15} /> {job.location}
           </p>
         </div>
         <div className="rounded-2xl bg-[var(--paper)] px-3 py-2 text-center">
@@ -105,6 +122,13 @@ export function JobCard({ job }: JobCardProps) {
         </div>
       </div>
       <p className="mt-4 text-sm leading-6">{job.headline ?? "Analysis is pending."}</p>
+      <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs font-bold text-[var(--muted)]">
+        <span>{job.workArrangement.replaceAll("_", " ")}</span>
+        {job.salary ? <span>{job.salary}</span> : null}
+        <span>
+          Verified via {job.sourceKind.replaceAll("_", " ")} · confidence {job.sourceConfidence}%
+        </span>
+      </div>
       <div className="mt-5 flex flex-wrap gap-2">
         {isOfficiallyOpen ? (
           <Link

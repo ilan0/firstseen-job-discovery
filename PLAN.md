@@ -26,8 +26,9 @@ progress.
 
 1. Foundation: Next.js 16, React 19, strict exact-optional TypeScript, Tailwind, ESLint zero warnings,
    Prettier, Vitest, Playwright/Axe, pnpm lockfile/build-script allowlist, CI, Node 22.
-2. Persistence/Auth: PostgreSQL schema/migrations, seed, Supabase Auth, single-owner server checks,
-   defense-in-depth RLS, user scoping, durable HMAC sign-in/operations throttles.
+2. Persistence/Auth: PostgreSQL schema/migrations, seed, versioned scrypt four-digit code gate,
+   server-created Supabase owner sessions, defense-in-depth RLS, user scoping, and durable
+   per-address/global HMAC sign-in throttles.
 3. Matching: authoritative normalized descriptions, deterministic hard filtering before AI,
    uncertain Review, compact versioned OpenAI extraction, evidence validation, durable cost budget,
    ten persisted dimensions and deterministic routing.
@@ -59,7 +60,7 @@ progress.
 - Auth/RLS tests prove owner access, cross-user denial, and anon denial. Database suites prove
   idempotent ingest/material snapshots, closure/reopening, status history, stale urgency, and closed
   queue behavior.
-- Real official connector checks returned 178 Greenhouse, 100 paginated Lever, and 23 Ashby
+- Real official connector checks most recently returned 176 Greenhouse, 100 paginated Lever, and 24 Ashby
   listings. Brave and Adzuna credentialed checks completed; OpenAI structured extraction succeeded
   with the configured `gpt-5.6-luna` model.
 - A labelled Slack setup check returned HTTP 200. A real local Inngest notification trace completed
@@ -67,11 +68,15 @@ progress.
 - Source worker no-change path completed with 304/no analysis. A forced local material change first
   exposed a driver timestamp defect, then the same durable run retried and succeeded: six official
   jobs, exactly one changed/analyzed listing, zero failures. Regression tests cover the root cause.
-- Unit/component suites: 113 passing with 6 database-gated cases skipped in the default command.
-  Database integration suite: 7 passing across 5 files when explicitly enabled.
-- Playwright: 12 passing scenarios across 390×844, 768×1024, 1440×900, and 1920×1080. Core views
-  produced no Axe violations. Queue persistence, validation recovery, export, settings, mobile nav,
-  browser console, network, server logs, worker traces, and persisted rows were inspected.
+- The comprehensive access/matching/product audit expanded the unit/component/contract suites to
+  163 passing tests with 10 database-gated cases skipped in the default command. The explicitly
+  enabled database/Auth/RLS suite passes 10 tests across 6 files. Coverage is 93.02% statements and
+  94.62% lines; the low-threshold dependency audit reports zero known vulnerabilities.
+- Playwright passes 16 scenarios with retries disabled across 390×844, 768×1024, 1440×900, and
+  1920×1080. Core views produced no Axe violations. Access-code failure/success/sign-out, all queue
+  transitions from cards and details, official application routing, search/sort/filter, custom
+  dialogs, watchlist lifecycle, export, settings persistence, mobile navigation, browser console,
+  network, server logs, and persisted rows were inspected.
 - Live authenticated portal inspection found expected heading/cards, no horizontal overflow, and no
   browser console errors/warnings. Responsive screenshots were visually inspected.
 - Vercel project `rug-desk/firstseen-job-discovery` is live at

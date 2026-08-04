@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { Clock3, ExternalLink } from "lucide-react";
 import { removeWatchCompany } from "./actions";
 import { ConfirmSubmit } from "@/components/forms/confirm-submit";
 import { WatchlistForm } from "@/components/watchlist/watchlist-form";
@@ -69,6 +70,20 @@ export default async function WatchlistPage() {
                         Priority {row.priority} · every {row.cadence} minutes ·{" "}
                         {row.connector?.replaceAll("_", " ") ?? "source pending"}
                       </p>
+                      <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-[var(--muted)]">
+                        <Clock3 aria-hidden="true" size={14} /> Next scan{" "}
+                        {row.nextScanAt.toLocaleString()}
+                      </p>
+                      {row.source ? (
+                        <a
+                          className="mt-2 flex w-fit max-w-full items-center gap-1.5 truncate text-xs font-black text-[var(--green)] hover:underline"
+                          href={row.source}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          Official source <ExternalLink aria-hidden="true" size={13} />
+                        </a>
+                      ) : null}
                       {referralsByCompany.get(row.id)?.map((person) => (
                         <p className="mt-2 text-xs font-black text-[#54379a]" key={person}>
                           Referral: {person}
