@@ -1,6 +1,7 @@
 import { asc, and, desc, eq } from "drizzle-orm";
 import { Download, FileText, KeyRound, Plus } from "lucide-react";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { addPacketEntry, deactivateResume, deletePacketEntry } from "../actions";
 import { CopyValue } from "@/components/applications/copy-value";
 import { ResumeUploadForm } from "@/components/applications/resume-upload-form";
@@ -9,8 +10,10 @@ import { SubmitButton } from "@/components/forms/submit-button";
 import { db } from "@/db/client";
 import { applicationPacketEntries, resumeVersions } from "@/db/schema";
 import { requireOwner } from "@/lib/auth/owner";
+import { rolloutFlags } from "@/config/rollout";
 
 export default async function ApplicationPacketPage() {
+  if (!rolloutFlags().applicationWorkflow) notFound();
   const owner = await requireOwner();
   const [resumes, entries] = await Promise.all([
     db

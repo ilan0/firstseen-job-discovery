@@ -19,6 +19,11 @@ import {
 } from "@/db/schema";
 import { refreshCompanyMonitoring } from "@/lib/companies/monitoring";
 import { requireOwner } from "@/lib/auth/owner";
+import { rolloutFlags } from "@/config/rollout";
+
+function requireRelationshipCrm() {
+  if (!rolloutFlags().relationshipCrm) throw new Error("Relationship CRM is not enabled.");
+}
 
 const contactSchema = z
   .object({
@@ -100,6 +105,7 @@ export async function createContact(
   _state: ContactFormState,
   formData: FormData,
 ): Promise<ContactFormState> {
+  requireRelationshipCrm();
   const owner = await requireOwner();
   const parsed = contactSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success)
@@ -176,6 +182,7 @@ const interactionSchema = z.object({
 });
 
 export async function addContactInteraction(formData: FormData) {
+  requireRelationshipCrm();
   const owner = await requireOwner();
   const input = interactionSchema.parse(Object.fromEntries(formData));
   await ownedContact(owner.id, input.contactId);
@@ -197,6 +204,7 @@ const reminderSchema = z.object({
 });
 
 export async function addRelationshipReminder(formData: FormData) {
+  requireRelationshipCrm();
   const owner = await requireOwner();
   const input = reminderSchema.parse(Object.fromEntries(formData));
   await ownedContact(owner.id, input.contactId);
@@ -226,6 +234,7 @@ export async function addRelationshipReminder(formData: FormData) {
 const idSchema = z.string().uuid();
 
 export async function completeRelationshipReminder(formData: FormData) {
+  requireRelationshipCrm();
   const owner = await requireOwner();
   const id = idSchema.parse(formData.get("reminderId"));
   await db
@@ -249,6 +258,7 @@ const referralStatusSchema = z.object({
 });
 
 export async function updateReferralStatus(formData: FormData) {
+  requireRelationshipCrm();
   const owner = await requireOwner();
   const input = referralStatusSchema.parse(Object.fromEntries(formData));
   const now = new Date();
@@ -276,6 +286,7 @@ export async function updateReferralStatus(formData: FormData) {
 }
 
 export async function archiveContact(formData: FormData) {
+  requireRelationshipCrm();
   const owner = await requireOwner();
   const id = idSchema.parse(formData.get("contactId"));
   await db

@@ -87,6 +87,13 @@ const output: Record<string, string> = {
   OPENAI_ESCALATION_MODEL: "gpt-5.6-terra",
   OPENAI_MONTHLY_BUDGET_USD: "25",
   INNGEST_MONTHLY_EXECUTION_LIMIT: "50000",
+  GLOBAL_SUPPLY_V2_ENABLED: "false",
+  RELATIONSHIP_CRM_ENABLED: "true",
+  APPLICATION_WORKFLOW_ENABLED: "true",
+  PWA_ENABLED: "true",
+  WEB_PUSH_ENABLED: "true",
+  INDIVIDUAL_AUTH_ENABLED: "false",
+  OWNER_CODE_AUTH_ENABLED: "true",
 };
 
 for (const key of copiedProviderKeys) output[key] = requireValue(providerValues, key);

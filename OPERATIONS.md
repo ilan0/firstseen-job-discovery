@@ -176,6 +176,14 @@ For a push incident, confirm the logical notification exists, inspect only safe 
 attempt/error fields, verify the device subscription is active, and test exact relative-path click
 routing. Do not copy the endpoint or browser key material into a ticket, log, screenshot, or report.
 
+`PWA_ENABLED` and `WEB_PUSH_ENABLED` are separate rollout controls. Disabling PWA removes discovery
+metadata, blocks manifest/service-worker/offline routes, unregisters existing workers when the app
+is next opened, and clears only versioned `firstseen-static-*` caches. Disabling Web Push blocks
+subscription, preference, and read APIs and prevents worker delivery without affecting Slack.
+Relationship CRM and application workflow routes/actions are similarly server-blocked unless their
+exact opt-in flags are `true`; `/applied` falls back to the legacy queue when application workflow is
+off.
+
 ## Authentication and security response
 
 - Five failed code attempts from one network address in 15 minutes cause a 60-minute block. A

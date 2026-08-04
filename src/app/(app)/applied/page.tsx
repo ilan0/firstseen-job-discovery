@@ -8,6 +8,8 @@ import {
   updateApplicationDetails,
 } from "../applications/actions";
 import { SubmitButton } from "@/components/forms/submit-button";
+import { QueuePage } from "@/components/jobs/queue-page";
+import { rolloutFlags } from "@/config/rollout";
 import { db } from "@/db/client";
 import {
   applicationFollowups,
@@ -23,9 +25,20 @@ import {
 } from "@/db/schema";
 import { nextApplicationStages, type ApplicationStage } from "@/domain/applications/stages";
 import { requireOwner } from "@/lib/auth/owner";
+import { listQueue } from "@/lib/jobs/queue";
 
 export default async function AppliedPage() {
   const owner = await requireOwner();
+  if (!rolloutFlags().applicationWorkflow) {
+    return (
+      <QueuePage
+        description="A lightweight record of applications submitted through official employer pages."
+        jobs={await listQueue(owner.id, "applied")}
+        status="applied"
+        title="Applied jobs"
+      />
+    );
+  }
   const [rows, history, followups, resumes, availableReferrals] = await Promise.all([
     db
       .select({

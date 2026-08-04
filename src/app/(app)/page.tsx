@@ -47,7 +47,8 @@ export default async function MatchesPage({
   const referralsOnly = single(params.referrals) === "true";
   const cursor = single(params.cursor)?.slice(0, 800);
   const feedQuery = { postedWithin, sort, band, query, referralsOnly } as const;
-  const freshnessEnabled = rolloutFlags().freshnessFeed;
+  const flags = rolloutFlags();
+  const freshnessEnabled = flags.freshnessFeed;
   const [queuePage, olderCandidates] = freshnessEnabled
     ? await Promise.all([
         listQueuePage(owner.id, "active", {
@@ -64,32 +65,34 @@ export default async function MatchesPage({
   const olderExceptional = olderCandidates.filter(
     (job) => job.freshnessSection === "older" && (job.band === "hot" || job.band === "strong"),
   );
-  const resumableApplications = await db
-    .select({
-      sessionId: applicationSessions.id,
-      jobId: canonicalJobs.id,
-      title: canonicalJobs.title,
-      company: companies.name,
-      openedAt: applicationSessions.openedAt,
-    })
-    .from(applicationSessions)
-    .innerJoin(
-      canonicalJobs,
-      and(
-        eq(applicationSessions.legacyJobId, canonicalJobs.id),
-        eq(canonicalJobs.userId, owner.id),
-      ),
-    )
-    .innerJoin(companies, eq(canonicalJobs.companyId, companies.id))
-    .where(
-      and(
-        eq(applicationSessions.userId, owner.id),
-        eq(applicationSessions.disposition, "continue_later"),
-        gt(applicationSessions.expiresAt, new Date()),
-      ),
-    )
-    .orderBy(desc(applicationSessions.returnedAt), desc(applicationSessions.openedAt))
-    .limit(5);
+  const resumableApplications = flags.applicationWorkflow
+    ? await db
+        .select({
+          sessionId: applicationSessions.id,
+          jobId: canonicalJobs.id,
+          title: canonicalJobs.title,
+          company: companies.name,
+          openedAt: applicationSessions.openedAt,
+        })
+        .from(applicationSessions)
+        .innerJoin(
+          canonicalJobs,
+          and(
+            eq(applicationSessions.legacyJobId, canonicalJobs.id),
+            eq(canonicalJobs.userId, owner.id),
+          ),
+        )
+        .innerJoin(companies, eq(canonicalJobs.companyId, companies.id))
+        .where(
+          and(
+            eq(applicationSessions.userId, owner.id),
+            eq(applicationSessions.disposition, "continue_later"),
+            gt(applicationSessions.expiresAt, new Date()),
+          ),
+        )
+        .orderBy(desc(applicationSessions.returnedAt), desc(applicationSessions.openedAt))
+        .limit(5)
+    : [];
   return (
     <>
       {resumableApplications.length ? (

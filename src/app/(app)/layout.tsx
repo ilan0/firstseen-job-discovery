@@ -9,9 +9,11 @@ import { db } from "@/db/client";
 import { candidateProfiles } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
+import { rolloutFlags } from "@/config/rollout";
 
 export default async function ApplicationLayout({ children }: { children: ReactNode }) {
   const owner = await requireOwner();
+  const flags = rolloutFlags();
   const [profile] = await db
     .select({ id: candidateProfiles.id })
     .from(candidateProfiles)
@@ -45,10 +47,17 @@ export default async function ApplicationLayout({ children }: { children: ReactN
             <p className="px-3 text-[0.68rem] font-bold tracking-[0.16em] text-[var(--muted)] uppercase">
               Workspace
             </p>
-            <ApplicationNavigation />
+            <ApplicationNavigation
+              applicationWorkflow={flags.applicationWorkflow}
+              relationshipCrm={flags.relationshipCrm}
+            />
           </div>
         </div>
-        <ApplicationNavigation mobile />
+        <ApplicationNavigation
+          applicationWorkflow={flags.applicationWorkflow}
+          mobile
+          relationshipCrm={flags.relationshipCrm}
+        />
         <div className="hidden px-5 pb-5 lg:block lg:w-[15rem]">
           <div className="rounded-2xl bg-[var(--paper)] p-3">
             <div className="flex items-center gap-3">

@@ -4,11 +4,14 @@ import { db } from "@/db/client";
 import { resumeVersions } from "@/db/schema";
 import { requireOwner } from "@/lib/auth/owner";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { rolloutFlags } from "@/config/rollout";
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ resumeId: string }> },
 ) {
+  if (!rolloutFlags().applicationWorkflow)
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   const owner = await requireOwner();
   const { resumeId } = await params;
   const [resume] = await db

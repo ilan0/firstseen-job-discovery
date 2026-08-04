@@ -30,8 +30,11 @@ import {
   relationshipReminders,
 } from "@/db/schema";
 import { requireOwner } from "@/lib/auth/owner";
+import { rolloutFlags } from "@/config/rollout";
+import { notFound } from "next/navigation";
 
 export default async function RelationshipsPage() {
+  if (!rolloutFlags().relationshipCrm) notFound();
   const owner = await requireOwner();
   const [companyRows, people, methods, interactions, reminders, requests] = await Promise.all([
     db

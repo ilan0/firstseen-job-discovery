@@ -12,6 +12,7 @@ import {
 } from "@/lib/notifications/push-capability";
 import { encryptCapability } from "@/lib/security/encrypted-capability";
 import { hasTrustedMutationOrigin } from "@/lib/security/request-origin";
+import { rolloutFlags } from "@/config/rollout";
 
 function unauthorized() {
   return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -57,6 +58,7 @@ async function webPushChannel(userId: string) {
 }
 
 export async function POST(request: Request) {
+  if (!rolloutFlags().webPush) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const owner = await currentOwner();
   if (!owner) return unauthorized();
   const env = serverEnv();
@@ -112,6 +114,7 @@ export async function POST(request: Request) {
 const deleteSchema = z.object({ endpoint: z.url({ protocol: /^https$/ }).max(2_000) });
 
 export async function DELETE(request: Request) {
+  if (!rolloutFlags().webPush) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const owner = await currentOwner();
   if (!owner) return unauthorized();
   const env = serverEnv();
@@ -131,6 +134,7 @@ export async function DELETE(request: Request) {
 const preferenceSchema = z.object({ detailedLockScreen: z.boolean() });
 
 export async function PATCH(request: Request) {
+  if (!rolloutFlags().webPush) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const owner = await currentOwner();
   if (!owner) return unauthorized();
   const env = serverEnv();

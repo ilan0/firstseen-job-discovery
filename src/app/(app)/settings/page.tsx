@@ -8,12 +8,14 @@ import { candidateProfiles, searchPreferences } from "@/db/schema";
 import { requireOwner } from "@/lib/auth/owner";
 import { PushSettings } from "@/components/notifications/push-settings";
 import { notificationChannels, notificationPreferences } from "@/db/schema";
+import { rolloutFlags } from "@/config/rollout";
 export default async function SettingsPage({
   searchParams,
 }: {
   searchParams: Promise<{ saved?: string }>;
 }) {
   const owner = await requireOwner();
+  const flags = rolloutFlags();
   const query = await searchParams;
   const [profile] = await db
     .select()
@@ -25,18 +27,23 @@ export default async function SettingsPage({
     .from(searchPreferences)
     .where(eq(searchPreferences.userId, owner.id))
     .limit(1);
-  const [pushPreference] = await db
-    .select({ detailed: notificationPreferences.detailedLockScreen })
-    .from(notificationPreferences)
-    .innerJoin(notificationChannels, eq(notificationPreferences.channelId, notificationChannels.id))
-    .where(
-      and(
-        eq(notificationPreferences.userId, owner.id),
-        eq(notificationChannels.kind, "web_push"),
-        isNull(notificationPreferences.organizationId),
-      ),
-    )
-    .limit(1);
+  const [pushPreference] = flags.webPush
+    ? await db
+        .select({ detailed: notificationPreferences.detailedLockScreen })
+        .from(notificationPreferences)
+        .innerJoin(
+          notificationChannels,
+          eq(notificationPreferences.channelId, notificationChannels.id),
+        )
+        .where(
+          and(
+            eq(notificationPreferences.userId, owner.id),
+            eq(notificationChannels.kind, "web_push"),
+            isNull(notificationPreferences.organizationId),
+          ),
+        )
+        .limit(1)
+    : [];
   const acceptedAreas = Array.isArray(prefs?.acceptedAreas)
     ? (prefs.acceptedAreas as Array<{ id?: string }>).map((area) => area.id)
     : [];
@@ -287,10 +294,12 @@ export default async function SettingsPage({
           Save notification settings
         </SubmitButton>
       </form>
-      <PushSettings
-        detailedByDefault={pushPreference?.detailed ?? false}
-        publicKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? null}
-      />
+      {flags.webPush ? (
+        <PushSettings
+          detailedByDefault={pushPreference?.detailed ?? false}
+          publicKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? null}
+        />
+      ) : null}
       <section className="mt-6 rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-6">
         <h2 className="text-lg font-black">Your data</h2>
         <p className="mt-2 text-sm leading-6 text-[var(--muted)]">

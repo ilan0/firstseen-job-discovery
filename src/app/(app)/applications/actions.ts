@@ -32,6 +32,11 @@ import {
 } from "@/domain/applications/resume";
 import { requireOwner } from "@/lib/auth/owner";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { rolloutFlags } from "@/config/rollout";
+
+function requireApplicationWorkflow() {
+  if (!rolloutFlags().applicationWorkflow) throw new Error("Application workflow is not enabled.");
+}
 
 const sessionDispositionSchema = z.object({
   sessionId: z.string().uuid(),
@@ -39,6 +44,7 @@ const sessionDispositionSchema = z.object({
 });
 
 export async function resolveApplicationSession(formData: FormData) {
+  requireApplicationWorkflow();
   const owner = await requireOwner();
   const input = sessionDispositionSchema.parse(Object.fromEntries(formData));
   const now = new Date();
@@ -160,6 +166,7 @@ const stageSchema = z.object({
 });
 
 export async function transitionApplicationStage(formData: FormData) {
+  requireApplicationWorkflow();
   const owner = await requireOwner();
   const input = stageSchema.parse(Object.fromEntries(formData));
   const now = new Date();
@@ -194,6 +201,7 @@ const followupSchema = z.object({
 });
 
 export async function addApplicationFollowup(formData: FormData) {
+  requireApplicationWorkflow();
   const owner = await requireOwner();
   const input = followupSchema.parse(Object.fromEntries(formData));
   const [application] = await db
@@ -226,6 +234,7 @@ export async function addApplicationFollowup(formData: FormData) {
 }
 
 export async function completeApplicationFollowup(formData: FormData) {
+  requireApplicationWorkflow();
   const owner = await requireOwner();
   const id = z.string().uuid().parse(formData.get("followupId"));
   await db
@@ -252,6 +261,7 @@ const applicationDetailsSchema = z.object({
 });
 
 export async function updateApplicationDetails(formData: FormData) {
+  requireApplicationWorkflow();
   const owner = await requireOwner();
   const input = applicationDetailsSchema.parse(Object.fromEntries(formData));
   await db.transaction(async (tx) => {
@@ -305,6 +315,7 @@ const packetSchema = z.object({
 });
 
 export async function addPacketEntry(formData: FormData) {
+  requireApplicationWorkflow();
   const owner = await requireOwner();
   const input = packetSchema.parse(Object.fromEntries(formData));
   await db
@@ -328,6 +339,7 @@ export async function addPacketEntry(formData: FormData) {
 }
 
 export async function deletePacketEntry(formData: FormData) {
+  requireApplicationWorkflow();
   const owner = await requireOwner();
   const id = z.string().uuid().parse(formData.get("entryId"));
   await db
@@ -343,6 +355,7 @@ export async function uploadResume(
   _state: ResumeUploadState,
   formData: FormData,
 ): Promise<ResumeUploadState> {
+  requireApplicationWorkflow();
   const owner = await requireOwner();
   const file = formData.get("resume");
   const label = z.string().trim().min(2).max(160).safeParse(formData.get("label"));
@@ -387,6 +400,7 @@ export async function uploadResume(
 }
 
 export async function deactivateResume(formData: FormData) {
+  requireApplicationWorkflow();
   const owner = await requireOwner();
   const id = z.string().uuid().parse(formData.get("resumeId"));
   await db

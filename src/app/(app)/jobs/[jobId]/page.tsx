@@ -15,6 +15,7 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { JobActions } from "@/components/jobs/job-actions";
 import { ApplicationLink } from "@/components/applications/application-link";
+import { rolloutFlags } from "@/config/rollout";
 import { SubmitButton } from "@/components/forms/submit-button";
 import { resolveApplicationSession } from "@/app/(app)/applications/actions";
 import { requireOwner } from "@/lib/auth/owner";
@@ -22,6 +23,7 @@ import { getJobDetail } from "@/lib/jobs/queue";
 
 export default async function JobDetailPage({ params }: { params: Promise<{ jobId: string }> }) {
   const owner = await requireOwner();
+  const flags = rolloutFlags();
   const { jobId } = await params;
   const job = await getJobDetail(owner.id, jobId);
   if (!job) notFound();
@@ -109,7 +111,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
           status={job.status}
         />
       </header>
-      {job.pendingApplicationSession ? (
+      {flags.applicationWorkflow && job.pendingApplicationSession ? (
         <section className="mt-6 rounded-[1.5rem] border border-[var(--green)] bg-[#e7f6ef] p-5 sm:flex sm:items-center sm:justify-between sm:gap-5">
           <div>
             <p className="font-black">
@@ -143,7 +145,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
           </div>
         </section>
       ) : null}
-      {job.recommendedContact ? (
+      {flags.relationshipCrm && job.recommendedContact ? (
         <section className="mt-6 rounded-[1.5rem] border border-[#b9ddcd] bg-[#eef8f3] p-5 sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -185,7 +187,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
             </div>
           </div>
         </section>
-      ) : job.referrals.length ? (
+      ) : flags.relationshipCrm && job.referrals.length ? (
         <section className="mt-6 rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-5 text-sm">
           <p className="font-black">Referral available</p>
           <p className="mt-1 text-[var(--muted)]">

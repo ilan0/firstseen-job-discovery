@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { rolloutFlags } from "@/config/rollout";
 import { db } from "@/db/client";
 import {
   auditEvents,
@@ -97,7 +98,7 @@ export async function transitionQueue(formData: FormData) {
       targetId: jobId,
       metadataSafe: { from: current.queue.status, to: status },
     });
-    if (status === "applied") {
+    if (status === "applied" && rolloutFlags().applicationWorkflow) {
       const [existingApplication] = await tx
         .select({ id: applications.id })
         .from(applications)

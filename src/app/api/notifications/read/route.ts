@@ -6,10 +6,12 @@ import { notificationReads, notifications } from "@/db/schema";
 import { currentOwner } from "@/lib/auth/owner";
 import { serverEnv } from "@/lib/env/server";
 import { hasTrustedMutationOrigin } from "@/lib/security/request-origin";
+import { rolloutFlags } from "@/config/rollout";
 
 const bodySchema = z.object({ notificationId: z.string().uuid() });
 
 export async function POST(request: Request) {
+  if (!rolloutFlags().webPush) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const owner = await currentOwner();
   if (!owner) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!hasTrustedMutationOrigin(request, serverEnv().NEXT_PUBLIC_APP_URL))

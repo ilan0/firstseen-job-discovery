@@ -1,8 +1,16 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
+import { rolloutFlags } from "@/config/rollout";
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
+  const pathname = request.nextUrl.pathname;
+  const pwaPath =
+    pathname === "/offline" ||
+    pathname === "/manifest.webmanifest" ||
+    pathname === "/sw.js" ||
+    pathname.startsWith("/icons/");
+  if (pwaPath && !rolloutFlags().pwa) return new NextResponse(null, { status: 404 });
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
@@ -22,15 +30,11 @@ export async function proxy(request: NextRequest) {
   });
 
   const claims = await supabase.auth.getClaims();
-  const pathname = request.nextUrl.pathname;
   const publicPath =
     pathname === "/sign-in" ||
-    pathname === "/offline" ||
-    pathname === "/manifest.webmanifest" ||
-    pathname === "/sw.js" ||
+    pwaPath ||
     pathname.startsWith("/auth/") ||
-    pathname.startsWith("/api/inngest") ||
-    pathname.startsWith("/icons/");
+    pathname.startsWith("/api/inngest");
   if (!claims.data?.claims && !publicPath) {
     const signIn = request.nextUrl.clone();
     signIn.pathname = "/sign-in";

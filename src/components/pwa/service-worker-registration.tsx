@@ -12,7 +12,7 @@ function subscribeToConnectivity(callback: () => void) {
   };
 }
 
-export function ServiceWorkerRegistration() {
+export function ServiceWorkerRegistration({ enabled }: { enabled: boolean }) {
   const online = useSyncExternalStore(
     subscribeToConnectivity,
     () => navigator.onLine,
@@ -22,8 +22,27 @@ export function ServiceWorkerRegistration() {
   const reloadForAcceptedUpdate = useRef(false);
 
   useEffect(() => {
-    if ("serviceWorker" in navigator) {
-      void navigator.serviceWorker.register("/sw.js", { scope: "/" }).then((registration) => {
+    if (!("serviceWorker" in navigator)) return;
+    if (!enabled) {
+      void Promise.all([
+        navigator.serviceWorker
+          .getRegistrations()
+          .then((registrations) => Promise.all(registrations.map((item) => item.unregister()))),
+        caches
+          .keys()
+          .then((names) =>
+            Promise.all(
+              names
+                .filter((name) => name.startsWith("firstseen-static-"))
+                .map((name) => caches.delete(name)),
+            ),
+          ),
+      ]);
+      return;
+    }
+    void navigator.serviceWorker
+      .register("/sw.js", { scope: "/" })
+      .then((registration) => {
         if (registration.waiting) setWaiting(registration.waiting);
         registration.addEventListener("updatefound", () => {
           const worker = registration.installing;
@@ -32,14 +51,16 @@ export function ServiceWorkerRegistration() {
               setWaiting(worker);
           });
         });
-      });
-      const reload = () => {
-        if (reloadForAcceptedUpdate.current) window.location.reload();
-      };
-      navigator.serviceWorker.addEventListener("controllerchange", reload);
-      return () => navigator.serviceWorker.removeEventListener("controllerchange", reload);
-    }
-  }, []);
+      })
+      .catch(() => undefined);
+    const reload = () => {
+      if (reloadForAcceptedUpdate.current) window.location.reload();
+    };
+    navigator.serviceWorker.addEventListener("controllerchange", reload);
+    return () => navigator.serviceWorker.removeEventListener("controllerchange", reload);
+  }, [enabled]);
+
+  if (!enabled) return null;
 
   if (!online)
     return (

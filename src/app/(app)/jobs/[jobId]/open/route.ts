@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db/client";
 import { applicationSessions, canonicalJobs, userActions } from "@/db/schema";
+import { rolloutFlags } from "@/config/rollout";
 import { requireOwner } from "@/lib/auth/owner";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ jobId: string }> }) {
@@ -30,17 +31,19 @@ export async function GET(_request: Request, { params }: { params: Promise<{ job
     return NextResponse.json({ error: "Unsafe official URL" }, { status: 400 });
   const actionId = randomUUID();
   await db.transaction(async (tx) => {
-    const [session] = await tx
-      .insert(applicationSessions)
-      .values({
-        userId: owner.id,
-        globalJobId: job.globalJobId,
-        legacyJobId: jobId,
-        officialUrl: target.toString(),
-        disposition: "opened",
-        expiresAt: new Date(Date.now() + 7 * 86_400_000),
-      })
-      .returning({ id: applicationSessions.id });
+    const [session] = rolloutFlags().applicationWorkflow
+      ? await tx
+          .insert(applicationSessions)
+          .values({
+            userId: owner.id,
+            globalJobId: job.globalJobId,
+            legacyJobId: jobId,
+            officialUrl: target.toString(),
+            disposition: "opened",
+            expiresAt: new Date(Date.now() + 7 * 86_400_000),
+          })
+          .returning({ id: applicationSessions.id })
+      : [];
     await tx.insert(userActions).values({
       userId: owner.id,
       jobId,

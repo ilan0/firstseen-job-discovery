@@ -13,13 +13,11 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const navigation = [
+const baseNavigation = [
   { href: "/", label: "Matches", icon: Inbox },
   { href: "/saved", label: "Saved", icon: Bookmark },
-  { href: "/applied", label: "Applications", icon: BriefcaseBusiness },
   { href: "/dismissed", label: "Dismissed", icon: XCircle },
   { href: "/watchlist", label: "Watchlist", icon: Building2 },
-  { href: "/relationships", label: "People", icon: UsersRound },
   { href: "/operations", label: "Health", icon: Gauge },
   { href: "/settings", label: "Settings", icon: Settings },
 ] as const;
@@ -28,8 +26,27 @@ function activeRoute(pathname: string, href: string) {
   return href === "/" ? pathname === "/" || pathname.startsWith("/jobs/") : pathname === href;
 }
 
-export function ApplicationNavigation({ mobile = false }: { mobile?: boolean }) {
+export function ApplicationNavigation({
+  applicationWorkflow,
+  mobile = false,
+  relationshipCrm,
+}: {
+  applicationWorkflow: boolean;
+  mobile?: boolean;
+  relationshipCrm: boolean;
+}) {
   const pathname = usePathname();
+  const navigation = [
+    ...baseNavigation.slice(0, 2),
+    {
+      href: "/applied",
+      label: applicationWorkflow ? "Applications" : "Applied",
+      icon: BriefcaseBusiness,
+    },
+    ...baseNavigation.slice(2, 4),
+    ...(relationshipCrm ? [{ href: "/relationships", label: "People", icon: UsersRound }] : []),
+    ...baseNavigation.slice(4),
+  ];
   return (
     <nav
       aria-label={mobile ? "Primary mobile" : "Primary"}

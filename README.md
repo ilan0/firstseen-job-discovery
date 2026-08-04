@@ -158,6 +158,14 @@ Runtime credentials:
 | Sentry (optional) | DSN; auth token/org/project only at build                   | Redacted errors and source maps               |
 | Vercel/GitHub     | deployment token or authenticated CLI                       | Bootstrap/deployment, never app runtime       |
 
+Daily-Driver additions are independently deactivatable. `GLOBAL_SUPPLY_V2_ENABLED`,
+`RELATIONSHIP_CRM_ENABLED`, `APPLICATION_WORKFLOW_ENABLED`, `PWA_ENABLED`, `WEB_PUSH_ENABLED`, and
+`INDIVIDUAL_AUTH_ENABLED` require the exact value `true` and otherwise remain off. A disabled
+feature is blocked at navigation, direct-page, server-action, API, worker, and service-worker
+boundaries; it is not merely hidden in the interface. Local browser certification enables CRM,
+applications, PWA, and push through the ignored `.env.local`, while production activation remains
+staged.
+
 All provider secrets must be stored in Vercel encrypted environment variables and the applicable
 Inngest/Supabase secret store, not in the browser or repository.
 
