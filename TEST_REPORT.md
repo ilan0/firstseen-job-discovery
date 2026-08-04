@@ -10,9 +10,9 @@ PostgreSQL/Auth in Docker, Next.js 16.2.12, React 19.2.8, and Inngest CLI 1.40.0
 | Formatting                      | `pnpm format:check`                                                    | Pass, all tracked files          |
 | Lint                            | `pnpm lint`                                                            | Pass, zero warnings              |
 | Strict TypeScript               | `pnpm typecheck`                                                       | Pass                             |
-| Unit/component/contract tests   | `pnpm test`                                                            | 163 passed; 10 DB-gated skipped  |
+| Unit/component/contract tests   | `pnpm test`                                                            | 168 passed; 10 DB-gated skipped  |
 | PostgreSQL/Auth/RLS integration | `RUN_DATABASE_TESTS=true pnpm vitest run src/db/*.integration.test.ts` | 10 passed in 6 files             |
-| Coverage                        | `pnpm test:coverage`                                                   | 93.02% statements; 94.62% lines  |
+| Coverage                        | `pnpm test:coverage`                                                   | 93.07% statements; 94.66% lines  |
 | Dependency security             | `pnpm audit --audit-level=low`                                         | Pass; zero known vulnerabilities |
 | Production compile              | `pnpm build`                                                           | Pass; 12 app routes + Proxy      |
 | Real browser E2E/Axe            | `pnpm exec playwright test --retries=0`                                | 16 passed, 1.6 minutes           |

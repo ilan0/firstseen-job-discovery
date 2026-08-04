@@ -6,6 +6,7 @@ const now = new Date("2026-08-03T14:00:00Z");
 
 function input(description: string, title = "Software Engineer") {
   return {
+    title,
     eligibility: evaluateEligibility(
       extractDeterministicFacts({
         title,
@@ -56,6 +57,25 @@ describe("explainable deterministic ranking", () => {
       }),
     );
     expect(rankJob(value).band).toBe("review");
+  });
+
+  it.each(["Senior Software Engineer", "Engineering Manager", "Intermediate Backend Engineer"])(
+    "does not recommend an obvious advanced title without contrary early-career prose: %s",
+    (title) => {
+      const value = input("Full-time software role based in Miami.", title);
+      expect(rankJob(value)).toMatchObject({
+        band: "not_recommended",
+        headline: "The title signals a mid-level, senior, or leadership role",
+      });
+    },
+  );
+
+  it("lets an explicit early-career requirement outweigh an inflated seniority label", () => {
+    const value = input(
+      "Full-time software role requiring 0-2 years of experience in Miami.",
+      "Senior Software Engineer",
+    );
+    expect(rankJob(value).band).not.toBe("not_recommended");
   });
 
   it("exposes a referral advantage but does not disguise it as skills fit", () => {

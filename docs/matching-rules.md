@@ -40,6 +40,11 @@ notification idempotency.
 three years,” and equivalent required language are hard exclusions. “0–2 years,” “up to two,” and
 true new-grad language can pass. Seniority labels are weak signals; actual requirement prose wins.
 
+An obvious Senior/Staff/Principal/Lead/Intermediate/Manager/Director/Head/Architect title with no
+explicit compatible required-experience prose is withheld as a title-level fit mismatch, not marked
+deterministically ineligible. If the authoritative description explicitly asks for at most two
+years, that prose outweighs the inflated label and the role remains rankable.
+
 Negative phrases such as “no clearance required” are handled before positive clearance patterns.
 Hard-rule reasons persist evidence and a rule version. If extraction cannot justify the decision,
 the row records uncertain fields and routes to Review.

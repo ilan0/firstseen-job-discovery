@@ -4,11 +4,11 @@ import type { ExperienceRequirement } from "./types";
 const year = "(\\d{1,2}|zero|one|two|three|four|five|six|seven|eight|nine|ten)";
 const experiencePatterns = [
   new RegExp(
-    `\\b(?:(?:more than|over)[ \\t]+)?${year}(?:\\s*(?:-|–|—|to)\\s*${year})?\\s*(?:\\+|or more)?\\s*(?:years?|yrs?)[’']?(?:[ \\t]+of)?(?:[ \\t]+[a-z][a-z0-9+&/.-]*){0,6}[ \\t]+experience\\b`,
+    `\\b(?:(?:more than|over)[ \\t]+)?${year}(?:\\s*(?:-|–|—|to)\\s*${year})?\\s*(?:\\+(?:\\s*plus)?|plus|or more)?\\s*(?:years?|yrs?)[’']?(?:[ \\t]+of)?(?:[ \\t]+[a-z][a-z0-9+&/.-]*){0,6}[ \\t]+experience\\b`,
     "gi",
   ),
   new RegExp(
-    `\\b(?:(?:more than|over)[ \\t]+)?${year}(?:\\s*(?:-|–|—|to)\\s*${year})?\\s*(?:\\+|or more)?\\s*(?:years?|yrs?)[’']?[ \\t]+(?:in|building|developing|working|managing|leading|designing|creating|shipping|with)\\b`,
+    `\\b(?:(?:more than|over)[ \\t]+)?${year}(?:\\s*(?:-|–|—|to)\\s*${year})?\\s*(?:\\+(?:\\s*plus)?|plus|or more)?\\s*(?:years?|yrs?)[’']?[ \\t]+(?:in|building|developing|working|managing|leading|designing|creating|shipping|with)\\b`,
     "gi",
   ),
 ];

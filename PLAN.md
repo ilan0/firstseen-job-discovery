@@ -69,9 +69,9 @@ progress.
   exposed a driver timestamp defect, then the same durable run retried and succeeded: six official
   jobs, exactly one changed/analyzed listing, zero failures. Regression tests cover the root cause.
 - The comprehensive access/matching/product audit expanded the unit/component/contract suites to
-  163 passing tests with 10 database-gated cases skipped in the default command. The explicitly
-  enabled database/Auth/RLS suite passes 10 tests across 6 files. Coverage is 93.02% statements and
-  94.62% lines; the low-threshold dependency audit reports zero known vulnerabilities.
+  168 passing tests with 10 database-gated cases skipped in the default command. The explicitly
+  enabled database/Auth/RLS suite passes 10 tests across 6 files. Coverage is 93.07% statements and
+  94.66% lines; the low-threshold dependency audit reports zero known vulnerabilities.
 - Playwright passes 16 scenarios with retries disabled across 390×844, 768×1024, 1440×900, and
   1920×1080. Core views produced no Axe violations. Access-code failure/success/sign-out, all queue
   transitions from cards and details, official application routing, search/sort/filter, custom

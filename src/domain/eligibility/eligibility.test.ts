@@ -54,6 +54,7 @@ describe("deterministic eligibility", () => {
 
   it.each([
     "Five or more years of software engineering experience is required.",
+    "Minimum of 3+ plus years of audit experience is required.",
     "More than 2 years of engineering experience is required.",
     "Over two years’ professional development experience is required.",
   ])("understands additional strict experience wording: %s", (requirement) => {

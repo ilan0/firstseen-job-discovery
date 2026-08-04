@@ -185,6 +185,7 @@ export async function analyzeAndRankListing(options: {
       )
     : 45;
   const recommendation = rankJob({
+    title: options.listing.title,
     eligibility: finalDecision,
     roleFamily,
     requiredSkills: analysis?.requiredSkills ?? [],

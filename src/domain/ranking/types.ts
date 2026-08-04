@@ -23,6 +23,7 @@ export type RankingDimensionResult = {
 };
 
 export type RankingInput = {
+  title: string;
   eligibility: EligibilityDecision;
   roleFamily: RoleFamily;
   requiredSkills: string[];

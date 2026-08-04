@@ -6,7 +6,10 @@ import type {
   Recommendation,
 } from "./types";
 
-export const RANKING_VERSION = "2026-08-03.2";
+export const RANKING_VERSION = "2026-08-03.3";
+
+const advancedTitlePattern =
+  /\b(?:senior|sr\.?|staff|principal|lead|manager|director|head|architect|intermediate)\b/i;
 
 function clamp(value: number): number {
   return Math.max(0, Math.min(100, Math.round(value)));
@@ -133,6 +136,21 @@ export function rankJob(input: RankingInput): Recommendation {
       headline: "The title is not a supported software-engineering role family",
       dimensions: [],
       routingReasons: ["Role-family relevance filter"],
+    };
+  }
+  const explicitRequiredExperience = input.eligibility.facts.experienceRequirements.filter(
+    (item) => !item.preferred,
+  );
+  if (advancedTitlePattern.test(input.title) && !explicitRequiredExperience.length) {
+    return {
+      version: RANKING_VERSION,
+      band: "not_recommended",
+      urgency: 0,
+      headline: "The title signals a mid-level, senior, or leadership role",
+      dimensions: [],
+      routingReasons: [
+        "No explicit early-career experience requirement was found to outweigh the title-level mismatch",
+      ],
     };
   }
 
