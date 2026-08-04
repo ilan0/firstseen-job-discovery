@@ -11,9 +11,9 @@ export const applicationStages = [
 export type ApplicationStage = (typeof applicationStages)[number];
 
 const allowedTransitions: Record<ApplicationStage, ReadonlySet<ApplicationStage>> = {
-  applied: new Set(["recruiter_screen", "rejected", "withdrawn"]),
-  recruiter_screen: new Set(["interview", "rejected", "withdrawn"]),
-  interview: new Set(["final", "rejected", "withdrawn"]),
+  applied: new Set(["recruiter_screen", "interview", "final", "offer", "rejected", "withdrawn"]),
+  recruiter_screen: new Set(["interview", "final", "offer", "rejected", "withdrawn"]),
+  interview: new Set(["final", "offer", "rejected", "withdrawn"]),
   final: new Set(["offer", "rejected", "withdrawn"]),
   offer: new Set(["withdrawn"]),
   rejected: new Set(),

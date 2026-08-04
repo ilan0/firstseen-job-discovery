@@ -13,9 +13,10 @@ describe("application stage transitions", () => {
     expect(canTransitionApplication("final", "offer")).toBe(true);
   });
 
-  it("allows rejection or withdrawal but rejects skips and terminal changes", () => {
+  it("allows real hiring funnels to skip intermediate stages but rejects terminal changes", () => {
     expect(nextApplicationStages("applied")).toContain("rejected");
-    expect(() => assertApplicationTransition("applied", "offer")).toThrow(/cannot move/);
+    expect(canTransitionApplication("applied", "interview")).toBe(true);
+    expect(canTransitionApplication("applied", "offer")).toBe(true);
     expect(() => assertApplicationTransition("rejected", "interview")).toThrow(/cannot move/);
   });
 });

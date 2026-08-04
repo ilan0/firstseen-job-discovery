@@ -13,6 +13,9 @@ import {
   applicationSessions,
   applicationStageHistory,
   auditEvents,
+  canonicalJobs,
+  companies,
+  globalJobs,
   queueStateHistory,
   queueStates,
   referralRequests,
@@ -31,6 +34,7 @@ import {
   RESUME_BUCKET,
   safeResumeFilename,
 } from "@/domain/applications/resume";
+import { assertApplicationReferralOrganization } from "@/domain/applications/referral";
 import { requireOwner } from "@/lib/auth/owner";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { rolloutFlags } from "@/config/rollout";
@@ -267,8 +271,15 @@ export async function updateApplicationDetails(formData: FormData) {
   const input = applicationDetailsSchema.parse(Object.fromEntries(formData));
   await db.transaction(async (tx) => {
     const [application] = await tx
-      .select({ id: applications.id })
+      .select({
+        id: applications.id,
+        globalOrganizationId: globalJobs.organizationId,
+        legacyOrganizationId: companies.organizationId,
+      })
       .from(applications)
+      .leftJoin(globalJobs, eq(applications.globalJobId, globalJobs.id))
+      .leftJoin(canonicalJobs, eq(applications.legacyJobId, canonicalJobs.id))
+      .leftJoin(companies, eq(canonicalJobs.companyId, companies.id))
       .where(and(eq(applications.userId, owner.id), eq(applications.id, input.applicationId)))
       .limit(1);
     if (!application) throw new Error("Application not found.");
@@ -284,7 +295,7 @@ export async function updateApplicationDetails(formData: FormData) {
     }
     if (input.referralRequestId) {
       const [referral] = await tx
-        .select({ id: referralRequests.id })
+        .select({ id: referralRequests.id, organizationId: referralRequests.organizationId })
         .from(referralRequests)
         .where(
           and(
@@ -294,6 +305,16 @@ export async function updateApplicationDetails(formData: FormData) {
         )
         .limit(1);
       if (!referral) throw new Error("Referral request not found.");
+      if (
+        application.globalOrganizationId &&
+        application.legacyOrganizationId &&
+        application.globalOrganizationId !== application.legacyOrganizationId
+      )
+        throw new Error("Application company identity is inconsistent.");
+      assertApplicationReferralOrganization(
+        application.globalOrganizationId ?? application.legacyOrganizationId,
+        referral.organizationId,
+      );
     }
     await tx
       .update(applications)
