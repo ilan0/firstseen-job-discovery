@@ -1,6 +1,6 @@
 # FirstSeen test report
 
-Freshness-first release candidate tested 2026-08-04 on macOS with Node 22.23.2, pnpm 11.9.0,
+Freshness-first release tested 2026-08-04 on macOS with Node 24.14.0, pnpm 11.9.0,
 local Supabase PostgreSQL/Auth in Docker, Next.js 16.2.12, React 19.2.8, and Inngest CLI 1.40.0.
 
 ## Local release gate
@@ -11,11 +11,11 @@ local Supabase PostgreSQL/Auth in Docker, Next.js 16.2.12, React 19.2.8, and Inn
 | Lint                    | `pnpm lint`                                  | Pass; zero warnings                                                |
 | Strict TypeScript       | `pnpm typecheck`                             | Pass                                                               |
 | Unit/component/contract | `pnpm test`                                  | Pass                                                               |
-| PostgreSQL/Auth/RLS     | `RUN_DATABASE_TESTS=true pnpm test`          | 209 passed in 25 files                                             |
-| Coverage                | `RUN_DATABASE_TESTS=true pnpm test:coverage` | 86.80% statements, 76.51% branches, 88.31% functions, 88.91% lines |
+| PostgreSQL/Auth/RLS     | `RUN_DATABASE_TESTS=true pnpm test`          | 218 passed in 25 files                                             |
+| Coverage                | `RUN_DATABASE_TESTS=true pnpm test:coverage` | 87.15% statements, 77.45% branches, 88.98% functions, 89.21% lines |
 | Dependency security     | `pnpm audit --audit-level=low`               | Pass; zero known vulnerabilities                                   |
 | Production compile      | `pnpm build`                                 | Pass; 12 app routes plus Proxy                                     |
-| Real browser/Axe        | `pnpm test:e2e`                              | 16 passed in 2.1 minutes; retries disabled                         |
+| Real browser/Axe        | `pnpm test:e2e`                              | 16 passed in 2.0 minutes; retries disabled                         |
 
 Coverage excludes declarative Drizzle definitions and the outer AI-budget, notification, and scan
 orchestration shells. Those paths are covered by the database, worker, and browser suites; the
@@ -78,7 +78,19 @@ the configured hosted-function bounds.
 
 ## Production status
 
-This report does not claim the freshness-first production rollout until the dedicated FirstSeen
-database backup, migration, GitHub publication, Vercel deployment, Inngest sync, authenticated Chrome
-inspection, cloud row/log/trace checks, and Slack behavior verification are completed and appended.
-The unrelated ProofCheck project is out of scope and must not be mutated.
+- Protected non-empty roles/schema/data backup artifacts were created outside the repository before
+  applying the backward-compatible migration to dedicated FirstSeen ref `tlhwxayhjamopnnlroke`.
+- Company, feed, and Slack rollout flags were enabled independently. The current Vercel production
+  deployment is Ready and serves the GitHub `main` release.
+- Current-policy replay succeeded for all 45 active official sources. The unsupported Evenup board
+  was externally confirmed closed, quarantined, and its prior dead letters resolved. Operations show
+  zero unresolved dead letters and every active source Ready.
+- All eight visible production matches passed direct official-page verification, including exact
+  persisted official posted instants and HTTPS application URLs. The foreign-only Sweden regression
+  is absent from the queue.
+- Authenticated Chrome inspection found no warning/error console output. The inspected Vercel errors
+  were only two pre-fix Evenup 404 traces; none occurred after quarantine deployment.
+- Slack delivered the 2026-08-04 digest once at 8:00:04 AM Eastern with eight jobs, with no duplicate
+  idempotency groups or failed notifications.
+
+The unrelated ProofCheck project remained out of scope and was not mutated.

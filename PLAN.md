@@ -5,18 +5,18 @@ This living record distinguishes verified evidence from pending production work.
 
 ## Freshness-first milestones
 
-|   # | Milestone                         | Status         | Objective evidence                                                                                                                        |
-| --: | --------------------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-|   1 | Baseline and policy specification | Complete       | Production baseline captured; shared deterministic freshness/company policy and independent rollout flags implemented                     |
-|   2 | Backward-compatible persistence   | Local complete | Idempotent migration rebuilds from empty local database; checks/indexes/backfill and all Auth/RLS tests pass                              |
-|   3 | Company domain/lifecycle          | Local complete | Interest/referral/scope independent; Follow preserves origin; dismissal quarantine sticky; cadence combinations tested                    |
-|   4 | Freshness policy/server feed      | Local complete | Dynamic official/reopen/fallback policy, age sections, server windows/sorts, URL restoration, ancient-date prevention tested              |
-|   5 | Matches UX                        | Local complete | Explicit three-time provenance, responsive controls/sections/states/actions; four-viewport visual/Axe/browser pass                        |
-|   6 | Company UX                        | Local complete | My/Discovered/All views, automatic provenance, interest/referral/follow/dismiss controls and persisted cadence exercised                  |
-|   7 | Discovery/scheduling              | Local complete | 15/60/240 tiers, immediate provisional verification, valid Warm transition, Cold-only adaptive cadence, real durable source run           |
-|   8 | Slack overhaul                    | Local complete | Fresh Hot/Strong occurrence alerts, grouped since-prior digest, empty skip, safe Block Kit and idempotency; labelled webhook smoke passed |
-|   9 | Observability/cost/docs           | Local complete | Tier/cadence/date-confidence/detection-latency/capacity diagnostics, current model prices, test/operations/product/source docs            |
-|  10 | Production rollout and iteration  | In progress    | Local release gate complete; backup, cloud migration, staged flags, deployment, production rows/logs/traces/browser remain                |
+|   # | Milestone                         | Status   | Objective evidence                                                                                                                     |
+| --: | --------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+|   1 | Baseline and policy specification | Complete | Production baseline captured; shared deterministic freshness/company policy and independent rollout flags implemented                  |
+|   2 | Backward-compatible persistence   | Complete | Idempotent migration passed empty-local rebuild, production apply/backfill, checks/indexes, Auth/RLS, export and deletion tests        |
+|   3 | Company domain/lifecycle          | Complete | Interest/referral/scope independent; Follow preserves origin; dismissal quarantine sticky; cadence combinations tested                 |
+|   4 | Freshness policy/server feed      | Complete | Dynamic official/reopen/fallback policy, age sections, server windows/sorts, URL restoration, ancient-date prevention tested           |
+|   5 | Matches UX                        | Complete | Explicit three-time provenance, responsive controls/sections/states/actions; four-viewport visual/Axe/browser pass                     |
+|   6 | Company UX                        | Complete | My/Discovered/All views, automatic provenance, interest/referral/follow/dismiss controls and persisted cadence exercised               |
+|   7 | Discovery/scheduling              | Complete | 15/60/240 tiers, provisional verification, Warm/Cold transitions, current-version replay and missing-board quarantine verified         |
+|   8 | Slack overhaul                    | Complete | Fresh Hot/Strong occurrence alerts, grouped since-prior digest, empty skip, safe Block Kit and idempotency; production digest verified |
+|   9 | Observability/cost/docs           | Complete | Tier/cadence/date-confidence/detection-latency/capacity diagnostics, cost ledger, test/operations/product/source docs                  |
+|  10 | Production rollout and iteration  | Complete | Backup, migration, staged flags, GitHub/Vercel release, source replay, Slack, cloud state, logs and authenticated browser verified     |
 
 ## Captured baseline
 
@@ -57,12 +57,12 @@ This living record distinguishes verified evidence from pending production work.
 
 - Exact local database reset applied all five migrations including
   `20260804090000_freshness_first.sql` from scratch.
-- Formatting, zero-warning lint, strict types, all 209 tests, coverage gate, low-threshold dependency
+- Formatting, zero-warning lint, strict types, all 218 tests, coverage gate, low-threshold dependency
   audit, and optimized build pass.
-- Coverage: 86.80% statements, 76.51% branches, 88.31% functions, 88.91% lines. The untouched prior
+- Coverage: 87.15% statements, 77.45% branches, 88.98% functions, 89.21% lines. The untouched prior
   release failed its configured branch/function gate; layered exclusions now assign outer network/
   worker and declarative schema verification to database/worker/browser suites.
-- Playwright: 16/16 with retries disabled at 390×844, 768×1024, 1440×900, and 1920×1080. No page
+- Playwright: 16/16 in 2.0 minutes with retries disabled at 390×844, 768×1024, 1440×900, and 1920×1080. No page
   console error, page exception, HTTP 5xx, or Axe violation remained; fresh visuals were inspected.
 - Real providers: Greenhouse 176/open, Lever 100 paginated/open, Ashby 24/open; Brave 8 candidates
   (7 supported official URLs), Adzuna valid/zero; OpenAI Luna structured evidence valid; labelled
@@ -70,18 +70,38 @@ This living record distinguishes verified evidence from pending production work.
 - Real app plus Inngest run finalized 176 official Figma listings successfully. Redelivery of the
   identical occurrence kept exactly one scan row and produced no unresolved dead letter.
 
+## Production release evidence
+
+- A protected logical backup was created outside the repository and its roles, schema, and data
+  artifacts were verified non-empty before migration. All five migrations are present on dedicated
+  FirstSeen Supabase ref `tlhwxayhjamopnnlroke`; the ProofCheck project was not touched.
+- GitHub `main` and the Vercel production deployment contain the freshness, company, Slack, skills
+  matching, missing-board quarantine, and foreign-only location fixes. Company scope, feed, and
+  Slack rollout flags were enabled and deployed independently.
+- A current-policy replay completed 45/45 active official-source runs successfully. The obsolete
+  Evenup Ashby board returned an externally confirmed 404, was quarantined, and its two prior dead
+  letters were resolved. Production now shows 45 active sources, zero unresolved dead letters, zero
+  active source errors, zero failed notifications, and no future official dates.
+- The authenticated production feed contains eight current visible jobs; all eight official pages
+  and application URLs were fetched directly and their posted instants matched persisted data. An
+  explicit Sweden-only remote listing found during rollout is now deterministically excluded.
+- Authenticated browser validation confirmed a seven-day/newest-official default, age sections,
+  URL-restored filters/sorts, separate My/Discovered company scopes, explicit date provenance, and
+  explainable dimensions. No production browser warning or error remained.
+- The 2026-08-04 morning Slack digest delivered once at 8:00:04 AM Eastern with eight jobs. There
+  were no duplicate idempotency groups and no qualifying under-24-hour Hot/Strong job requiring an
+  immediate production alert.
+- Vercel's only two errors in the inspected timeline were the pre-fix Evenup 404 at 10:17 AM. No
+  post-fix runtime error, HTTP 5xx, unresolved worker failure, or active-source error remained.
+
 ## Release constraints and follow-up
 
 - Only dedicated Supabase ref `tlhwxayhjamopnnlroke` may receive FirstSeen schema/data changes.
   ProofCheck ref `cuwfwassuxozafpbvjao` must never be mutated.
-- Create and validate non-empty logical backup artifacts immediately before the production
-  migration. Do not retain plaintext backup in the repository.
-- Apply backward-compatible schema before app behavior. Inspect old versus new membership, then
-  enable company scope, freshness feed, and Slack independently. Preserve stale jobs and all user
-  history.
-- Verify GitHub remote head, Vercel immutable deployment, Inngest registration/signed callbacks,
-  browser console/network, server logs, worker traces, Supabase rows, date/source of every visible
-  production match, notification/dead-letter state, and immediate post-rollout health.
+- The verified pre-migration backup remains mode `600` outside the repository as a short-term
+  rollback artifact. Never copy or commit it; remove it after the desired rollback-retention window.
+- Preserve stale jobs and all user history. Operational monitoring must continue to warn rather than
+  silently weakening priority cadence when capacity approaches provider quotas.
 - A previously exposed Vercel token was already considered compromised in the original release and
   must remain revoked/replaced provider-side; do not use it if still present in an ignored file.
 - Optional Sentry remains unnecessary without a DSN/project; Vercel, Inngest, operations data, and
