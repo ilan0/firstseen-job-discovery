@@ -9,6 +9,7 @@ import {
   jobAnalysisPromptHash,
   jobAnalysisSchema,
   unresolvedEscalationFields,
+  type AnalysisResult,
   type JobAnalysis,
 } from "@/ai";
 import type { NormalizedListing } from "@/connectors/types";
@@ -96,141 +97,244 @@ function neutralEscalationReasons(analysis: JobAnalysis) {
   return reasons;
 }
 
-/**
- * Extracts candidate-neutral requirements once for a global snapshot. The
- * budget is attributed to one watcher, but no candidate or relationship data
- * is included in the model request.
- */
-export async function extractSharedRequirements(options: {
+export type SharedRequirementExtractionOptions = {
   snapshotId: string;
   budgetUserId: string;
   listing: NormalizedListing;
-}): Promise<SharedRequirementExtraction> {
-  const promptHash = jobAnalysisPromptHash();
-  const cacheWhere = and(
-    eq(jobRequirementExtractions.snapshotId, options.snapshotId),
+};
+
+type SharedExtractionPreparation =
+  | { status: "complete"; extraction: SharedRequirementExtraction }
+  | { status: "ready"; reservationId: string; promptHash: string };
+
+type SharedEscalationPreparation =
+  | { status: "not_needed" | "budget_blocked"; reasons: string[] }
+  | { status: "ready"; reasons: string[]; reservationId: string };
+
+type SharedEscalationOutcome =
+  | { status: "not_run" }
+  | { status: "succeeded"; reservationId: string; reasons: string[]; result: AnalysisResult }
+  | { status: "failed"; reservationId: string; reasons: string[]; errorCode: string };
+
+type DurableStep = <T>(name: string, operation: () => Promise<T>) => Promise<T>;
+
+function extractionCacheWhere(snapshotId: string, promptHash: string) {
+  return and(
+    eq(jobRequirementExtractions.snapshotId, snapshotId),
     eq(jobRequirementExtractions.model, ROUTINE_EXTRACTION_MODEL),
     eq(jobRequirementExtractions.schemaVersion, AI_ANALYSIS_SCHEMA_VERSION),
     eq(jobRequirementExtractions.promptHash, promptHash),
     eq(jobRequirementExtractions.extractionVersion, SHARED_EXTRACTION_VERSION),
   );
-  const [cached] = await db.select().from(jobRequirementExtractions).where(cacheWhere).limit(1);
-  if (cached) {
-    const stored = storedExtraction(cached);
-    if (stored.status === "succeeded") return stored;
-  }
+}
+
+async function loadStoredExtraction(snapshotId: string, promptHash: string) {
+  const [row] = await db
+    .select()
+    .from(jobRequirementExtractions)
+    .where(extractionCacheWhere(snapshotId, promptHash))
+    .limit(1);
+  return row ? storedExtraction(row) : null;
+}
+
+async function saveNonSucceededExtraction(options: {
+  snapshotId: string;
+  status: "failed" | "budget_blocked";
+  promptHash: string;
+  errorCode: string;
+}) {
+  const [saved] = await db
+    .insert(jobRequirementExtractions)
+    .values({
+      snapshotId: options.snapshotId,
+      status: options.status,
+      model: ROUTINE_EXTRACTION_MODEL,
+      schemaVersion: AI_ANALYSIS_SCHEMA_VERSION,
+      promptHash: options.promptHash,
+      extractionVersion: SHARED_EXTRACTION_VERSION,
+      errorCode: options.errorCode,
+      completedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: [
+        jobRequirementExtractions.snapshotId,
+        jobRequirementExtractions.model,
+        jobRequirementExtractions.schemaVersion,
+        jobRequirementExtractions.promptHash,
+        jobRequirementExtractions.extractionVersion,
+      ],
+      set: {
+        status: options.status,
+        structuredOutput: null,
+        confidence: null,
+        errorCode: options.errorCode,
+        completedAt: new Date(),
+        updatedAt: new Date(),
+      },
+    })
+    .returning();
+  return saved
+    ? storedExtraction(saved)
+    : (await loadStoredExtraction(options.snapshotId, options.promptHash))!;
+}
+
+export async function loadSharedRequirements(snapshotId: string) {
+  const stored = await loadStoredExtraction(snapshotId, jobAnalysisPromptHash());
+  return stored?.status === "succeeded" ? stored : null;
+}
+
+async function prepareSharedRequirementExtraction(
+  options: SharedRequirementExtractionOptions,
+): Promise<SharedExtractionPreparation> {
+  const promptHash = jobAnalysisPromptHash();
+  const cached = await loadStoredExtraction(options.snapshotId, promptHash);
+  if (cached?.status === "succeeded") return { status: "complete", extraction: cached };
 
   const reservationKey = `openai:global:${options.snapshotId}:${AI_ANALYSIS_SCHEMA_VERSION}:${promptHash}`;
   const reservationId = await reserveAiBudget(options.budgetUserId, reservationKey, 0.004);
   if (!reservationId) {
-    const [saved] = await db
-      .insert(jobRequirementExtractions)
-      .values({
-        snapshotId: options.snapshotId,
-        status: "budget_blocked",
-        model: ROUTINE_EXTRACTION_MODEL,
-        schemaVersion: AI_ANALYSIS_SCHEMA_VERSION,
-        promptHash,
-        extractionVersion: SHARED_EXTRACTION_VERSION,
-        errorCode: "MONTHLY_BUDGET_LIMIT",
-        completedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: [
-          jobRequirementExtractions.snapshotId,
-          jobRequirementExtractions.model,
-          jobRequirementExtractions.schemaVersion,
-          jobRequirementExtractions.promptHash,
-          jobRequirementExtractions.extractionVersion,
-        ],
-        set: {
-          status: "budget_blocked",
-          structuredOutput: null,
-          confidence: null,
-          errorCode: "MONTHLY_BUDGET_LIMIT",
-          completedAt: new Date(),
-          updatedAt: new Date(),
-        },
-      })
-      .returning();
-    return saved
-      ? storedExtraction(saved)
-      : storedExtraction(
-          (await db.select().from(jobRequirementExtractions).where(cacheWhere).limit(1))[0]!,
-        );
+    const extraction = await saveNonSucceededExtraction({
+      snapshotId: options.snapshotId,
+      status: "budget_blocked",
+      promptHash,
+      errorCode: "MONTHLY_BUDGET_LIMIT",
+    });
+    return { status: "complete", extraction };
+  }
+  return { status: "ready", reservationId, promptHash };
+}
+
+async function runRoutineExtraction(
+  listing: NormalizedListing,
+  reservationId: string,
+): Promise<AnalysisResult> {
+  return analyzeJob(
+    {
+      title: listing.title,
+      description: listing.descriptionText,
+      employmentType: listing.employmentType,
+      locations: listing.locations,
+      workplaceType: listing.workplaceType,
+    },
+    {
+      model: ROUTINE_EXTRACTION_MODEL,
+      clientRequestId: `firstseen-routine-${reservationId}`,
+    },
+  );
+}
+
+async function prepareSharedEscalation(options: {
+  budgetUserId: string;
+  snapshotId: string;
+  promptHash: string;
+  reservationId: string;
+  routine: AnalysisResult;
+}): Promise<SharedEscalationPreparation> {
+  await settleAiBudget(options.reservationId, options.routine.estimatedCostUsd, {
+    scope: "global_requirement_extraction",
+    model: options.routine.model,
+    responseId: options.routine.responseId,
+    ...options.routine.usage,
+  });
+  const reasons = neutralEscalationReasons(options.routine.analysis);
+  if (!reasons.length) return { status: "not_needed", reasons };
+  const reservationId = await reserveAiEscalationBudget(
+    options.budgetUserId,
+    `openai:global-escalation:${options.snapshotId}:${AI_ANALYSIS_SCHEMA_VERSION}:${options.promptHash}`,
+  );
+  return reservationId
+    ? { status: "ready", reasons, reservationId }
+    : { status: "budget_blocked", reasons };
+}
+
+async function runEscalationExtraction(
+  listing: NormalizedListing,
+  reservationId: string,
+): Promise<AnalysisResult> {
+  return analyzeJob(
+    {
+      title: listing.title,
+      description: listing.descriptionText,
+      employmentType: listing.employmentType,
+      locations: listing.locations,
+      workplaceType: listing.workplaceType,
+    },
+    {
+      model: ESCALATION_EXTRACTION_MODEL,
+      validationAttempts: 1,
+      clientRequestId: `firstseen-escalation-${reservationId}`,
+    },
+  );
+}
+
+async function persistSuccessfulSharedExtraction(options: {
+  snapshotId: string;
+  promptHash: string;
+  routine: AnalysisResult;
+  escalation: SharedEscalationOutcome;
+}) {
+  let analysis = options.routine.analysis;
+  let escalationModel: string | null = null;
+  let unresolvedFields: string[] = [];
+  let totalCost = options.routine.estimatedCostUsd;
+  let totalLatencyMs = options.routine.latencyMs;
+  const totalUsage = { ...options.routine.usage };
+
+  if (options.escalation.status === "succeeded") {
+    const terra = options.escalation.result;
+    unresolvedFields = unresolvedEscalationFields(options.routine.analysis, terra.analysis);
+    analysis = terra.analysis;
+    escalationModel = terra.model;
+    totalUsage.inputTokens += terra.usage.inputTokens;
+    totalUsage.cachedInputTokens += terra.usage.cachedInputTokens;
+    totalUsage.outputTokens += terra.usage.outputTokens;
+    totalCost += terra.estimatedCostUsd;
+    totalLatencyMs += terra.latencyMs;
+    await settleAiBudget(options.escalation.reservationId, terra.estimatedCostUsd, {
+      scope: "global_requirement_escalation",
+      model: terra.model,
+      responseId: terra.responseId,
+      reasons: options.escalation.reasons,
+      unresolvedFields,
+      ...terra.usage,
+    });
+  } else if (options.escalation.status === "failed") {
+    await releaseAiBudget(options.escalation.reservationId, options.escalation.errorCode);
   }
 
-  try {
-    const result = await analyzeJob(
-      {
-        title: options.listing.title,
-        description: options.listing.descriptionText,
-        employmentType: options.listing.employmentType,
-        locations: options.listing.locations,
-        workplaceType: options.listing.workplaceType,
-      },
-      { model: ROUTINE_EXTRACTION_MODEL },
-    );
-    await settleAiBudget(reservationId, result.estimatedCostUsd, {
-      scope: "global_requirement_extraction",
-      model: result.model,
-      ...result.usage,
-    });
-    let analysis = result.analysis;
-    let escalationModel: string | null = null;
-    let unresolvedFields: string[] = [];
-    let totalCost = result.estimatedCostUsd;
-    let totalLatencyMs = result.latencyMs;
-    const totalUsage = { ...result.usage };
-    const escalationReasons = neutralEscalationReasons(result.analysis);
-    if (escalationReasons.length) {
-      const escalationReservation = await reserveAiEscalationBudget(
-        options.budgetUserId,
-        `openai:global-escalation:${options.snapshotId}:${AI_ANALYSIS_SCHEMA_VERSION}:${promptHash}`,
-      );
-      if (escalationReservation) {
-        try {
-          const terra = await analyzeJob(
-            {
-              title: options.listing.title,
-              description: options.listing.descriptionText,
-              employmentType: options.listing.employmentType,
-              locations: options.listing.locations,
-              workplaceType: options.listing.workplaceType,
-            },
-            { model: ESCALATION_EXTRACTION_MODEL, validationAttempts: 1 },
-          );
-          unresolvedFields = unresolvedEscalationFields(result.analysis, terra.analysis);
-          analysis = terra.analysis;
-          escalationModel = terra.model;
-          totalUsage.inputTokens += terra.usage.inputTokens;
-          totalUsage.cachedInputTokens += terra.usage.cachedInputTokens;
-          totalUsage.outputTokens += terra.usage.outputTokens;
-          totalCost += terra.estimatedCostUsd;
-          totalLatencyMs += terra.latencyMs;
-          await settleAiBudget(escalationReservation, terra.estimatedCostUsd, {
-            scope: "global_requirement_escalation",
-            model: terra.model,
-            reasons: escalationReasons,
-            unresolvedFields,
-            ...terra.usage,
-          });
-        } catch (error) {
-          await releaseAiBudget(escalationReservation, safeErrorCode(error));
-        }
-      }
-    }
-    const [saved] = await db
-      .insert(jobRequirementExtractions)
-      .values({
-        snapshotId: options.snapshotId,
+  const [saved] = await db
+    .insert(jobRequirementExtractions)
+    .values({
+      snapshotId: options.snapshotId,
+      status: "succeeded",
+      model: options.routine.model,
+      escalationModel,
+      unresolvedFields,
+      schemaVersion: options.routine.schemaVersion,
+      promptHash: options.routine.promptHash,
+      extractionVersion: SHARED_EXTRACTION_VERSION,
+      structuredOutput: analysis,
+      confidence: extractionConfidence(analysis),
+      inputTokens: totalUsage.inputTokens,
+      cachedInputTokens: totalUsage.cachedInputTokens,
+      outputTokens: totalUsage.outputTokens,
+      estimatedCostUsd: totalCost.toFixed(6),
+      actualCostUsd: totalCost.toFixed(6),
+      latencyMs: totalLatencyMs,
+      completedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: [
+        jobRequirementExtractions.snapshotId,
+        jobRequirementExtractions.model,
+        jobRequirementExtractions.schemaVersion,
+        jobRequirementExtractions.promptHash,
+        jobRequirementExtractions.extractionVersion,
+      ],
+      set: {
         status: "succeeded",
-        model: result.model,
         escalationModel,
         unresolvedFields,
-        schemaVersion: result.schemaVersion,
-        promptHash: result.promptHash,
-        extractionVersion: SHARED_EXTRACTION_VERSION,
         structuredOutput: analysis,
         confidence: extractionConfidence(analysis),
         inputTokens: totalUsage.inputTokens,
@@ -240,75 +344,113 @@ export async function extractSharedRequirements(options: {
         actualCostUsd: totalCost.toFixed(6),
         latencyMs: totalLatencyMs,
         completedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: [
-          jobRequirementExtractions.snapshotId,
-          jobRequirementExtractions.model,
-          jobRequirementExtractions.schemaVersion,
-          jobRequirementExtractions.promptHash,
-          jobRequirementExtractions.extractionVersion,
-        ],
-        set: {
-          status: "succeeded",
-          escalationModel,
-          unresolvedFields,
-          structuredOutput: analysis,
-          confidence: extractionConfidence(analysis),
-          inputTokens: totalUsage.inputTokens,
-          cachedInputTokens: totalUsage.cachedInputTokens,
-          outputTokens: totalUsage.outputTokens,
-          estimatedCostUsd: totalCost.toFixed(6),
-          actualCostUsd: totalCost.toFixed(6),
-          latencyMs: totalLatencyMs,
-          completedAt: new Date(),
-          errorCode: null,
-          updatedAt: new Date(),
-        },
-      })
-      .returning();
-    return saved
-      ? storedExtraction(saved)
-      : storedExtraction(
-          (await db.select().from(jobRequirementExtractions).where(cacheWhere).limit(1))[0]!,
-        );
-  } catch (error) {
-    const errorCode = safeErrorCode(error);
-    await releaseAiBudget(reservationId, errorCode);
-    const [saved] = await db
-      .insert(jobRequirementExtractions)
-      .values({
+        errorCode: null,
+        updatedAt: new Date(),
+      },
+    })
+    .returning();
+  return saved
+    ? storedExtraction(saved)
+    : (await loadStoredExtraction(options.snapshotId, options.promptHash))!;
+}
+
+async function persistFailedSharedExtraction(options: {
+  snapshotId: string;
+  promptHash: string;
+  reservationId: string;
+  errorCode: string;
+}) {
+  await releaseAiBudget(options.reservationId, options.errorCode);
+  return saveNonSucceededExtraction({
+    snapshotId: options.snapshotId,
+    status: "failed",
+    promptHash: options.promptHash,
+    errorCode: options.errorCode,
+  });
+}
+
+/**
+ * Runs model calls in their own durable steps, separate from database writes.
+ * An Inngest replay can therefore reuse an accepted provider response instead
+ * of issuing the paid call again after a downstream persistence failure.
+ */
+export async function runSharedRequirementExtractionWorkflow(
+  options: SharedRequirementExtractionOptions,
+  runStep: DurableStep,
+): Promise<SharedRequirementExtraction> {
+  const preparation = await runStep("prepare-shared-requirement-extraction", () =>
+    prepareSharedRequirementExtraction(options),
+  );
+  if (preparation.status === "complete") return preparation.extraction;
+
+  const routine = await runStep("call-routine-requirement-model", async () => {
+    try {
+      return {
+        status: "succeeded" as const,
+        result: await runRoutineExtraction(options.listing, preparation.reservationId),
+      };
+    } catch (error) {
+      return { status: "failed" as const, errorCode: safeErrorCode(error) };
+    }
+  });
+  if (routine.status === "failed")
+    return runStep("persist-routine-requirement-failure", () =>
+      persistFailedSharedExtraction({
         snapshotId: options.snapshotId,
-        status: "failed",
-        model: ROUTINE_EXTRACTION_MODEL,
-        schemaVersion: AI_ANALYSIS_SCHEMA_VERSION,
-        promptHash,
-        extractionVersion: SHARED_EXTRACTION_VERSION,
-        errorCode,
-        completedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: [
-          jobRequirementExtractions.snapshotId,
-          jobRequirementExtractions.model,
-          jobRequirementExtractions.schemaVersion,
-          jobRequirementExtractions.promptHash,
-          jobRequirementExtractions.extractionVersion,
-        ],
-        set: {
-          status: "failed",
-          structuredOutput: null,
-          confidence: null,
-          errorCode,
-          completedAt: new Date(),
-          updatedAt: new Date(),
-        },
-      })
-      .returning();
-    return saved
-      ? storedExtraction(saved)
-      : storedExtraction(
-          (await db.select().from(jobRequirementExtractions).where(cacheWhere).limit(1))[0]!,
-        );
-  }
+        promptHash: preparation.promptHash,
+        reservationId: preparation.reservationId,
+        errorCode: routine.errorCode,
+      }),
+    );
+
+  const escalationPreparation = await runStep("prepare-shared-requirement-escalation", () =>
+    prepareSharedEscalation({
+      budgetUserId: options.budgetUserId,
+      snapshotId: options.snapshotId,
+      promptHash: preparation.promptHash,
+      reservationId: preparation.reservationId,
+      routine: routine.result,
+    }),
+  );
+  let escalation: SharedEscalationOutcome = { status: "not_run" };
+  if (escalationPreparation.status === "ready")
+    escalation = await runStep("call-escalation-requirement-model", async () => {
+      try {
+        return {
+          status: "succeeded" as const,
+          reservationId: escalationPreparation.reservationId,
+          reasons: escalationPreparation.reasons,
+          result: await runEscalationExtraction(
+            options.listing,
+            escalationPreparation.reservationId,
+          ),
+        };
+      } catch (error) {
+        return {
+          status: "failed" as const,
+          reservationId: escalationPreparation.reservationId,
+          reasons: escalationPreparation.reasons,
+          errorCode: safeErrorCode(error),
+        };
+      }
+    });
+
+  return runStep("persist-shared-requirement-extraction", () =>
+    persistSuccessfulSharedExtraction({
+      snapshotId: options.snapshotId,
+      promptHash: preparation.promptHash,
+      routine: routine.result,
+      escalation,
+    }),
+  );
+}
+
+/**
+ * Direct orchestration for focused tests and non-worker callers. Production
+ * workers pass Inngest's durable step runner to the workflow above.
+ */
+export async function extractSharedRequirements(
+  options: SharedRequirementExtractionOptions,
+): Promise<SharedRequirementExtraction> {
+  return runSharedRequirementExtractionWorkflow(options, (_name, operation) => operation());
 }

@@ -26,7 +26,9 @@ notification idempotency.
 
 Routine extraction receives no candidate profile, contact/referral PII, resume, application state,
 or notification device data. Its cache identity includes snapshot, model, schema, prompt hash, and
-reasoning configuration. Terra is capped at 10% of analyzed snapshots and 20% of AI spend. A model
+reasoning configuration. Provider calls and persistence use separate durable steps so replay can
+reuse a paid response, and every accepted validation attempt contributes to token accounting. Terra
+is capped at 10% of analyzed snapshots and 20% of AI spend. A model
 refusal, invalid evidence, or unresolved Luna/Terra conflict routes to Review rather than guessing.
 
 ## Hard eligibility

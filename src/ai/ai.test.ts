@@ -160,10 +160,28 @@ describe("OpenAI structured extraction transport", () => {
     );
     expect(parse).toHaveBeenCalledTimes(2);
     expect(extracted.usage).toEqual({
-      inputTokens: 0,
-      cachedInputTokens: 0,
-      outputTokens: 0,
+      inputTokens: 1_000,
+      cachedInputTokens: 100,
+      outputTokens: 200,
     });
+  });
+
+  it("attaches the caller trace id without exposing it in model input", async () => {
+    const { client, parse } = clientWithResponses([response()]);
+
+    await analyzeJob(
+      { title: "Software Engineer I", description },
+      { model: "gpt-5.6-luna", client, clientRequestId: "firstseen-reservation-fixture" },
+    );
+
+    expect(parse).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        headers: {
+          "X-Client-Request-Id": "firstseen-reservation-fixture-validation-1",
+        },
+      }),
+    );
   });
 
   it("fails immediately when the caller permits only one validation attempt", async () => {

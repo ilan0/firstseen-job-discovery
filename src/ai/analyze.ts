@@ -26,6 +26,7 @@ export type AnalyzeJobOptions = {
   model?: string;
   client?: OpenAI;
   validationAttempts?: 1 | 2;
+  clientRequestId?: string;
 };
 
 export async function analyzeJob(
@@ -36,15 +37,30 @@ export async function analyzeJob(
   const model = options.model ?? env!.OPENAI_MODEL;
   const client = options.client ?? new OpenAI({ apiKey: env!.OPENAI_API_KEY, timeout: 30_000 });
   const startedAt = performance.now();
+  const usage: TokenUsage = { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 };
+  let validationAttempt = 0;
   const execute = async () => {
-    const response = await client.responses.parse({
-      model,
-      input: [
-        { role: "system", content: JOB_ANALYSIS_SYSTEM_PROMPT },
-        { role: "user", content: buildJobAnalysisInput(job) },
-      ],
-      text: { format: zodTextFormat(jobAnalysisSchema, "job_analysis") },
-    });
+    validationAttempt += 1;
+    const response = await client.responses.parse(
+      {
+        model,
+        input: [
+          { role: "system", content: JOB_ANALYSIS_SYSTEM_PROMPT },
+          { role: "user", content: buildJobAnalysisInput(job) },
+        ],
+        text: { format: zodTextFormat(jobAnalysisSchema, "job_analysis") },
+      },
+      options.clientRequestId
+        ? {
+            headers: {
+              "X-Client-Request-Id": `${options.clientRequestId}-validation-${validationAttempt}`,
+            },
+          }
+        : undefined,
+    );
+    usage.inputTokens += response.usage?.input_tokens ?? 0;
+    usage.cachedInputTokens += response.usage?.input_tokens_details?.cached_tokens ?? 0;
+    usage.outputTokens += response.usage?.output_tokens ?? 0;
     if (!response.output_parsed)
       throw new Error("OpenAI response did not contain a parsed job analysis");
     return {
@@ -61,11 +77,6 @@ export async function analyzeJob(
   }
   const { response, analysis } = parsed;
 
-  const usage: TokenUsage = {
-    inputTokens: response.usage?.input_tokens ?? 0,
-    cachedInputTokens: response.usage?.input_tokens_details?.cached_tokens ?? 0,
-    outputTokens: response.usage?.output_tokens ?? 0,
-  };
   return {
     analysis,
     model,

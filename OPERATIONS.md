@@ -99,6 +99,9 @@ replaying. Never create a second manual event merely because a model call takes 
   already found deterministically remain excluded.
 - Inspect `ai_analyses.status/error_code` and the current month's `usage_cost_ledger`. Raw prompts,
   descriptions, and keys must not be logged.
+- Luna/Terra provider calls appear as separate durable steps from settlement and extraction
+  persistence. Replay the failed persistence step; do not issue an ad hoc replacement model call.
+  The usage ledger records the provider response ID and all accepted validation-attempt tokens.
 - `MONTHLY_BUDGET_LIMIT` means the application has reached the configured $25 reservation cap.
   Wait for the UTC month rollover or deliberately adjust the encrypted production variable after
   reviewing actual spend in the OpenAI project dashboard.

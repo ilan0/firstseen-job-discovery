@@ -55,7 +55,10 @@ import {
   markGlobalScansDispatched,
 } from "@/lib/supply/global-scheduler";
 import { attachGlobalSourcesToUser } from "@/lib/supply/user-overlay";
-import { extractSharedRequirements } from "@/lib/supply/requirement-extraction";
+import {
+  loadSharedRequirements,
+  runSharedRequirementExtractionWorkflow,
+} from "@/lib/supply/requirement-extraction";
 import { inngest } from "./client";
 import { eventDateTime } from "./event-time";
 
@@ -254,15 +257,21 @@ export const globalRequirementExtraction = inngest.createFunction(
       }),
     );
     if (!task) throw new NonRetriableError("Persisted global listing was not found");
-    const extraction = await step.run("extract-candidate-neutral-requirements", () =>
-      extractSharedRequirements({
+    const extraction = await runSharedRequirementExtractionWorkflow(
+      {
         snapshotId: data.snapshotId,
         budgetUserId: targets[0]!.userId,
         listing: task.listing,
-      }),
+      },
+      (name, operation) => step.run(name, operation) as unknown as ReturnType<typeof operation>,
     );
-    if (extraction.status === "failed")
-      throw new Error(`Shared requirement extraction failed: ${extraction.errorCode ?? "UNKNOWN"}`);
+    if (extraction.status !== "succeeded")
+      return {
+        snapshotId: data.snapshotId,
+        extractionStatus: extraction.status,
+        targetUsers: 0,
+        errorCode: extraction.errorCode,
+      };
     for (let index = 0; index < targets.length; index += 400)
       await step.sendEvent(
         `fan-out-user-personalization-${index / 400}`,
@@ -294,14 +303,9 @@ export const globalUserPersonalization = inngest.createFunction(
     );
     if (!task) return { skipped: true, reason: "watcher_or_listing_not_active" };
     const extraction = await step.run("load-shared-requirements", () =>
-      extractSharedRequirements({
-        snapshotId: data.snapshotId,
-        budgetUserId: data.userId,
-        listing: task.listing,
-      }),
+      loadSharedRequirements(data.snapshotId),
     );
-    if (extraction.status === "failed")
-      throw new Error(`Shared requirement extraction failed: ${extraction.errorCode ?? "UNKNOWN"}`);
+    if (!extraction) return { skipped: true, reason: "shared_extraction_unavailable" };
     const result = await step.run("apply-deterministic-user-policy", () =>
       personalizeGlobalListing(
         task.source,

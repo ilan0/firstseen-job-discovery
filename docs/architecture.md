@@ -135,8 +135,11 @@ mutations; the strictest watcher wins and an overdue source remains due.
 
 Conditional requests, normalized hashes, changed-only processing, deterministic early exits,
 compact outputs, and provider ledgers constrain work. OpenAI budget is durably reserved before a
-call. Unknown model aliases fail closed. Brave is transient and breaker-limited; Adzuna automated
-promotion is disabled.
+call. Each Luna/Terra call is a separate memoized Inngest step from settlement and extraction
+persistence, so downstream database replay does not issue the paid call again. Accepted validation
+attempts all contribute to usage accounting, and client request IDs provide provider-side support
+correlation without entering model input. Unknown model aliases fail closed. Brave is transient and
+breaker-limited; Adzuna automated promotion is disabled.
 
 Current model accounting uses Luna at $0.20/$1.20 and Terra at $2/$12 per million input/output
 tokens. At 4,000 input and 600 output tokens with 10% Terra escalation, the planning target is about

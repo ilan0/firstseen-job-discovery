@@ -5,7 +5,7 @@ import type { JobAnalysis } from "@/ai/schema";
 
 const mocks = vi.hoisted(() => ({
   selectResponses: [] as unknown[][],
-  insertResponses: [] as unknown[][],
+  insertResponses: [] as (unknown[] | Error)[],
   analyzeJob: vi.fn(),
   reserveAiBudget: vi.fn(),
   reserveAiEscalationBudget: vi.fn(),
@@ -31,7 +31,12 @@ function chain<T>(terminal: () => T) {
 vi.mock("@/db/client", () => ({
   db: {
     select: () => chain(() => mocks.selectResponses.shift() ?? []),
-    insert: () => chain(() => mocks.insertResponses.shift() ?? []),
+    insert: () =>
+      chain(() => {
+        const response = mocks.insertResponses.shift() ?? [];
+        if (response instanceof Error) throw response;
+        return response;
+      }),
   },
 }));
 
@@ -51,7 +56,10 @@ vi.mock("@/ai", async (importOriginal) => {
   };
 });
 
-import { extractSharedRequirements } from "./requirement-extraction";
+import {
+  extractSharedRequirements,
+  runSharedRequirementExtractionWorkflow,
+} from "./requirement-extraction";
 
 function analysis(overrides: Partial<JobAnalysis> = {}): JobAnalysis {
   return {
@@ -82,6 +90,7 @@ function result(value: JobAnalysis, model = "gpt-5.6-luna") {
     usage: { inputTokens: 100, cachedInputTokens: 10, outputTokens: 20 },
     estimatedCostUsd: 0.001,
     latencyMs: 100,
+    responseId: `response-${model}`,
   };
 }
 
@@ -298,5 +307,28 @@ describe("shared requirement extraction orchestration", () => {
       errorCode: "AI_FAILED",
     });
     expect(mocks.releaseAiBudget).toHaveBeenCalledWith("reservation-routine", "AI_FAILED");
+  });
+
+  it("reuses the paid model step when downstream persistence is replayed", async () => {
+    mocks.selectResponses.push([]);
+    mocks.insertResponses.push(new Error("database unavailable"), [row()]);
+    mocks.analyzeJob.mockResolvedValue(result(analysis()));
+    const memoized = new Map<string, unknown>();
+    const durableStep = async <T>(name: string, operation: () => Promise<T>) => {
+      if (memoized.has(name)) return memoized.get(name) as T;
+      const value = await operation();
+      memoized.set(name, value);
+      return value;
+    };
+
+    await expect(runSharedRequirementExtractionWorkflow(options, durableStep)).rejects.toThrow(
+      "database unavailable",
+    );
+    await expect(
+      runSharedRequirementExtractionWorkflow(options, durableStep),
+    ).resolves.toMatchObject({ status: "succeeded" });
+
+    expect(mocks.analyzeJob).toHaveBeenCalledOnce();
+    expect(mocks.insertResponses).toHaveLength(0);
   });
 });

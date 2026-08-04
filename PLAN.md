@@ -7,24 +7,24 @@ physical-device work.
 
 ## Daily-Driver master-plan milestones
 
-|   # | Milestone                                       | Status           | Objective evidence or remaining gate                                                                                                                                         |
-| --: | ----------------------------------------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-|   0 | Baseline/compliance containment                 | Complete locally | Brave result fields removed from persistence; Adzuna promotion disabled by provider policy; backup/token discrepancies documented                                            |
-|   1 | Policy, contracts, and benchmark foundation     | Complete locally | Versioned provider capabilities/licenses and minimized URL-hash coverage benchmarks implemented; no fabricated independent recall claim                                      |
-|   2 | Detection, redirects, authority, query overhaul | Complete locally | Twelve stable cohorts; DNS-pinned, per-hop SSRF-safe redirects; organization authority contracts; custom JSON-LD independently verified                                      |
-|   3 | Public ATS connectors                           | Complete locally | Greenhouse, Lever, Ashby, Recruitee, and Pinpoint contract and live bounded smoke checks pass                                                                                |
-|   4 | Reviewed structured/licensed sensor foundation  | Partial          | Reviewed JSON-LD/RSS/Atom/sitemap contracts implemented; licensed-vendor bakeoff awaits a user-authorized account/contract                                                   |
-|   5 | Shared supply and private overlays              | Complete locally | Additive global schema/backfill/dual write; fair scheduler/outbox; strictest shared watcher cadence; per-snapshot extraction and per-user ranking events; DB-driven profiles |
-|   6 | Relationship CRM                                | Complete locally | Contacts, methods, company links, interactions, reminders, referral requests, best-contact rules, migration compatibility, UI and RLS coverage                               |
-|   7 | Applications and packet                         | Complete locally | Sessions, private resume metadata/storage policy, packet, application/stage/follow-up records, return prompt and outcome analytics; Apply never marks Applied                |
-|   8 | Installable PWA                                 | Complete locally | Manifest/icons, narrow service worker, no private response caching, offline/update UI, install and lifecycle tests                                                           |
-|   9 | Channel orchestration and Web Push              | Complete locally | Encrypted per-device subscriptions, channel/device idempotency, bounded retries, unknown-outcome dead letters, replay, and 404/410 cleanup; device rollout pending           |
-|  10 | Mobile detail and Simplify handoff              | Complete locally | Deep-link recovery, mobile action parity, referral/application packet context, Continue Later/Desktop behavior; physical extension/device checks pending                     |
-|  11 | Shared AI extraction and escalation             | Complete locally | Explicit Luna, strict evidence, selective capped Terra, current pricing, cost/budget ledgers and regression evaluator; 300-item human corpus remains a human-labeling gate   |
-|  12 | Invite-only multi-user foundations              | Complete locally | Individual email route/onboarding and per-user runtime preferences implemented behind disabled flags; custom SMTP/public signup remain out of scope                          |
-|  13 | Integrated local certification                  | Complete         | From-zero migration/bootstrap, 381 tests, strengthened coverage floor, focused suites, zero-vulnerability audit, build, and retry-free four-viewport browser suite pass      |
-|  14 | Production rollout and seven-day soak           | Pending rollout  | Isolated backup restore passes; requires safe FirstSeen-only deployment, Web Push/iPhone acceptance, then seven consecutive scheduled days                                   |
-|  15 | Final evidence audit                            | Pending          | Runs after the soak; current documentation intentionally lists remaining blind spots                                                                                         |
+|   # | Milestone                                       | Status           | Objective evidence or remaining gate                                                                                                                                                          |
+| --: | ----------------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|   0 | Baseline/compliance containment                 | Complete locally | Brave result fields removed from persistence; Adzuna promotion disabled by provider policy; backup/token discrepancies documented                                                             |
+|   1 | Policy, contracts, and benchmark foundation     | Complete locally | Versioned provider capabilities/licenses and minimized URL-hash coverage benchmarks implemented; no fabricated independent recall claim                                                       |
+|   2 | Detection, redirects, authority, query overhaul | Complete locally | Twelve stable cohorts; DNS-pinned, per-hop SSRF-safe redirects; organization authority contracts; custom JSON-LD independently verified                                                       |
+|   3 | Public ATS connectors                           | Complete locally | Greenhouse, Lever, Ashby, Recruitee, and Pinpoint contract and live bounded smoke checks pass                                                                                                 |
+|   4 | Reviewed structured/licensed sensor foundation  | Partial          | Reviewed JSON-LD/RSS/Atom/sitemap contracts implemented; licensed-vendor bakeoff awaits a user-authorized account/contract                                                                    |
+|   5 | Shared supply and private overlays              | Complete locally | Additive global schema/backfill/dual write; fair scheduler/outbox; strictest shared watcher cadence; per-snapshot extraction and per-user ranking events; DB-driven profiles                  |
+|   6 | Relationship CRM                                | Complete locally | Contacts, methods, company links, interactions, reminders, referral requests, best-contact rules, migration compatibility, UI and RLS coverage                                                |
+|   7 | Applications and packet                         | Complete locally | Sessions, private resume metadata/storage policy, packet, application/stage/follow-up records, return prompt and outcome analytics; Apply never marks Applied                                 |
+|   8 | Installable PWA                                 | Complete locally | Manifest/icons, narrow service worker, no private response caching, offline/update UI, install and lifecycle tests                                                                            |
+|   9 | Channel orchestration and Web Push              | Complete locally | Encrypted per-device subscriptions, channel/device idempotency, bounded retries, unknown-outcome dead letters, replay, and 404/410 cleanup; device rollout pending                            |
+|  10 | Mobile detail and Simplify handoff              | Complete locally | Deep-link recovery, mobile action parity, referral/application packet context, Continue Later/Desktop behavior; physical extension/device checks pending                                      |
+|  11 | Shared AI extraction and escalation             | Complete locally | Explicit Luna, strict evidence, durable paid-call steps, selective capped Terra, current pricing, cost/budget ledgers and regression evaluator; 300-item corpus remains a human-labeling gate |
+|  12 | Invite-only multi-user foundations              | Complete locally | Individual email route/onboarding and per-user runtime preferences implemented behind disabled flags; custom SMTP/public signup remain out of scope                                           |
+|  13 | Integrated local certification                  | Complete         | From-zero migration/bootstrap, 383 tests, strengthened coverage floor, focused suites, zero-vulnerability audit, build, and retry-free four-viewport browser suite pass                       |
+|  14 | Production rollout and seven-day soak           | Pending rollout  | Isolated backup restore passes; requires safe FirstSeen-only deployment, Web Push/iPhone acceptance, then seven consecutive scheduled days                                                    |
+|  15 | Final evidence audit                            | Pending          | Runs after the soak; current documentation intentionally lists remaining blind spots                                                                                                          |
 
 ## Freshness-first milestones
 
@@ -107,16 +107,21 @@ physical-device work.
     exhaustion and permanent provider failures create redacted, owner-scoped dead letters. A stale
     `sending` claim is treated as unknown outcome and requires explicit replay, preventing an
     automatic duplicate notification. Successful replay resolves the same durable recovery record.
+16. Routine and escalation OpenAI calls run in their own memoized Inngest steps. Budget reservation,
+    provider work, settlement, and extraction persistence are separate recovery boundaries, so a
+    downstream database failure reuses the accepted response instead of repeating paid work. A
+    stable client request trace is attached to each validation attempt, and usage from every
+    accepted validation response is included in cost accounting.
 
 ## Local release evidence
 
 - A clean `supabase db reset --local` applied every migration through
   `20260804162800_notification_preference_integrity.sql`; `pnpm db:bootstrap` then created the local owner,
   database-backed candidate profile/preferences, and browser fixture from zero.
-- Formatting, zero-warning lint, strict types, all 381 tests in 63 files, coverage, focused
+- Formatting, zero-warning lint, strict types, all 383 tests in 63 files, coverage, focused
   connector/evaluation/worker/PWA/security/load suites, zero-vulnerability audit, and optimized
   build pass.
-- Coverage: 88.44% statements, 77.90% branches, 90.02% functions, and 90.15% lines. Configuration
+- Coverage: 88.52% statements, 77.98% branches, 90.19% functions, and 90.19% lines. Configuration
   now enforces at least the prior-release baseline (87.15/77.45/88.98/89.21) so future expansion
   cannot silently lower it.
 - Playwright: 17 passed and three intentional viewport-independent skips in approximately three

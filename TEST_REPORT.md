@@ -11,8 +11,8 @@ local Supabase PostgreSQL/Auth in Docker, Next.js 16.2.12, React 19.2.8, and Inn
 | Lint                    | `pnpm lint`                                  | Pass; zero warnings                                                |
 | Strict TypeScript       | `pnpm typecheck`                             | Pass                                                               |
 | Unit/component/contract | `pnpm test`                                  | Pass                                                               |
-| PostgreSQL/Auth/RLS     | `RUN_DATABASE_TESTS=true pnpm test`          | 381 passed in 63 files                                             |
-| Coverage                | `RUN_DATABASE_TESTS=true pnpm test:coverage` | 88.44% statements, 77.90% branches, 90.02% functions, 90.15% lines |
+| PostgreSQL/Auth/RLS     | `RUN_DATABASE_TESTS=true pnpm test`          | 383 passed in 63 files                                             |
+| Coverage                | `RUN_DATABASE_TESTS=true pnpm test:coverage` | 88.52% statements, 77.98% branches, 90.19% functions, 90.19% lines |
 | Dependency security     | `pnpm audit --audit-level=low`               | Pass; zero known vulnerabilities                                   |
 | Production compile      | `pnpm build`                                 | Pass; 20 routes plus Proxy                                         |
 | Real browser/Axe        | `pnpm test:e2e`                              | 17 passed, 3 intentional skips; retries disabled                   |
@@ -20,7 +20,7 @@ local Supabase PostgreSQL/Auth in Docker, Next.js 16.2.12, React 19.2.8, and Inn
 Coverage enforces at least the prior-release baseline: 87.15% statements, 77.45% branches, 88.98%
 functions, and 89.21% lines. New AI escalation, global supply, CRM, application, Web Push, PWA,
 discovery-security, and scheduler paths are included. Focused commands also passed: 91 connector
-tests, 84 AI/eligibility tests, 54 worker/database tests, three PWA tests, 30 security tests, and two load
+tests, 85 AI/eligibility tests, 55 worker/database tests, three PWA tests, 30 security tests, and two load
 tests.
 
 ## Risk coverage
@@ -38,6 +38,9 @@ tests.
   unchanged fast path.
 - Unchanged-text reopening reranks from cached AI without another OpenAI usage row; original posting
   time and queue action persist; alert identity changes only for the reopening occurrence.
+- Paid Luna/Terra calls are memoized independently from database persistence. A replay after a
+  simulated persistence outage reuses the provider result, and usage from an accepted but
+  schema-invalid first response remains included when validation succeeds on the second response.
 - Slack reliable-time Hot/Strong selection, age grouping, safe untrusted text, quiet hours, DST,
   retry and alert/digest idempotency, empty-digest suppression, and prior-action exclusion.
 - Four-digit sign-in failure/success/sign-out, durable throttling, owner authorization, anon and
