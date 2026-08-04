@@ -5,17 +5,17 @@ PostgreSQL/Auth in Docker, Next.js 16.2.12, React 19.2.8, and Inngest CLI 1.40.0
 
 ## Final local release gate
 
-| Check                           | Command                                                                | Result                           |
-| ------------------------------- | ---------------------------------------------------------------------- | -------------------------------- |
-| Formatting                      | `pnpm format:check`                                                    | Pass, all tracked files          |
-| Lint                            | `pnpm lint`                                                            | Pass, zero warnings              |
-| Strict TypeScript               | `pnpm typecheck`                                                       | Pass                             |
-| Unit/component/contract tests   | `pnpm test`                                                            | 168 passed; 10 DB-gated skipped  |
-| PostgreSQL/Auth/RLS integration | `RUN_DATABASE_TESTS=true pnpm vitest run src/db/*.integration.test.ts` | 10 passed in 6 files             |
-| Coverage                        | `pnpm test:coverage`                                                   | 93.07% statements; 94.66% lines  |
-| Dependency security             | `pnpm audit --audit-level=low`                                         | Pass; zero known vulnerabilities |
-| Production compile              | `pnpm build`                                                           | Pass; 12 app routes + Proxy      |
-| Real browser E2E/Axe            | `pnpm exec playwright test --retries=0`                                | 16 passed, 1.6 minutes           |
+| Check                           | Command                                 | Result                           |
+| ------------------------------- | --------------------------------------- | -------------------------------- |
+| Formatting                      | `pnpm format:check`                     | Pass, all tracked files          |
+| Lint                            | `pnpm lint`                             | Pass, zero warnings              |
+| Strict TypeScript               | `pnpm typecheck`                        | Pass                             |
+| Unit/component/contract tests   | `pnpm test`                             | 177 passed; 11 DB-gated skipped  |
+| PostgreSQL/Auth/RLS integration | `RUN_DATABASE_TESTS=true pnpm test`     | 188 passed in 24 files           |
+| Coverage                        | `pnpm test:coverage`                    | 93.48% statements; 95.06% lines  |
+| Dependency security             | `pnpm audit --audit-level=low`          | Pass; zero known vulnerabilities |
+| Production compile              | `pnpm build`                            | Pass; 12 app routes + Proxy      |
+| Real browser E2E/Axe            | `pnpm exec playwright test --retries=0` | 16 passed, 1.8 minutes           |
 
 ## Test coverage by risk
 
@@ -25,7 +25,7 @@ PostgreSQL/Auth in Docker, Next.js 16.2.12, React 19.2.8, and Inngest CLI 1.40.0
 | AI boundary              | Strict structured schema, refused/malformed output, evidence validation, deterministic merge authority, prompt hash/version, injection-like description instructions, token/cost calculation, budget failure→Review                                                                                            |
 | Connectors               | Greenhouse/Lever/Ashby normalization and live smoke; JSON-LD parsing/same-host rules; pagination, 304, malformed records, retries/backoff, rate pacing, error isolation, verify open/closed/uncertain, unsupported providers                                                                                   |
 | Identity/lifecycle       | URL/source/fallback fingerprints, canonical dedupe, idempotent ingest, material hash/snapshot only on change, first/last seen, successful misses, possible close/close/reopen, stale dynamic urgency, closed hidden only from Active                                                                           |
-| Durable work             | Watchlist lease, stable scan key, source fan-out, changed-only observation IDs, duplicate-safe rows, partial-failure retry, dead-letter capture/replay, notification uniqueness, retention                                                                                                                     |
+| Durable work             | Watchlist lease, stable scan key, source fan-out, changed-only observation IDs, duplicate-safe rows, partial-failure retry, terminal run reconciliation, non-retryable failure handling, source quarantine, dead-letter capture/replay, notification uniqueness, retention                                     |
 | Authentication/security  | Exact four-digit validation, wrong/correct code, versioned scrypt hashing/fail-closed verification, address/global durable throttles, server-created Supabase session, sign-out, single-owner checks, anon/cross-user RLS denial, safe URL/SSRF/DNS/redirect rules, headers/CSP build, model-output validation |
 | Product actions          | Access-code sign-in/out, search/reset/sort, band/referral filters, details and current dimensions, detail/card Save/Applied/Dismiss→reload→Restore, official Apply redirect, watch add/remove recovery, custom confirmation dialog, settings persistence, JSON export headers/data                             |
 | Slack/time               | Exact IANA time-zone hour, quiet-hour deferral with original payload, digest local-date uniqueness, retry/delivery dedupe, closed job exclusion                                                                                                                                                                |
@@ -74,7 +74,16 @@ the protected Matches, Watchlist, Health, and Settings routes succeeded with no 
 errors. Vercel runtime telemetry shows HTTP 200 for those routes.
 
 The cloud database contains 33 public tables with RLS enabled on all 33, exactly one Auth owner,
-profile, and preference record, and zero unresolved dead letters. The production Inngest endpoint
+profile, and preference record. It currently has 20 healthy active official sources, 1,780
+canonical jobs, zero active-source errors, and zero unresolved dead letters. All 1,780 active
+recommendations use the current deterministic eligibility and ranking versions; the 31-item open
+viable/review queue contains no obvious advanced-level or clearly nontechnical title leaks.
+
+Two complete production policy batches exercised source fan-out and isolation. The first completed
+19 peers while rejecting one oversized source; the final batch completed 20 of 20 active scans with
+no failures. A duplicate broad-discovery request in the same rotation incurred zero additional
+sensor calls and emitted zero duplicate official scans. Live production Save→reload→Restore also
+passed. The production Inngest endpoint
 registered successfully by PUT and accepted a subsequent signed callback by POST, both HTTP 200.
 The expected 401 from one deliberately unsigned diagnostic GET is not a worker failure. A Free-tier
 logical-backup check produced non-empty mode-600 roles, schema, and data artifacts; the temporary

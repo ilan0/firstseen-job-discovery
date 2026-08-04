@@ -16,7 +16,7 @@ progress.
 |   8 | Canonicalization, change detection, and lifecycle | Complete                           | Identity/fingerprints, snapshots/material hash, unchanged fast path, closure/reopen/stale DB tests                               |
 |   9 | AI extraction, evaluation, and budget controls    | Complete                           | Responses structured output, schema/evidence/prompt-injection defense, changed-only calls, $25 breaker, live smoke               |
 |  10 | Explainable ranking, recommendations, and actions | Complete                           | Ten dimensions, bands/urgency/freshness, optimistic queue actions/history/audit, Apply lifecycle guards                          |
-|  11 | Durable scheduled workflow                        | Complete                           | Five registered functions, stable identity/retries/concurrency/dead letters; real changed scan recovered after partial failure   |
+|  11 | Durable scheduled workflow                        | Complete                           | Five registered functions, stable identity/retries/concurrency/dead letters; terminal failure reconciliation and quarantine      |
 |  12 | Slack alerts and morning digest                   | Complete                           | Block Kit, exact Eastern time, quiet defer, idempotency/retry; labelled real setup check succeeded                               |
 |  13 | Responsive portal                                 | Complete                           | All routes/actions/states, four viewport Playwright matrix and Axe checks passed, live console/network inspection clean          |
 |  14 | Security, privacy, observability, and recovery    | Complete                           | Rate limits, validation, SSRF, CSP/headers, safe logs/export/delete, operations diagnostics, optional redacted Sentry            |
@@ -54,9 +54,8 @@ progress.
   verified. Four migrations produced 33 public tables, all 33 have RLS enabled, and exactly one
   owner, candidate profile, and preference record were created. The unrelated ProofCheck project
   was queried read-only and received no FirstSeen tables, migrations, Auth changes, or data writes.
-- The dedicated repository deploy key has repository-only read/write access. All three local
-  commits were published to private GitHub `main`, and the remote head was verified byte-for-byte
-  against the local commit.
+- The dedicated repository deploy key has repository-only read/write access. Release commits were
+  published to private GitHub `main`, and the remote head was verified against the local commit.
 - Auth/RLS tests prove owner access, cross-user denial, and anon denial. Database suites prove
   idempotent ingest/material snapshots, closure/reopening, status history, stale urgency, and closed
   queue behavior.
@@ -68,15 +67,18 @@ progress.
 - Source worker no-change path completed with 304/no analysis. A forced local material change first
   exposed a driver timestamp defect, then the same durable run retried and succeeded: six official
   jobs, exactly one changed/analyzed listing, zero failures. Regression tests cover the root cause.
-- The comprehensive access/matching/product audit expanded the unit/component/contract suites to
-  168 passing tests with 10 database-gated cases skipped in the default command. The explicitly
-  enabled database/Auth/RLS suite passes 10 tests across 6 files. Coverage is 93.07% statements and
-  94.66% lines; the low-threshold dependency audit reports zero known vulnerabilities.
-- Playwright passes 16 scenarios with retries disabled across 390×844, 768×1024, 1440×900, and
-  1920×1080. Core views produced no Axe violations. Access-code failure/success/sign-out, all queue
+- The comprehensive access/matching/product audit expanded the default unit/component/contract
+  suites to 177 passing tests with 11 database-gated cases skipped. Explicitly enabling the
+  database/Auth/RLS suites passes all 188 tests across 24 files. Coverage is 93.48% statements,
+  80.36% branches, 93.97% functions, and 95.06% lines; the low-threshold dependency audit reports
+  zero known vulnerabilities.
+- Playwright passes 16 scenarios in 1.8 minutes with retries disabled across 390×844, 768×1024,
+  1440×900, and 1920×1080. Core views produced no Axe violations. Access-code
+  failure/success/sign-out, all queue
   transitions from cards and details, official application routing, search/sort/filter, custom
   dialogs, watchlist lifecycle, export, settings persistence, mobile navigation, browser console,
-  network, server logs, and persisted rows were inspected.
+  network, server logs, and persisted rows were inspected. The visual matrix waits for network idle
+  and fails on console errors, page errors, or HTTP 5xx responses.
 - Live authenticated portal inspection found expected heading/cards, no horizontal overflow, and no
   browser console errors/warnings. Responsive screenshots were visually inspected.
 - Vercel project `rug-desk/firstseen-job-discovery` is live at
@@ -90,9 +92,21 @@ progress.
 - The unique `firstseen-job-discovery` Inngest app registered through the production endpoint. The
   unauthenticated sync PUT returned HTTP 200 and a subsequent signed Inngest POST returned HTTP 200.
   An unsigned diagnostic GET returned the expected HTTP 401; browser execution does not use it.
-- A post-deploy database inspection found 33 public tables, all 33 protected by RLS, one Auth owner,
-  one candidate profile, one search-preference record, and zero unresolved dead letters. Production
-  is intentionally empty of companies/jobs until watchlists or broad discovery produce candidates.
+- Production broad discovery and two complete policy-refresh batches exercised the real cloud
+  fan-out. One batch isolated an oversized source while 19 peers succeeded; the final batch
+  completed 20 of 20 active source scans successfully. Exhausted source failures now reconcile run,
+  source-run, and worker-attempt rows; non-retryable connector errors stop immediately; unsafe
+  oversized/non-employer tenants are quarantined; broad sensor requests are claimed before the
+  provider call so duplicate delivery cannot incur duplicate cost.
+- A post-audit database inspection found 33 public tables, all 33 protected by RLS, one Auth owner,
+  one candidate profile, 20 healthy active official sources, 1,780 canonical jobs and active
+  recommendations, and zero unresolved dead letters or active-source errors. Every active
+  recommendation is on eligibility policy `2026-08-03.3` and ranking policy `2026-08-03.4`.
+  The open queue contains 31 viable/review roles, zero obvious advanced-title leaks, and zero clear
+  nontechnical-title leaks.
+- Repeating broad discovery inside the same four-hour rotation produced zero additional sensor API
+  requests and zero duplicate official scans. A live Save→reload→Restore flow persisted and
+  recovered successfully against production.
 - The Free-tier logical-backup procedure generated non-empty roles, schema, and data dumps with mode 600. Temporary plaintext verification artifacts were permanently removed immediately afterward.
 
 ## Remaining release follow-up

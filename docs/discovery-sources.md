@@ -8,6 +8,11 @@ descriptions cannot directly create a canonical job, recommendation, queue item,
 FirstSeen promotes only a URL that resolves to a supported official source, then fetches the actual
 description there.
 
+An ATS hostname alone does not prove employer authority. Known non-employer tenants that republish
+unrelated companies (currently Jobgether) remain discovery sensors and are rejected as official
+sources. A bounded source that exceeds response or pagination safety limits is quarantined rather
+than partially accepted or retried forever.
+
 The system does not scrape or automate LinkedIn/Indeed, authenticated sessions, CAPTCHAs, blocked
 pages, robots/anti-bot evasions, or hidden/private APIs. Unsupported sources remain visible for
 manual review rather than being parsed aggressively.
@@ -58,8 +63,10 @@ official ATS URL, so displayed vacancy content/source attribution is the officia
 product becomes public or displays Adzuna data, its attribution and licensing requirements must be
 re-reviewed first.
 
-Both providers have an application-enforced 900-request monthly breaker. Each request is recorded
-idempotently; one provider's exception is isolated and the other still runs. Query rotation covers
+Both providers have an application-enforced 900-request monthly breaker. Each request is durably
+claimed before the provider call, so duplicate workflow delivery or a repeated manual request in
+the same rotation cannot incur another request while collapsing only its accounting row. One
+provider's exception is isolated and the other still runs. Query rotation covers
 accepted locations, remote work, entry-level experience, preferred role families, and supported ATS
 domains rather than generic high-competition board pages.
 
@@ -74,9 +81,13 @@ Required behavior:
 
 - Bounded pagination with explicit cursor and hard page limit.
 - Conditional first-page request when the provider exposes ETag/Last-Modified; 304 means no work.
+  Validators are deliberately bypassed when a deterministic policy version needs reprocessing,
+  because a 304 contains no descriptions to evaluate.
 - Per-request timeout, safe retry classification, exponential backoff/jitter, per-host rate pacing,
   and bounded concurrency.
 - Strict provider schemas; malformed records are skipped or fail safely with an observable code.
+- Unchanged scan observations retain identity/hash evidence without copying the full description
+  into PostgreSQL several times per day.
 - Official verify states Open, Closed, or Uncertain. Uncertain never becomes closure/exclusion.
 - Full successful discovery supplies the only closure-miss evidence.
 - Parsing and posted/source confidence accompany facts.

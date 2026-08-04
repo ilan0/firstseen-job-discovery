@@ -55,6 +55,9 @@ Role family is not a global hard filter unless the listing is clearly non-softwa
 general SWE, full stack, backend, frontend, AI engineer, embedded/C, internal tools/automation, then
 customer-facing engineering. AI/ML software engineering remains attractive; research roles with
 unsupported advanced-degree/experience requirements are filtered by their actual requirements.
+Bare industry words such as “AI,” “data,” or “cloud” do not make a title technical; the title must
+also identify an engineering/development role before model analysis is allowed. This prevents sales
+or product postings at AI companies from consuming budget or entering Review as software roles.
 
 ## Explainable dimensions
 

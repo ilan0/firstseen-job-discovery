@@ -42,7 +42,7 @@ pnpm format:check
 pnpm lint
 pnpm typecheck
 pnpm test
-RUN_DATABASE_TESTS=true pnpm vitest run src/db/*.integration.test.ts
+RUN_DATABASE_TESTS=true pnpm test
 pnpm build
 pnpm test:e2e
 ```
@@ -56,7 +56,9 @@ Supabase URL.
 1. In Operations, identify the exact source, last successful time, safe error code, and affected
    source run. Check the official careers page manually.
 2. Do not deactivate jobs or alter closure counters because of a network, 429, 5xx, schema, CAPTCHA,
-   or unsupported-source error. The worker already withholds closure finalization on failure.
+   or unsupported-source error. The worker already withholds closure finalization on failure. A
+   provisional source that exceeds the hard response/pagination safety bound is quarantined without
+   changing its jobs' closure evidence.
 3. Allow Inngest's source retry/backoff to finish. Other source events continue independently.
 4. If retries exhaust, inspect the safe dead letter. Correct the URL/connector or deploy a tested
    parser fix, then use Replay once. Replay validates owner/source and records its event ID.
@@ -105,7 +107,8 @@ pnpm smoke:openai
 Initial cadence produces approximately 720 requests/provider/month. The application breaker stops
 each provider at 900 requests/month. Check usage ledger before changing cadence. A Brave or Adzuna
 error is retained in run diagnostics while the other provider continues; neither affects existing
-official watchlists.
+official watchlists. Provider requests are claimed in PostgreSQL before the network call; another
+delivery in the same query rotation must find the existing claim and skip the external request.
 
 Credentialed verification consumes provider quota:
 

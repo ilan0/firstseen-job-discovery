@@ -1,8 +1,9 @@
 import { mkdir } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
-import { signIn } from "./helpers";
+import { observeFailures, signIn } from "./helpers";
 
 test("capture verified responsive queue", async ({ page }, testInfo) => {
+  const failures = observeFailures(page);
   await signIn(page);
   await expect(page.getByText("FirstSeen QA Fixture")).toBeVisible();
   await mkdir("tmp/visual-qa", { recursive: true });
@@ -22,6 +23,7 @@ test("capture verified responsive queue", async ({ page }, testInfo) => {
   for (const [name, url] of visualRoutes) {
     await page.goto(url);
     await expect(page.locator("main h1")).toBeVisible();
+    await page.waitForLoadState("networkidle");
     await page.evaluate(() => document.fonts.ready);
     await page.waitForTimeout(150);
     await page.screenshot({
@@ -29,4 +31,5 @@ test("capture verified responsive queue", async ({ page }, testInfo) => {
       fullPage: true,
     });
   }
+  expect(failures).toEqual([]);
 });
