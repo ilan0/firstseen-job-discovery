@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { connectorFor } from "@/connectors/registry";
 import type { ConnectorSource, NormalizedListing } from "@/connectors/types";
@@ -127,6 +127,34 @@ export type StagedSourceResult = {
   lastModified: string | null;
 };
 
+export async function sourceNeedsPolicyRefresh(source: StoredSource) {
+  const [stale] = await db
+    .select({ id: canonicalJobs.id })
+    .from(canonicalJobs)
+    .leftJoin(
+      recommendations,
+      and(eq(recommendations.jobId, canonicalJobs.id), eq(recommendations.active, true)),
+    )
+    .leftJoin(
+      eligibilityDecisions,
+      eq(recommendations.eligibilityDecisionId, eligibilityDecisions.id),
+    )
+    .where(
+      and(
+        eq(canonicalJobs.userId, source.userId),
+        eq(canonicalJobs.authoritativeSourceId, source.id),
+        or(
+          isNull(recommendations.id),
+          ne(recommendations.rankingVersion, RANKING_VERSION),
+          isNull(eligibilityDecisions.id),
+          ne(eligibilityDecisions.ruleVersion, ELIGIBILITY_RULE_VERSION),
+        ),
+      ),
+    )
+    .limit(1);
+  return Boolean(stale);
+}
+
 /** Fetches an official source once and durably stages only new or materially changed listings. */
 export async function stageStoredSource(
   source: StoredSource,
@@ -134,7 +162,14 @@ export async function stageStoredSource(
   scanSourceRunId?: string | null,
 ): Promise<StagedSourceResult> {
   const connector = connectorFor(source.kind);
-  const page = await discoverAllPages(connector, sourceInput(source));
+  // Conditional responses contain no descriptions, so deliberately bypass
+  // validators when deterministic policy or ranking code needs to be rerun.
+  const refreshPolicy = await sourceNeedsPolicyRefresh(source);
+  const input = sourceInput(source);
+  const page = await discoverAllPages(
+    connector,
+    refreshPolicy ? { ...input, etag: null, lastModified: null } : input,
+  );
   if (page.notModified)
     return {
       notModified: true,

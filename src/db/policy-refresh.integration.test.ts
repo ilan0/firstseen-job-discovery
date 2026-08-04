@@ -110,6 +110,21 @@ describe.runIf(enabled)("unchanged-listing policy refresh", () => {
       .eq("job_id", firstIngest.jobId);
     if (existingDecision.error) throw existingDecision.error;
 
+    const { sourceNeedsPolicyRefresh } = await import("@/lib/scans/scan-source");
+    const storedSource = {
+      id: sourceId,
+      userId: user.id,
+      companyId,
+      companyName: "Policy Refresh",
+      companyDomain: "policy-refresh.test",
+      kind: "lever" as const,
+      baseUrl: "https://jobs.lever.co/policy-refresh",
+      tenantId: "policy-refresh",
+      etag: '"stale-conditional-validator"',
+      lastModified: "Sun, 03 Aug 2026 12:00:00 GMT",
+    };
+    expect(await sourceNeedsPolicyRefresh(storedSource)).toBe(true);
+
     const unchangedIngest = await ingestListing(
       { ...context, observedAt: new Date("2026-08-03T14:00:00Z") },
       listing,
@@ -134,6 +149,7 @@ describe.runIf(enabled)("unchanged-listing policy refresh", () => {
     expect(current.error).toBeNull();
     expect(current.data?.ranking_version).not.toBe("stale-ranking");
     expect(current.data?.eligibility_decisions).toMatchObject({ rule_version: expect.any(String) });
+    expect(await sourceNeedsPolicyRefresh(storedSource)).toBe(false);
     const usage = await admin
       .from("usage_cost_ledger")
       .select("id")
