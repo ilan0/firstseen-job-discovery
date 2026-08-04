@@ -3,6 +3,7 @@ import { JsonLdConnector } from "@/connectors/official/jsonld";
 
 export type StructuredSourceAuthority = {
   companyName: string;
+  canonicalDomain: string;
   officialUrl: string;
   confidence: number;
   publicConfig: Record<string, unknown>;
@@ -42,6 +43,7 @@ export async function verifyStructuredJobAuthority(
   if (!companyName) return null;
   return {
     companyName,
+    canonicalDomain: new URL(officialUrl).hostname.toLowerCase().replace(/^www\./, ""),
     officialUrl,
     confidence: 90,
     publicConfig: {

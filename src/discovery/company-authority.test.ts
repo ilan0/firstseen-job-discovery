@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { authorityNameFromHtml } from "./company-authority";
+import { authorityNameFromHtml, canonicalEmployerDomainFromHtml } from "./company-authority";
 
 describe("ATS hiring-organization authority", () => {
   it.each([
@@ -17,4 +17,24 @@ describe("ATS hiring-organization authority", () => {
     "rejects generic or absent evidence",
     (html) => expect(authorityNameFromHtml(html)).toBeNull(),
   );
+
+  it("extracts an external employer domain without mistaking ATS or social links for authority", () => {
+    const html = `
+      <a href="https://boards.greenhouse.io/acme">Jobs</a>
+      <a href="https://linkedin.com/company/acme">LinkedIn</a>
+      <a href="https://www.acme.example/about">Company website</a>
+    `;
+    expect(canonicalEmployerDomainFromHtml(html, "https://boards.greenhouse.io/acme")).toBe(
+      "acme.example",
+    );
+  });
+
+  it("does not invent a domain when the ATS page has no employer-owned link", () => {
+    expect(
+      canonicalEmployerDomainFromHtml(
+        '<a href="https://jobs.lever.co/acme">Open roles</a>',
+        "https://jobs.lever.co/acme",
+      ),
+    ).toBeNull();
+  });
 });

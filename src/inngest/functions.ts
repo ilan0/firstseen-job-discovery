@@ -43,6 +43,7 @@ import {
   loadPendingGlobalScans,
   markGlobalScansDispatched,
 } from "@/lib/supply/global-scheduler";
+import { attachGlobalSourcesToUser } from "@/lib/supply/user-overlay";
 import { inngest } from "./client";
 
 const sourceEventSchema = z.object({
@@ -56,6 +57,17 @@ const globalSourceEventSchema = z.object({
   sourceId: z.string().uuid(),
   scanRunId: z.string().uuid(),
   scheduledFor: z.string().datetime(),
+});
+
+const notificationUserEventSchema = z.object({
+  userId: z.string().uuid(),
+  scheduledFor: z.string().datetime(),
+});
+
+const attachGlobalSourcesEventSchema = z.object({
+  userId: z.string().uuid(),
+  sourceIds: z.array(z.string().uuid()).max(500),
+  verifiedAt: z.string().datetime(),
 });
 
 export const globalSourceScheduler = inngest.createFunction(
@@ -450,37 +462,67 @@ export const broadDiscovery = inngest.createFunction(
   },
   async ({ step }) => {
     const users = await step.run("load-users", () =>
-      db.select({ userId: candidateProfiles.userId }).from(candidateProfiles),
+      db
+        .select({ userId: candidateProfiles.userId })
+        .from(candidateProfiles)
+        .orderBy(asc(candidateProfiles.userId)),
     );
+    if (!users.length) return { disabled: false, reason: "no_candidate_profiles" };
     const scheduledFor = new Date().toISOString();
-    const results = [];
-    for (const user of users) {
-      const discovered = await step.run(`discover-${user.userId}`, () =>
-        discoverBroadSources(user.userId),
+    const discoveryOwner = users[0]!;
+    const discovered = await step.run("discover-global-sources-once", () =>
+      discoverBroadSources(discoveryOwner.userId),
+    );
+    if (discovered.globalSourceIds.length && rolloutFlags().globalSupply)
+      await step.sendEvent(
+        "fan-out-global-source-overlays",
+        users.map((user) => ({
+          id: `source-overlay:${user.userId}:${scheduledFor}`,
+          name: "supply/user.sources.attach.requested.v2" as const,
+          data: {
+            userId: user.userId,
+            sourceIds: discovered.globalSourceIds,
+            verifiedAt: scheduledFor,
+          },
+        })),
       );
-      // Global supply schedules every newly verified source immediately. Let the
-      // five-minute global scheduler claim it so one source cannot be fetched
-      // once per user or race a second ad-hoc global scan.
-      if (discovered.sourceIds.length && !rolloutFlags().globalSupply)
-        await step.sendEvent(
-          `verify-${user.userId}`,
-          discovered.sourceIds.map((sourceId) => ({
-            name: "firstseen/source.scan.requested" as const,
-            data: {
-              userId: user.userId,
-              sourceId,
-              scheduledFor,
-              scanKind: "broad_discovery" as const,
-            },
-          })),
-        );
-      results.push({
-        ...discovered,
-        dispatched: rolloutFlags().globalSupply ? 0 : discovered.sourceIds.length,
-        scheduledGlobally: rolloutFlags().globalSupply ? discovered.sourceIds.length : 0,
-      });
-    }
-    return results;
+    if (discovered.sourceIds.length && !rolloutFlags().globalSupply)
+      await step.sendEvent(
+        `verify-${discoveryOwner.userId}`,
+        discovered.sourceIds.map((sourceId) => ({
+          name: "firstseen/source.scan.requested" as const,
+          data: {
+            userId: discoveryOwner.userId,
+            sourceId,
+            scheduledFor,
+            scanKind: "broad_discovery" as const,
+          },
+        })),
+      );
+    return {
+      ...discovered,
+      sensorPasses: 1,
+      users: users.length,
+      overlayEvents: rolloutFlags().globalSupply ? users.length : 0,
+      dispatchedLegacy: rolloutFlags().globalSupply ? 0 : discovered.sourceIds.length,
+      scheduledGlobally: rolloutFlags().globalSupply ? discovered.globalSourceIds.length : 0,
+    };
+  },
+);
+
+export const attachGlobalSourceOverlays = inngest.createFunction(
+  {
+    id: "attach-global-source-overlays-v2",
+    triggers: [{ event: "supply/user.sources.attach.requested.v2" }],
+    retries: 4,
+    concurrency: [{ limit: 1, key: "event.data.userId" }, { limit: 10 }],
+  },
+  async ({ event, step }) => {
+    const data = attachGlobalSourcesEventSchema.parse(event.data);
+    const attached = await step.run("attach-verified-global-sources", () =>
+      attachGlobalSourcesToUser(data.userId, data.sourceIds, new Date(data.verifiedAt)),
+    );
+    return { userId: data.userId, requested: data.sourceIds.length, attached: attached.length };
   },
 );
 
@@ -490,17 +532,45 @@ export const notificationSchedule = inngest.createFunction(
     const users = await step.run("load-users", () =>
       db.select({ userId: candidateProfiles.userId }).from(candidateProfiles),
     );
-    const results = [];
-    for (const user of users) {
-      results.push(
-        await step.run(`digest-${user.userId}`, () => deliverMorningDigest(user.userId)),
+    const scheduledFor = new Date().toISOString();
+    if (users.length)
+      await step.sendEvent(
+        "fan-out-user-notifications",
+        users.map((user) => ({
+          id: `notification:${user.userId}:${scheduledFor}`,
+          name: "firstseen/user.notifications.requested" as const,
+          data: { userId: user.userId, scheduledFor },
+        })),
       );
-      await step.run(`deferred-${user.userId}`, () => deliverDeferredAlerts(user.userId));
-      await step.run(`retry-failed-${user.userId}`, () => retryFailedNotifications(user.userId));
-      if (rolloutFlags().webPush)
-        await step.run(`retry-push-${user.userId}`, () => deliverDueWebPush(user.userId));
-    }
-    return results;
+    return { dispatched: users.length, scheduledFor };
+  },
+);
+
+export const userNotificationDelivery = inngest.createFunction(
+  {
+    id: "user-notification-delivery",
+    triggers: [{ event: "firstseen/user.notifications.requested" }],
+    retries: 3,
+    concurrency: [{ limit: 1, key: "event.data.userId" }, { limit: 10 }],
+  },
+  async ({ event, step }) => {
+    const data = notificationUserEventSchema.parse(event.data);
+    const digest = await step.run("morning-digest", () => deliverMorningDigest(data.userId));
+    const deferred = await step.run("deferred-alerts", () => deliverDeferredAlerts(data.userId));
+    const slackRetries = await step.run("failed-slack-retries", () =>
+      retryFailedNotifications(data.userId),
+    );
+    const push = rolloutFlags().webPush
+      ? await step.run("due-web-push", () => deliverDueWebPush(data.userId))
+      : { disabled: true };
+    return {
+      userId: data.userId,
+      scheduledFor: data.scheduledFor,
+      digest,
+      deferred,
+      slackRetries,
+      push,
+    };
   },
 );
 
@@ -539,6 +609,8 @@ export const functions = [
   watchlistScheduler,
   sourceScan,
   broadDiscovery,
+  attachGlobalSourceOverlays,
   notificationSchedule,
+  userNotificationDelivery,
   cleanupSchedule,
 ];

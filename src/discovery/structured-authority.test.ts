@@ -34,6 +34,7 @@ describe("structured employer authority", () => {
       verifyStructuredJobAuthority("https://acme.example/careers/software-engineer", get),
     ).resolves.toMatchObject({
       companyName: "Acme Labs",
+      canonicalDomain: "acme.example",
       confidence: 90,
       publicConfig: { expectedOrganization: "Acme Labs", requireHiringOrganization: true },
       evidence: { kind: "official_structured_job", listingCount: 1 },

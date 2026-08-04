@@ -47,7 +47,12 @@ export const companies = pgTable(
     ...timestamps,
   },
   (table) => [
-    uniqueIndex("companies_user_normalized_name_unique").on(table.userId, table.normalizedName),
+    uniqueIndex("companies_user_organization_unique")
+      .on(table.userId, table.organizationId)
+      .where(sql`${table.organizationId} is not null`),
+    uniqueIndex("companies_user_legacy_name_unique")
+      .on(table.userId, table.normalizedName)
+      .where(sql`${table.organizationId} is null`),
     index("companies_user_priority_idx").on(table.userId, table.priority),
     check("companies_priority_range", sql`${table.priority} between 1 and 5`),
   ],
