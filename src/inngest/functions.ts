@@ -37,40 +37,81 @@ import {
   processStagedListing,
   stageStoredSource,
 } from "@/lib/scans/scan-source";
+import { analyzeAndRankListing } from "@/lib/jobs/analyze-and-rank";
+import { loadLegacyPersonalizationTask, loadLegacyRematchTasks } from "@/lib/jobs/rematch";
 import { recordSourceScanFailure } from "@/lib/scans/record-failure";
 import { rebalanceColdCadence } from "@/lib/scans/adaptive-cadence";
-import { loadGlobalSource, scanGlobalSource } from "@/lib/supply/global-source";
+import {
+  loadGlobalListingTasks,
+  loadGlobalPersonalizationTask,
+  loadGlobalSource,
+  loadGlobalSourceOverlays,
+  personalizeGlobalListing,
+  scanGlobalSource,
+} from "@/lib/supply/global-source";
 import {
   claimDueGlobalSources,
   loadPendingGlobalScans,
   markGlobalScansDispatched,
 } from "@/lib/supply/global-scheduler";
 import { attachGlobalSourcesToUser } from "@/lib/supply/user-overlay";
+import { extractSharedRequirements } from "@/lib/supply/requirement-extraction";
 import { inngest } from "./client";
+import { eventDateTime } from "./event-time";
 
 const sourceEventSchema = z.object({
   userId: z.string().uuid(),
   sourceId: z.string().uuid(),
-  scheduledFor: z.string().datetime(),
+  scheduledFor: eventDateTime,
   scanKind: z.enum(["watchlist", "broad_discovery", "closure"]).default("watchlist"),
 });
 
 const globalSourceEventSchema = z.object({
   sourceId: z.string().uuid(),
   scanRunId: z.string().uuid(),
-  scheduledFor: z.string().datetime(),
+  scheduledFor: eventDateTime,
 });
 
 const notificationUserEventSchema = z.object({
   userId: z.string().uuid(),
-  scheduledFor: z.string().datetime(),
+  scheduledFor: eventDateTime,
 });
 
 const attachGlobalSourcesEventSchema = z.object({
   userId: z.string().uuid(),
   sourceIds: z.array(z.string().uuid()).max(500),
-  verifiedAt: z.string().datetime(),
+  verifiedAt: eventDateTime,
 });
+
+const globalExtractionEventSchema = z.object({
+  sourceId: z.string().uuid(),
+  jobId: z.string().uuid(),
+  snapshotId: z.string().uuid(),
+  observedAt: eventDateTime,
+  targetUserIds: z.array(z.string().uuid()).max(500).optional(),
+});
+
+const globalPersonalizationEventSchema = globalExtractionEventSchema.extend({
+  userId: z.string().uuid(),
+});
+
+const userRematchEventSchema = z.object({
+  userId: z.string().uuid(),
+  requestedAt: eventDateTime,
+});
+
+const legacyJobRematchEventSchema = userRematchEventSchema.extend({
+  jobId: z.string().uuid(),
+  snapshotId: z.string().uuid(),
+});
+
+function extractionEvent(task: z.infer<typeof globalExtractionEventSchema>, idSuffix: string) {
+  return {
+    id: `global-extraction:${task.snapshotId}:${idSuffix}`,
+    name: "supply/snapshot.extract.requested.v2" as const,
+    data: task,
+  };
+}
 
 export const globalSourceScheduler = inngest.createFunction(
   {
@@ -156,6 +197,15 @@ export const globalSourceScan = inngest.createFunction(
         throw error;
       }
     });
+    for (let index = 0; index < result.tasks.length; index += 400)
+      await step.sendEvent(
+        `fan-out-global-snapshot-extraction-${index / 400}`,
+        result.tasks
+          .slice(index, index + 400)
+          .map((task) =>
+            extractionEvent(task, task.reopened ? `reopened:${task.observedAt}` : "changed"),
+          ),
+      );
     await step.run("complete-global-source-run", async () => {
       const now = new Date();
       await db.transaction(async (tx) => {
@@ -175,6 +225,102 @@ export const globalSourceScan = inngest.createFunction(
           .where(eq(globalScanSchedules.careerSourceId, data.sourceId));
       });
     });
+    return result;
+  },
+);
+
+export const globalRequirementExtraction = inngest.createFunction(
+  {
+    id: "global-requirement-extraction-v2",
+    triggers: [{ event: "supply/snapshot.extract.requested.v2" }],
+    retries: 4,
+    concurrency: [{ limit: 1, key: "event.data.snapshotId" }, { limit: 5 }],
+  },
+  async ({ event, step }) => {
+    const data = globalExtractionEventSchema.parse(event.data);
+    const overlays = await step.run("load-global-source-watchers", () =>
+      loadGlobalSourceOverlays(data.sourceId),
+    );
+    const targets = data.targetUserIds?.length
+      ? overlays.filter((overlay) => data.targetUserIds!.includes(overlay.userId))
+      : overlays;
+    if (!targets.length) return { skipped: true, reason: "no_private_watchers" };
+    const task = await step.run("load-persisted-global-listing", () =>
+      loadGlobalPersonalizationTask({
+        sourceId: data.sourceId,
+        jobId: data.jobId,
+        snapshotId: data.snapshotId,
+        userId: targets[0]!.userId,
+      }),
+    );
+    if (!task) throw new NonRetriableError("Persisted global listing was not found");
+    const extraction = await step.run("extract-candidate-neutral-requirements", () =>
+      extractSharedRequirements({
+        snapshotId: data.snapshotId,
+        budgetUserId: targets[0]!.userId,
+        listing: task.listing,
+      }),
+    );
+    if (extraction.status === "failed")
+      throw new Error(`Shared requirement extraction failed: ${extraction.errorCode ?? "UNKNOWN"}`);
+    for (let index = 0; index < targets.length; index += 400)
+      await step.sendEvent(
+        `fan-out-user-personalization-${index / 400}`,
+        targets.slice(index, index + 400).map((target) => ({
+          id: `global-personalization:${target.userId}:${data.snapshotId}:${data.observedAt}`,
+          name: "supply/user.job.personalize.requested.v2" as const,
+          data: { ...data, userId: target.userId },
+        })),
+      );
+    return {
+      snapshotId: data.snapshotId,
+      extractionStatus: extraction.status,
+      targetUsers: targets.length,
+    };
+  },
+);
+
+export const globalUserPersonalization = inngest.createFunction(
+  {
+    id: "global-user-personalization-v2",
+    triggers: [{ event: "supply/user.job.personalize.requested.v2" }],
+    retries: 4,
+    concurrency: [{ limit: 1, key: "event.data.userId" }, { limit: 10 }],
+  },
+  async ({ event, step }) => {
+    const data = globalPersonalizationEventSchema.parse(event.data);
+    const task = await step.run("load-user-global-listing", () =>
+      loadGlobalPersonalizationTask(data),
+    );
+    if (!task) return { skipped: true, reason: "watcher_or_listing_not_active" };
+    const extraction = await step.run("load-shared-requirements", () =>
+      extractSharedRequirements({
+        snapshotId: data.snapshotId,
+        budgetUserId: data.userId,
+        listing: task.listing,
+      }),
+    );
+    if (extraction.status === "failed")
+      throw new Error(`Shared requirement extraction failed: ${extraction.errorCode ?? "UNKNOWN"}`);
+    const result = await step.run("apply-deterministic-user-policy", () =>
+      personalizeGlobalListing(
+        task.source,
+        task.listing,
+        {
+          ...task.global,
+          firstSeenAt: new Date(task.global.firstSeenAt),
+          postedAt: task.global.postedAt ? new Date(task.global.postedAt) : null,
+          reopenedAt: task.global.reopenedAt ? new Date(task.global.reopenedAt) : null,
+        },
+        extraction,
+        new Date(data.observedAt),
+      ),
+    );
+    const exceptional = result.exceptional;
+    if (exceptional)
+      await step.run("queue-exceptional-user-alert", () =>
+        queueExceptionalAlert({ userId: data.userId, ...exceptional }),
+      );
     return result;
   },
 );
@@ -524,7 +670,185 @@ export const attachGlobalSourceOverlays = inngest.createFunction(
     const attached = await step.run("attach-verified-global-sources", () =>
       attachGlobalSourcesToUser(data.userId, data.sourceIds, new Date(data.verifiedAt)),
     );
-    return { userId: data.userId, requested: data.sourceIds.length, attached: attached.length };
+    const tasks = await step.run("load-attached-source-jobs", async () =>
+      (
+        await Promise.all(
+          [...new Set(attached.map((record) => record.globalSourceId))].map((sourceId) =>
+            loadGlobalListingTasks(sourceId),
+          ),
+        )
+      ).flat(),
+    );
+    for (let index = 0; index < tasks.length; index += 400)
+      await step.sendEvent(
+        `personalize-existing-source-jobs-${index / 400}`,
+        tasks
+          .slice(index, index + 400)
+          .map((task) =>
+            extractionEvent(
+              { ...task, targetUserIds: [data.userId] },
+              `attach:${data.userId}:${data.verifiedAt}`,
+            ),
+          ),
+      );
+    return {
+      userId: data.userId,
+      requested: data.sourceIds.length,
+      attached: attached.length,
+      queuedJobs: tasks.length,
+    };
+  },
+);
+
+export const globalUserRematch = inngest.createFunction(
+  {
+    id: "global-user-rematch-v2",
+    triggers: [{ event: "supply/user.rematch.requested.v2" }],
+    retries: 4,
+    concurrency: [{ limit: 1, key: "event.data.userId" }, { limit: 5 }],
+  },
+  async ({ event, step }) => {
+    const data = userRematchEventSchema.parse(event.data);
+    const globalSupplyEnabled = rolloutFlags().globalSupply;
+    const legacyTasks = await step.run("load-user-legacy-rematch-jobs", () =>
+      loadLegacyRematchTasks(data.userId, globalSupplyEnabled),
+    );
+    for (let index = 0; index < legacyTasks.length; index += 400)
+      await step.sendEvent(
+        `fan-out-legacy-user-rematch-${index / 400}`,
+        legacyTasks.slice(index, index + 400).map((task) => ({
+          id: `legacy-rematch:${task.userId}:${task.snapshotId}:${data.requestedAt}`,
+          name: "firstseen/user.job.rematch.requested.v2" as const,
+          data: { ...task, requestedAt: data.requestedAt },
+        })),
+      );
+    if (!globalSupplyEnabled)
+      return {
+        userId: data.userId,
+        legacyJobs: legacyTasks.length,
+        globalSources: 0,
+        globalJobs: 0,
+      };
+    const sourceIds = await step.run("load-user-global-sources", () =>
+      db
+        .select({ id: careerSources.globalSourceId })
+        .from(careerSources)
+        .innerJoin(companies, eq(careerSources.companyId, companies.id))
+        .where(
+          and(
+            eq(careerSources.userId, data.userId),
+            eq(careerSources.active, true),
+            eq(companies.active, true),
+            sql`${careerSources.globalSourceId} is not null`,
+          ),
+        ),
+    );
+    const tasks = await step.run("load-user-rematch-jobs", async () =>
+      (
+        await Promise.all(
+          [...new Set(sourceIds.flatMap((record) => (record.id ? [record.id] : [])))].map(
+            (sourceId) => loadGlobalListingTasks(sourceId),
+          ),
+        )
+      ).flat(),
+    );
+    for (let index = 0; index < tasks.length; index += 400)
+      await step.sendEvent(
+        `fan-out-user-rematch-${index / 400}`,
+        tasks
+          .slice(index, index + 400)
+          .map((task) =>
+            extractionEvent(
+              { ...task, targetUserIds: [data.userId] },
+              `rematch:${data.userId}:${data.requestedAt}`,
+            ),
+          ),
+      );
+    return {
+      userId: data.userId,
+      legacyJobs: legacyTasks.length,
+      globalSources: sourceIds.length,
+      globalJobs: tasks.length,
+    };
+  },
+);
+
+export const legacyUserJobRematch = inngest.createFunction(
+  {
+    id: "legacy-user-job-rematch-v2",
+    triggers: [{ event: "firstseen/user.job.rematch.requested.v2" }],
+    retries: 4,
+    concurrency: [{ limit: 1, key: "event.data.userId" }, { limit: 10 }],
+  },
+  async ({ event, step }) => {
+    const data = legacyJobRematchEventSchema.parse(event.data);
+    const task = await step.run("load-current-legacy-listing", () =>
+      loadLegacyPersonalizationTask(data),
+    );
+    if (!task) return { skipped: true, reason: "listing_not_current_or_active" };
+    const result = await step.run("apply-current-candidate-policy", () =>
+      analyzeAndRankListing({
+        userId: data.userId,
+        listing: task.listing,
+        ingest: {
+          ...task.ingest,
+          firstSeenAt: new Date(task.ingest.firstSeenAt),
+          postedAt: task.ingest.postedAt ? new Date(task.ingest.postedAt) : null,
+          reopenedAt: task.ingest.reopenedAt ? new Date(task.ingest.reopenedAt) : null,
+        },
+        hasReferral: task.hasReferral,
+        sourceConfidence: task.sourceConfidence,
+        now: new Date(data.requestedAt),
+      }),
+    );
+    return { userId: data.userId, jobId: data.jobId, state: result.state };
+  },
+);
+
+export const rematchOutboxScheduler = inngest.createFunction(
+  {
+    id: "user-rematch-outbox-scheduler-v2",
+    triggers: [{ cron: "*/5 * * * *" }],
+    retries: 4,
+    concurrency: { limit: 1 },
+  },
+  async ({ step }) => {
+    const pending = await step.run("load-pending-user-rematches", () =>
+      db
+        .select({ id: outboxEvents.id, payload: outboxEvents.payload })
+        .from(outboxEvents)
+        .where(
+          and(
+            eq(outboxEvents.status, "pending"),
+            eq(outboxEvents.eventName, "supply/user.rematch.requested.v2"),
+            lte(outboxEvents.availableAt, new Date()),
+          ),
+        )
+        .orderBy(asc(outboxEvents.availableAt), asc(outboxEvents.id))
+        .limit(100),
+    );
+    if (pending.length) {
+      await step.sendEvent(
+        "dispatch-user-rematches",
+        pending.map((record) => ({
+          id: record.id,
+          name: "supply/user.rematch.requested.v2" as const,
+          data: userRematchEventSchema.parse(record.payload),
+        })),
+      );
+      await step.run("mark-user-rematches-dispatched", () =>
+        db
+          .update(outboxEvents)
+          .set({ status: "dispatched", dispatchedAt: new Date(), updatedAt: new Date() })
+          .where(
+            inArray(
+              outboxEvents.id,
+              pending.map((record) => record.id),
+            ),
+          ),
+      );
+    }
+    return { dispatched: pending.length };
   },
 );
 
@@ -623,10 +947,15 @@ export const cleanupSchedule = inngest.createFunction(
 export const functions = [
   globalSourceScheduler,
   globalSourceScan,
+  globalRequirementExtraction,
+  globalUserPersonalization,
   watchlistScheduler,
   sourceScan,
   broadDiscovery,
   attachGlobalSourceOverlays,
+  globalUserRematch,
+  legacyUserJobRematch,
+  rematchOutboxScheduler,
   notificationSchedule,
   userNotificationDelivery,
   cleanupSchedule,

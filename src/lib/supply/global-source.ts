@@ -1,6 +1,7 @@
 import "server-only";
 
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { z } from "zod";
 import { connectorFor } from "@/connectors/registry";
 import type { ConnectorSource, NormalizedListing } from "@/connectors/types";
 import type { ConnectorKind } from "@/connectors/versions";
@@ -11,10 +12,12 @@ import {
   companies,
   globalCareerSources,
   globalJobLifecycleEvents,
+  globalJobSnapshots,
   globalJobs,
   globalScanRuns,
   globalSourcePolicies,
   jobDescriptionSnapshots,
+  queueStates,
   userJobEligibility,
   userJobQueueStates,
   userJobRankingDimensions,
@@ -22,17 +25,14 @@ import {
   organizations,
   referrals,
 } from "@/db/schema";
-import { normalizeOfficialUrl, transitionLifecycle } from "@/domain/jobs";
+import { freshness, normalizeOfficialUrl, transitionLifecycle } from "@/domain/jobs";
 import { ELIGIBILITY_RULE_VERSION } from "@/domain/eligibility";
 import { analyzeAndRankListing } from "@/lib/jobs/analyze-and-rank";
 import { ingestListing } from "@/lib/jobs/ingest";
 import { discoverAllPages } from "@/lib/scans/discover-pages";
 import type { StoredSource } from "@/lib/scans/scan-source";
 import { ingestGlobalListing, type GlobalIngestResult } from "./global-ingest";
-import {
-  extractSharedRequirements,
-  type SharedRequirementExtraction,
-} from "./requirement-extraction";
+import type { SharedRequirementExtraction } from "./requirement-extraction";
 
 export type StoredGlobalSource = {
   id: string;
@@ -46,6 +46,37 @@ export type StoredGlobalSource = {
   etag: string | null;
   lastModified: string | null;
 };
+
+export type GlobalListingTask = {
+  sourceId: string;
+  jobId: string;
+  snapshotId: string;
+  changed: boolean;
+  reopened: boolean;
+  observedAt: string;
+};
+
+export type GlobalPersonalizationTask = {
+  source: StoredSource;
+  listing: NormalizedListing;
+  global: GlobalIngestResult;
+};
+
+const storedFactsSchema = z.object({
+  employmentType: z.string().nullable(),
+  locations: z.array(z.string()),
+  workplaceType: z.string().nullable(),
+  salary: z.string().nullable(),
+  sourceFacts: z
+    .object({
+      employmentType: z.string().nullable(),
+      locations: z.array(z.string()),
+      workplaceType: z.string().nullable(),
+      salaryText: z.string().nullable(),
+      sourceConfidence: z.enum(["low", "medium", "high"]),
+    })
+    .optional(),
+});
 
 export async function loadGlobalSource(sourceId: string): Promise<StoredGlobalSource | null> {
   const [source] = await db
@@ -102,7 +133,10 @@ function connectorInput(source: StoredGlobalSource): ConnectorSource {
   };
 }
 
-async function loadLegacyOverlays(sourceId: string): Promise<StoredSource[]> {
+export async function loadGlobalSourceOverlays(
+  sourceId: string,
+  userId?: string,
+): Promise<StoredSource[]> {
   const rows = await db
     .select({
       id: careerSources.id,
@@ -120,6 +154,7 @@ async function loadLegacyOverlays(sourceId: string): Promise<StoredSource[]> {
     .where(
       and(
         eq(careerSources.globalSourceId, sourceId),
+        ...(userId ? [eq(careerSources.userId, userId)] : []),
         eq(careerSources.active, true),
         eq(companies.active, true),
       ),
@@ -132,7 +167,7 @@ async function loadLegacyOverlays(sourceId: string): Promise<StoredSource[]> {
   }));
 }
 
-async function personalizeListing(
+export async function personalizeGlobalListing(
   source: StoredSource,
   listing: NormalizedListing,
   global: GlobalIngestResult,
@@ -156,9 +191,17 @@ async function personalizeListing(
     },
     listing,
   );
+  const projectedReopening = global.reopened && global.reopenedAt ? global.reopenedAt : null;
   await db
     .update(canonicalJobs)
-    .set({ globalJobId: global.jobId, updatedAt: observedAt })
+    .set({
+      globalJobId: global.jobId,
+      firstSeenAt: sql`least(${canonicalJobs.firstSeenAt}, ${global.firstSeenAt.toISOString()}::timestamptz)`,
+      ...(projectedReopening
+        ? { lifecycleStatus: "reopened" as const, reopenedAt: projectedReopening }
+        : {}),
+      updatedAt: observedAt,
+    })
     .where(and(eq(canonicalJobs.id, legacy.jobId), eq(canonicalJobs.userId, source.userId)));
   if (legacy.snapshotId)
     await db
@@ -170,10 +213,16 @@ async function personalizeListing(
           eq(jobDescriptionSnapshots.userId, source.userId),
         ),
       );
+  const projectedIngest = {
+    ...legacy,
+    firstSeenAt: global.firstSeenAt,
+    reopened: legacy.reopened || Boolean(projectedReopening),
+    reopenedAt: legacy.reopenedAt ?? projectedReopening,
+  };
   const result = await analyzeAndRankListing({
     userId: source.userId,
     listing,
-    ingest: legacy,
+    ingest: projectedIngest,
     hasReferral: Boolean(referral),
     now: observedAt,
     sharedExtraction,
@@ -288,11 +337,170 @@ async function personalizeListing(
           .values({ userId: source.userId, jobId: global.jobId, status: "active" })
           .onConflictDoNothing();
     });
+  const [queue] = await db
+    .select({ status: queueStates.status })
+    .from(queueStates)
+    .where(and(eq(queueStates.userId, source.userId), eq(queueStates.jobId, legacy.jobId)))
+    .limit(1);
+  const [latestSnapshot] = projectedIngest.snapshotId
+    ? [{ id: projectedIngest.snapshotId }]
+    : projectedIngest.reopened
+      ? await db
+          .select({ id: jobDescriptionSnapshots.id })
+          .from(jobDescriptionSnapshots)
+          .where(
+            and(
+              eq(jobDescriptionSnapshots.userId, source.userId),
+              eq(jobDescriptionSnapshots.jobId, legacy.jobId),
+            ),
+          )
+          .orderBy(sql`${jobDescriptionSnapshots.capturedAt} desc`)
+          .limit(1)
+      : [];
+  const currentFreshness = freshness(
+    observedAt,
+    projectedIngest.postedAt,
+    projectedIngest.postedAtConfidence,
+    projectedIngest.firstSeenAt,
+    projectedIngest.reopenedAt,
+  );
+  const exceptional =
+    result.state === "analyzed" &&
+    (result.recommendation.band === "hot" || result.recommendation.band === "strong") &&
+    result.recommendation.urgency >= 85 &&
+    currentFreshness.ageHours <= 24 &&
+    currentFreshness.basis !== "first_seen" &&
+    queue?.status === "active" &&
+    latestSnapshot?.id
+      ? {
+          jobId: legacy.jobId,
+          snapshotId: latestSnapshot.id,
+          title: listing.title,
+          company: source.companyName,
+          headline: result.recommendation.headline,
+          urgency: result.recommendation.urgency,
+          hasReferral: Boolean(referral),
+          band: result.recommendation.band,
+          officialUrl: listing.officialUrl,
+          freshnessAgeHours: currentFreshness.ageHours,
+          freshnessBasis: currentFreshness.basis,
+          primaryConcern:
+            result.recommendation.routingReasons[0] ?? "No material concern identified.",
+          occurrenceId:
+            projectedIngest.reopened && projectedIngest.reopenedAt
+              ? `reopened:${projectedIngest.reopenedAt.toISOString()}`
+              : `snapshot:${latestSnapshot.id}`,
+        }
+      : null;
   return {
     userId: source.userId,
     legacyJobId: legacy.jobId,
     state: result.state,
     changed: legacy.changed,
+    exceptional,
+  };
+}
+
+export async function loadGlobalListingTasks(sourceId: string): Promise<GlobalListingTask[]> {
+  const jobs = await db
+    .select({
+      jobId: globalJobs.id,
+      snapshotId: globalJobs.currentSnapshotId,
+      reopenedAt: globalJobs.reopenedAt,
+      observedAt: globalJobs.lastSeenAt,
+    })
+    .from(globalJobs)
+    .where(
+      and(
+        eq(globalJobs.authoritativeSourceId, sourceId),
+        inArray(globalJobs.lifecycleStatus, ["open", "reopened"]),
+        isNotNull(globalJobs.currentSnapshotId),
+      ),
+    );
+  return jobs.flatMap((job) =>
+    job.snapshotId
+      ? [
+          {
+            sourceId,
+            jobId: job.jobId,
+            snapshotId: job.snapshotId,
+            changed: false,
+            reopened: Boolean(job.reopenedAt),
+            observedAt: job.observedAt.toISOString(),
+          },
+        ]
+      : [],
+  );
+}
+
+export async function loadGlobalPersonalizationTask(options: {
+  sourceId: string;
+  jobId: string;
+  snapshotId: string;
+  userId: string;
+}): Promise<GlobalPersonalizationTask | null> {
+  const [row] = await db
+    .select({
+      externalId: globalJobs.externalJobId,
+      requisitionId: globalJobs.requisitionId,
+      title: globalJobs.title,
+      officialUrl: globalJobs.officialUrl,
+      applyUrl: globalJobs.applyUrl,
+      postedAt: globalJobs.postedAt,
+      postedAtConfidence: globalJobs.postedAtConfidence,
+      firstSeenAt: globalJobs.firstSeenAt,
+      lifecycleStatus: globalJobs.lifecycleStatus,
+      reopenedAt: globalJobs.reopenedAt,
+      snapshotId: globalJobSnapshots.id,
+      descriptionText: globalJobSnapshots.descriptionText,
+      normalizedFacts: globalJobSnapshots.normalizedFacts,
+    })
+    .from(globalJobs)
+    .innerJoin(globalJobSnapshots, eq(globalJobSnapshots.jobId, globalJobs.id))
+    .where(
+      and(
+        eq(globalJobs.id, options.jobId),
+        eq(globalJobs.authoritativeSourceId, options.sourceId),
+        eq(globalJobs.currentSnapshotId, options.snapshotId),
+        inArray(globalJobs.lifecycleStatus, ["open", "reopened"]),
+        eq(globalJobSnapshots.id, options.snapshotId),
+      ),
+    )
+    .limit(1);
+  if (!row) return null;
+  const [source] = await loadGlobalSourceOverlays(options.sourceId, options.userId);
+  if (!source) return null;
+  const facts = storedFactsSchema.safeParse(row.normalizedFacts);
+  if (!facts.success) throw new Error("The persisted global listing facts are invalid.");
+  const original = facts.data.sourceFacts;
+  return {
+    source,
+    listing: {
+      externalId: row.externalId,
+      requisitionId: row.requisitionId,
+      title: row.title,
+      descriptionText: row.descriptionText,
+      officialUrl: row.officialUrl,
+      applyUrl: row.applyUrl,
+      locations: original?.locations ?? facts.data.locations,
+      workplaceType: original?.workplaceType ?? facts.data.workplaceType,
+      employmentType: original?.employmentType ?? facts.data.employmentType,
+      postedAt: row.postedAt?.toISOString() ?? null,
+      postedAtConfidence: row.postedAtConfidence,
+      salaryText: original?.salaryText ?? facts.data.salary,
+      sourceConfidence: original?.sourceConfidence ?? "high",
+      rawMetadata: {},
+    },
+    global: {
+      jobId: options.jobId,
+      snapshotId: row.snapshotId,
+      changed: false,
+      reopened: row.lifecycleStatus === "reopened" && Boolean(row.reopenedAt),
+      firstSeenAt: row.firstSeenAt,
+      postedAt: row.postedAt,
+      postedAtConfidence: row.postedAtConfidence,
+      reopenedAt: row.reopenedAt,
+    },
   };
 }
 
@@ -370,17 +578,42 @@ export async function scanGlobalSource(
 ) {
   const connector = connectorFor(source.kind);
   const page = await discoverAllPages(connector, connectorInput(source));
+  const overlays = await loadGlobalSourceOverlays(source.id);
   if (page.notModified) {
-    await db
-      .update(globalCareerSources)
-      .set({
-        lastAttemptAt: observedAt,
-        lastSuccessAt: observedAt,
-        lastErrorCode: null,
-        updatedAt: observedAt,
-      })
-      .where(eq(globalCareerSources.id, source.id));
-    return { notModified: true, discovered: 0, changed: 0, personalized: 0, closed: 0 };
+    await db.transaction(async (tx) => {
+      await tx
+        .update(globalCareerSources)
+        .set({
+          lastAttemptAt: observedAt,
+          lastSuccessAt: observedAt,
+          lastErrorCode: null,
+          updatedAt: observedAt,
+        })
+        .where(eq(globalCareerSources.id, source.id));
+      if (overlays.length)
+        await tx
+          .update(careerSources)
+          .set({
+            lastAttemptAt: observedAt,
+            lastSuccessAt: observedAt,
+            lastErrorCode: null,
+            updatedAt: observedAt,
+          })
+          .where(
+            inArray(
+              careerSources.id,
+              overlays.map((overlay) => overlay.id),
+            ),
+          );
+    });
+    return {
+      notModified: true,
+      discovered: 0,
+      changed: 0,
+      personalized: 0,
+      closed: 0,
+      tasks: [] as GlobalListingTask[],
+    };
   }
 
   const globalResults = new Map<string, GlobalIngestResult>();
@@ -398,25 +631,6 @@ export async function scanGlobalSource(
       listing,
     );
     globalResults.set(normalizeOfficialUrl(listing.officialUrl), result);
-  }
-
-  const overlays = await loadLegacyOverlays(source.id);
-  const personalized = [];
-  for (const listing of page.listings) {
-    const global = globalResults.get(normalizeOfficialUrl(listing.officialUrl));
-    if (!global || !overlays.length) continue;
-    const sharedExtraction = await extractSharedRequirements({
-      snapshotId: global.snapshotId,
-      budgetUserId: overlays[0]!.userId,
-      listing,
-    });
-    for (const overlay of overlays) {
-      const global = globalResults.get(normalizeOfficialUrl(listing.officialUrl));
-      if (global)
-        personalized.push(
-          await personalizeListing(overlay, listing, global, sharedExtraction, observedAt),
-        );
-    }
   }
 
   const closed = await applyGlobalClosure(source, page.listings, observedAt);
@@ -457,7 +671,17 @@ export async function scanGlobalSource(
     notModified: false,
     discovered: page.listings.length,
     changed: [...globalResults.values()].filter((result) => result.changed).length,
-    personalized: personalized.length,
+    personalized: 0,
     closed,
+    tasks: [...globalResults.values()]
+      .filter((result) => result.changed || result.reopened)
+      .map((result) => ({
+        sourceId: source.id,
+        jobId: result.jobId,
+        snapshotId: result.snapshotId,
+        changed: result.changed,
+        reopened: result.reopened,
+        observedAt: observedAt.toISOString(),
+      })),
   };
 }

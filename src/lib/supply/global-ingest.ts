@@ -203,7 +203,18 @@ export async function ingestGlobalListing(
           observationId: observation?.id ?? null,
           materialHash: hash,
           descriptionText: listing.descriptionText,
-          normalizedFacts: fields,
+          normalizedFacts: {
+            ...fields,
+            // Preserve provider casing for later durable personalization. The
+            // material fields remain normalized for hashing/comparison.
+            sourceFacts: {
+              employmentType: listing.employmentType,
+              locations: listing.locations,
+              workplaceType: listing.workplaceType,
+              salaryText: listing.salaryText,
+              sourceConfidence: listing.sourceConfidence,
+            },
+          },
           materialChangeReasons: previous?.facts
             ? materialChangeReasons(previous.facts as ReturnType<typeof materialFields>, fields)
             : [],

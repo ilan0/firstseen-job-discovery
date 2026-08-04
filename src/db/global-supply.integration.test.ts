@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { randomUUID } from "node:crypto";
 import dotenv from "dotenv";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type User } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { NormalizedListing } from "@/connectors/types";
 
@@ -18,6 +18,9 @@ const admin = createClient(
 describe.runIf(enabled)("shared canonical supply", () => {
   let organizationId: string;
   let sourceId: string;
+  let firstJobId: string;
+  let currentSnapshotId: string;
+  let user: User | null = null;
   const suffix = randomUUID();
   const listing: NormalizedListing = {
     externalId: `job-${suffix}`,
@@ -38,6 +41,13 @@ describe.runIf(enabled)("shared canonical supply", () => {
   };
 
   beforeAll(async () => {
+    const created = await admin.auth.admin.createUser({
+      email: `global-supply-${suffix}@firstseen.local`,
+      password: `${randomUUID()}Aa9!`,
+      email_confirm: true,
+    });
+    if (created.error) throw created.error;
+    user = created.data.user;
     const organization = await admin
       .from("organizations")
       .insert({ name: `Global ${suffix}`, normalized_name: `global-${suffix}` })
@@ -61,6 +71,7 @@ describe.runIf(enabled)("shared canonical supply", () => {
   });
 
   afterAll(async () => {
+    if (user) await admin.auth.admin.deleteUser(user.id);
     if (organizationId) await admin.from("organizations").delete().eq("id", organizationId);
   });
 
@@ -85,6 +96,8 @@ describe.runIf(enabled)("shared canonical supply", () => {
       observedAt: new Date("2026-08-04T10:05:00Z"),
     };
     const first = await ingestGlobalListing(context, listing);
+    firstJobId = first.jobId;
+    currentSnapshotId = first.snapshotId;
     const replay = await ingestGlobalListing(
       { ...context, observedAt: new Date("2026-08-04T10:10:00Z") },
       listing,
@@ -101,14 +114,26 @@ describe.runIf(enabled)("shared canonical supply", () => {
     );
     expect(changed).toMatchObject({ jobId: first.jobId, changed: true });
     expect(changed.snapshotId).not.toBe(first.snapshotId);
+    currentSnapshotId = changed.snapshotId;
     const [jobs, snapshots, links, events] = await Promise.all([
       admin.from("global_jobs").select("id").eq("id", first.jobId),
-      admin.from("global_job_snapshots").select("id").eq("job_id", first.jobId),
+      admin.from("global_job_snapshots").select("id,normalized_facts").eq("job_id", first.jobId),
       admin.from("global_job_source_links").select("id").eq("job_id", first.jobId),
       admin.from("global_job_lifecycle_events").select("reason").eq("job_id", first.jobId),
     ]);
     expect(jobs.data).toHaveLength(1);
     expect(snapshots.data).toHaveLength(2);
+    expect(
+      snapshots.data?.every((snapshot) => {
+        const facts = snapshot.normalized_facts as {
+          sourceFacts?: { locations?: string[]; employmentType?: string };
+        };
+        return (
+          facts.sourceFacts?.employmentType === "Full-time" &&
+          facts.sourceFacts.locations?.[0] === "Remote - United States"
+        );
+      }),
+    ).toBe(true);
     expect(links.data).toHaveLength(1);
     expect(events.data?.map((event) => event.reason)).toEqual(
       expect.arrayContaining([
@@ -145,5 +170,79 @@ describe.runIf(enabled)("shared canonical supply", () => {
     });
     if (policy.error) throw policy.error;
     expect(await loadGlobalSource(sourceId)).toMatchObject({ id: sourceId, kind: "lever" });
+  });
+
+  it("reconstructs original provider casing for durable user personalization", async () => {
+    const { attachGlobalSourceToUser } = await import("@/lib/supply/user-overlay");
+    const { loadGlobalPersonalizationTask } = await import("@/lib/supply/global-source");
+    expect(await attachGlobalSourceToUser(user!.id, sourceId)).toBeTruthy();
+
+    const staleSnapshots = await admin
+      .from("global_job_snapshots")
+      .select("id")
+      .eq("job_id", firstJobId)
+      .neq("id", currentSnapshotId)
+      .limit(1);
+    if (staleSnapshots.error) throw staleSnapshots.error;
+    const [staleSnapshot] = staleSnapshots.data;
+    expect(staleSnapshot).toBeTruthy();
+    await expect(
+      loadGlobalPersonalizationTask({
+        sourceId,
+        jobId: firstJobId,
+        snapshotId: staleSnapshot!.id,
+        userId: user!.id,
+      }),
+    ).resolves.toBeNull();
+
+    const task = await loadGlobalPersonalizationTask({
+      sourceId,
+      jobId: firstJobId,
+      snapshotId: currentSnapshotId,
+      userId: user!.id,
+    });
+    expect(task?.listing).toMatchObject({
+      employmentType: "Full-time",
+      locations: ["Remote - United States"],
+      workplaceType: "Remote",
+    });
+    expect(task?.source.userId).toBe(user!.id);
+  });
+
+  it("projects private queue actions to the global overlay atomically", async () => {
+    const { projectGlobalQueueState } = await import("@/lib/supply/user-queue");
+    await expect(
+      projectGlobalQueueState({
+        userId: user!.id,
+        globalJobId: firstJobId,
+        status: "saved",
+        changedAt: new Date("2026-08-04T13:00:00Z"),
+      }),
+    ).resolves.toBeUndefined();
+    const saved = await admin
+      .from("user_job_queue_states")
+      .select("status,row_version")
+      .eq("user_id", user!.id)
+      .eq("job_id", firstJobId)
+      .single();
+    expect(saved.error).toBeNull();
+    expect(saved.data).toMatchObject({ status: "saved", row_version: 1 });
+
+    await expect(
+      projectGlobalQueueState({
+        userId: user!.id,
+        globalJobId: firstJobId,
+        status: "dismissed",
+        changedAt: new Date("2026-08-04T13:05:00Z"),
+      }),
+    ).resolves.toBeUndefined();
+    const dismissed = await admin
+      .from("user_job_queue_states")
+      .select("status,row_version")
+      .eq("user_id", user!.id)
+      .eq("job_id", firstJobId)
+      .single();
+    expect(dismissed.error).toBeNull();
+    expect(dismissed.data).toMatchObject({ status: "dismissed", row_version: 2 });
   });
 });

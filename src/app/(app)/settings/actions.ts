@@ -1,4 +1,5 @@
 "use server";
+import { randomUUID } from "node:crypto";
 import { eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -6,10 +7,14 @@ import { z } from "zod";
 import { db } from "@/db/client";
 import {
   candidateProfiles,
+  outboxEvents,
+  recommendations,
   resumeVersions,
   searchPreferences,
   storageCleanupRecords,
+  userRecommendations,
 } from "@/db/schema";
+import { inngest } from "@/inngest/client";
 import { requireOwner } from "@/lib/auth/owner";
 import { RESUME_BUCKET } from "@/domain/applications/resume";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -123,6 +128,8 @@ export async function updateCandidateSettings(formData: FormData) {
         .filter(Boolean),
     ),
   ];
+  const requestedAt = new Date();
+  const rematchId = randomUUID();
   await db.transaction(async (tx) => {
     await tx
       .update(candidateProfiles)
@@ -149,7 +156,40 @@ export async function updateCandidateSettings(formData: FormData) {
         updatedAt: new Date(),
       })
       .where(eq(searchPreferences.userId, owner.id));
+    // Runtime matching is profile-driven. Invalidate the old personalized
+    // projections so an unchanged official description is still reevaluated.
+    await tx
+      .update(recommendations)
+      .set({ active: false, updatedAt: requestedAt })
+      .where(eq(recommendations.userId, owner.id));
+    await tx
+      .update(userRecommendations)
+      .set({ active: false, updatedAt: requestedAt })
+      .where(eq(userRecommendations.userId, owner.id));
+    await tx.insert(outboxEvents).values({
+      id: rematchId,
+      userId: owner.id,
+      eventName: "supply/user.rematch.requested.v2",
+      aggregateType: "candidate_profile",
+      aggregateId: owner.id,
+      idempotencyKey: `user-rematch:${rematchId}`,
+      payload: { userId: owner.id, requestedAt: requestedAt.toISOString() },
+    });
   });
+  try {
+    await inngest.send({
+      id: rematchId,
+      name: "supply/user.rematch.requested.v2",
+      data: { userId: owner.id, requestedAt: requestedAt.toISOString() },
+    });
+    await db
+      .update(outboxEvents)
+      .set({ status: "dispatched", dispatchedAt: new Date(), updatedAt: new Date() })
+      .where(eq(outboxEvents.id, rematchId));
+  } catch {
+    // The committed outbox record is retried by the durable scheduler. A
+    // settings update must not fail merely because Inngest is temporarily down.
+  }
   revalidatePath("/");
   revalidatePath("/settings");
   redirect("/settings?saved=profile");

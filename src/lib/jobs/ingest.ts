@@ -243,7 +243,16 @@ export async function ingestListing(
           observationId: observation?.id ?? null,
           materialHash: hash,
           descriptionText: listing.descriptionText,
-          normalizedFacts: fields,
+          normalizedFacts: {
+            ...fields,
+            sourceFacts: {
+              employmentType: listing.employmentType,
+              locations: listing.locations,
+              workplaceType: listing.workplaceType,
+              salaryText: listing.salaryText,
+              sourceConfidence: listing.sourceConfidence,
+            },
+          },
           materialChangeReasons: previous?.facts
             ? materialChangeReasons(previous.facts as ReturnType<typeof materialFields>, fields)
             : [],

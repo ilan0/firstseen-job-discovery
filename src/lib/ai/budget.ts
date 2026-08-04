@@ -9,6 +9,14 @@ import { canEscalateWithinCaps } from "./caps";
 export async function reserveAiBudget(userId: string, idempotencyKey: string, estimateUsd = 0.004) {
   return db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${userId}))`);
+    const [existing] = await tx
+      .select({ id: usageCostLedger.id, status: usageCostLedger.reservationStatus })
+      .from(usageCostLedger)
+      .where(
+        and(eq(usageCostLedger.userId, userId), eq(usageCostLedger.idempotencyKey, idempotencyKey)),
+      )
+      .limit(1);
+    if (existing && existing.status !== "released") return existing.id;
     const monthStart = new Date();
     monthStart.setUTCDate(1);
     monthStart.setUTCHours(0, 0, 0, 0);
@@ -25,6 +33,20 @@ export async function reserveAiBudget(userId: string, idempotencyKey: string, es
       );
     const spent = Number(usage?.total ?? 0);
     if (spent + estimateUsd > serverEnv().OPENAI_MONTHLY_BUDGET_USD) return null;
+    if (existing) {
+      const [reopened] = await tx
+        .update(usageCostLedger)
+        .set({
+          estimatedCostUsd: estimateUsd.toFixed(6),
+          actualCostUsd: null,
+          reservationStatus: "reserved",
+          metadata: {},
+          updatedAt: new Date(),
+        })
+        .where(eq(usageCostLedger.id, existing.id))
+        .returning({ id: usageCostLedger.id });
+      return reopened?.id ?? null;
+    }
     const [reservation] = await tx
       .insert(usageCostLedger)
       .values({
@@ -40,15 +62,7 @@ export async function reserveAiBudget(userId: string, idempotencyKey: string, es
       })
       .onConflictDoNothing()
       .returning();
-    if (reservation) return reservation.id;
-    const [existing] = await tx
-      .select({ id: usageCostLedger.id, status: usageCostLedger.reservationStatus })
-      .from(usageCostLedger)
-      .where(
-        and(eq(usageCostLedger.userId, userId), eq(usageCostLedger.idempotencyKey, idempotencyKey)),
-      )
-      .limit(1);
-    return existing?.status === "released" ? null : (existing?.id ?? null);
+    return reservation?.id ?? null;
   });
 }
 
@@ -59,6 +73,14 @@ export async function reserveAiEscalationBudget(
 ) {
   return db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${userId}))`);
+    const [existing] = await tx
+      .select({ id: usageCostLedger.id, status: usageCostLedger.reservationStatus })
+      .from(usageCostLedger)
+      .where(
+        and(eq(usageCostLedger.userId, userId), eq(usageCostLedger.idempotencyKey, idempotencyKey)),
+      )
+      .limit(1);
+    if (existing && existing.status !== "released") return existing.id;
     const monthStart = new Date();
     monthStart.setUTCDate(1);
     monthStart.setUTCHours(0, 0, 0, 0);
@@ -92,6 +114,20 @@ export async function reserveAiEscalationBudget(
       return null;
     const totalSpend = rows.reduce((sum, row) => sum + Number(row.spend), 0);
     if (totalSpend + estimateUsd > serverEnv().OPENAI_MONTHLY_BUDGET_USD) return null;
+    if (existing) {
+      const [reopened] = await tx
+        .update(usageCostLedger)
+        .set({
+          estimatedCostUsd: estimateUsd.toFixed(6),
+          actualCostUsd: null,
+          reservationStatus: "reserved",
+          metadata: {},
+          updatedAt: new Date(),
+        })
+        .where(eq(usageCostLedger.id, existing.id))
+        .returning({ id: usageCostLedger.id });
+      return reopened?.id ?? null;
+    }
     const [reservation] = await tx
       .insert(usageCostLedger)
       .values({

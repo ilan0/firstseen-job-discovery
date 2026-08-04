@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => {
       from: () => value,
       innerJoin: () => value,
       where: () => value,
+      orderBy: () => value,
       limit: () => Promise.resolve(terminal()),
       then: (resolve: (result: unknown[]) => unknown) => Promise.resolve(terminal()).then(resolve),
     };
@@ -71,7 +72,11 @@ vi.mock("@/lib/jobs/analyze-and-rank", () => ({
   analyzeAndRankListing: mocks.analyzeAndRankListing,
 }));
 
-import { scanGlobalSource, type StoredGlobalSource } from "./global-source";
+import {
+  personalizeGlobalListing,
+  scanGlobalSource,
+  type StoredGlobalSource,
+} from "./global-source";
 
 const source: StoredGlobalSource = {
   id: "00000000-0000-4000-8000-000000000001",
@@ -126,11 +131,12 @@ describe("global source scan orchestration", () => {
       changed: 0,
       personalized: 0,
       closed: 0,
+      tasks: [],
     });
     expect(mocks.ingestGlobalListing).not.toHaveBeenCalled();
   });
 
-  it("fetches once, personalizes for a watcher, records dimensions, and advances closure", async () => {
+  it("fetches once, stages durable extraction work, and advances closure without inline AI", async () => {
     mocks.discoverAllPages.mockResolvedValue({
       listings: [listing],
       nextCursor: null,
@@ -145,18 +151,6 @@ describe("global source scan orchestration", () => {
       created: true,
     });
     mocks.selectResponses.push(
-      [
-        {
-          id: "00000000-0000-4000-8000-000000000020",
-          userId: "00000000-0000-4000-8000-000000000021",
-          companyId: "00000000-0000-4000-8000-000000000022",
-          companyName: "Acme",
-          companyDomain: "acme.example",
-          kind: "greenhouse",
-          baseUrl: source.baseUrl,
-          tenantId: "acme",
-        },
-      ],
       [],
       [
         {
@@ -171,41 +165,6 @@ describe("global source scan orchestration", () => {
         },
       ],
     );
-    mocks.extractSharedRequirements.mockResolvedValue({
-      id: "00000000-0000-4000-8000-000000000012",
-      status: "succeeded",
-      model: "gpt-5.6-luna",
-      analysis: {},
-      errorCode: null,
-      unresolvedFields: [],
-    });
-    mocks.ingestListing.mockResolvedValue({
-      jobId: "00000000-0000-4000-8000-000000000040",
-      snapshotId: "00000000-0000-4000-8000-000000000041",
-      changed: true,
-    });
-    mocks.analyzeAndRankListing.mockResolvedValue({
-      state: "analyzed",
-      decision: { outcome: "eligible", reasons: [], uncertainFields: [] },
-      recommendation: {
-        band: "strong",
-        urgency: "high",
-        headline: "Strong fresh match",
-        routingReasons: [],
-        version: "ranking-v1",
-        dimensions: [
-          {
-            dimension: "freshness",
-            value: "excellent",
-            confidence: "high",
-            explanation: "Posted today.",
-            evidence: [],
-          },
-        ],
-      },
-    });
-    mocks.returningResponses.push([{ id: "00000000-0000-4000-8000-000000000050" }]);
-
     await expect(
       scanGlobalSource(
         source,
@@ -216,15 +175,20 @@ describe("global source scan orchestration", () => {
       notModified: false,
       discovered: 1,
       changed: 1,
-      personalized: 1,
+      personalized: 0,
       closed: 1,
+      tasks: [
+        {
+          jobId: "00000000-0000-4000-8000-000000000010",
+          snapshotId: "00000000-0000-4000-8000-000000000011",
+        },
+      ],
     });
-    expect(mocks.extractSharedRequirements).toHaveBeenCalledOnce();
-    expect(mocks.analyzeAndRankListing).toHaveBeenCalledOnce();
-    expect(mocks.mutationCount).toBeGreaterThan(5);
+    expect(mocks.extractSharedRequirements).not.toHaveBeenCalled();
+    expect(mocks.analyzeAndRankListing).not.toHaveBeenCalled();
   });
 
-  it("does not spend AI budget when an official source has no private watchers", async () => {
+  it("does not spend AI budget inside the authoritative supply scan", async () => {
     mocks.discoverAllPages.mockResolvedValue({
       listings: [listing],
       nextCursor: null,
@@ -246,5 +210,84 @@ describe("global source scan orchestration", () => {
       personalized: 0,
     });
     expect(mocks.extractSharedRequirements).not.toHaveBeenCalled();
+  });
+
+  it("uses the latest persisted description when a reopening has no new snapshot", async () => {
+    const overlay = {
+      id: "00000000-0000-4000-8000-000000000020",
+      userId: "00000000-0000-4000-8000-000000000021",
+      companyId: "00000000-0000-4000-8000-000000000022",
+      companyName: "Acme",
+      companyDomain: "acme.example",
+      kind: "greenhouse" as const,
+      baseUrl: source.baseUrl,
+      tenantId: "acme",
+      etag: null,
+      lastModified: null,
+    };
+    mocks.selectResponses.push(
+      [{ id: "referral-1" }],
+      [{ status: "active" }],
+      [{ id: "00000000-0000-4000-8000-000000000041" }],
+    );
+    mocks.ingestListing.mockResolvedValue({
+      jobId: "00000000-0000-4000-8000-000000000040",
+      snapshotId: null,
+      changed: false,
+      reopened: false,
+      postedAt: new Date("2026-08-04T12:00:00Z"),
+      postedAtConfidence: "high",
+      firstSeenAt: new Date("2026-07-01T12:30:00Z"),
+      reopenedAt: null,
+    });
+    mocks.analyzeAndRankListing.mockResolvedValue({
+      state: "analyzed",
+      decision: { outcome: "eligible", reasons: [], uncertainFields: [] },
+      recommendation: {
+        band: "strong",
+        urgency: 92,
+        headline: "Strong fresh match",
+        routingReasons: [],
+        version: "ranking-v1",
+        dimensions: [],
+      },
+    });
+    mocks.returningResponses.push([{ id: "00000000-0000-4000-8000-000000000050" }]);
+
+    await expect(
+      personalizeGlobalListing(
+        overlay,
+        listing,
+        {
+          jobId: "00000000-0000-4000-8000-000000000010",
+          snapshotId: "00000000-0000-4000-8000-000000000011",
+          changed: false,
+          reopened: true,
+          postedAt: new Date("2026-08-04T12:00:00Z"),
+          postedAtConfidence: "high",
+          firstSeenAt: new Date("2026-07-01T12:30:00Z"),
+          reopenedAt: new Date("2026-08-04T12:45:00Z"),
+        },
+        {
+          id: "00000000-0000-4000-8000-000000000012",
+          status: "succeeded",
+          model: "gpt-5.6-luna",
+          analysis: {} as never,
+          errorCode: null,
+          unresolvedFields: [],
+        },
+        new Date("2026-08-04T13:00:00Z"),
+      ),
+    ).resolves.toMatchObject({
+      state: "analyzed",
+      exceptional: {
+        band: "strong",
+        urgency: 92,
+        hasReferral: true,
+        snapshotId: "00000000-0000-4000-8000-000000000041",
+        occurrenceId: "reopened:2026-08-04T12:45:00.000Z",
+      },
+    });
+    expect(mocks.analyzeAndRankListing).toHaveBeenCalledOnce();
   });
 });

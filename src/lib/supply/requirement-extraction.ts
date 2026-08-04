@@ -115,7 +115,10 @@ export async function extractSharedRequirements(options: {
     eq(jobRequirementExtractions.extractionVersion, SHARED_EXTRACTION_VERSION),
   );
   const [cached] = await db.select().from(jobRequirementExtractions).where(cacheWhere).limit(1);
-  if (cached) return storedExtraction(cached);
+  if (cached) {
+    const stored = storedExtraction(cached);
+    if (stored.status === "succeeded") return stored;
+  }
 
   const reservationKey = `openai:global:${options.snapshotId}:${AI_ANALYSIS_SCHEMA_VERSION}:${promptHash}`;
   const reservationId = await reserveAiBudget(options.budgetUserId, reservationKey, 0.004);
@@ -132,7 +135,23 @@ export async function extractSharedRequirements(options: {
         errorCode: "MONTHLY_BUDGET_LIMIT",
         completedAt: new Date(),
       })
-      .onConflictDoNothing()
+      .onConflictDoUpdate({
+        target: [
+          jobRequirementExtractions.snapshotId,
+          jobRequirementExtractions.model,
+          jobRequirementExtractions.schemaVersion,
+          jobRequirementExtractions.promptHash,
+          jobRequirementExtractions.extractionVersion,
+        ],
+        set: {
+          status: "budget_blocked",
+          structuredOutput: null,
+          confidence: null,
+          errorCode: "MONTHLY_BUDGET_LIMIT",
+          completedAt: new Date(),
+          updatedAt: new Date(),
+        },
+      })
       .returning();
     return saved
       ? storedExtraction(saved)
@@ -222,7 +241,31 @@ export async function extractSharedRequirements(options: {
         latencyMs: totalLatencyMs,
         completedAt: new Date(),
       })
-      .onConflictDoNothing()
+      .onConflictDoUpdate({
+        target: [
+          jobRequirementExtractions.snapshotId,
+          jobRequirementExtractions.model,
+          jobRequirementExtractions.schemaVersion,
+          jobRequirementExtractions.promptHash,
+          jobRequirementExtractions.extractionVersion,
+        ],
+        set: {
+          status: "succeeded",
+          escalationModel,
+          unresolvedFields,
+          structuredOutput: analysis,
+          confidence: extractionConfidence(analysis),
+          inputTokens: totalUsage.inputTokens,
+          cachedInputTokens: totalUsage.cachedInputTokens,
+          outputTokens: totalUsage.outputTokens,
+          estimatedCostUsd: totalCost.toFixed(6),
+          actualCostUsd: totalCost.toFixed(6),
+          latencyMs: totalLatencyMs,
+          completedAt: new Date(),
+          errorCode: null,
+          updatedAt: new Date(),
+        },
+      })
       .returning();
     return saved
       ? storedExtraction(saved)
@@ -244,7 +287,23 @@ export async function extractSharedRequirements(options: {
         errorCode,
         completedAt: new Date(),
       })
-      .onConflictDoNothing()
+      .onConflictDoUpdate({
+        target: [
+          jobRequirementExtractions.snapshotId,
+          jobRequirementExtractions.model,
+          jobRequirementExtractions.schemaVersion,
+          jobRequirementExtractions.promptHash,
+          jobRequirementExtractions.extractionVersion,
+        ],
+        set: {
+          status: "failed",
+          structuredOutput: null,
+          confidence: null,
+          errorCode,
+          completedAt: new Date(),
+          updatedAt: new Date(),
+        },
+      })
       .returning();
     return saved
       ? storedExtraction(saved)

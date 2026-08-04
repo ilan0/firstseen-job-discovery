@@ -22,6 +22,7 @@ function chain<T>(terminal: () => T) {
     limit: () => Promise.resolve(terminal()),
     values: () => value,
     onConflictDoNothing: () => value,
+    onConflictDoUpdate: () => value,
     returning: () => Promise.resolve(terminal()),
   };
   return value;
@@ -177,6 +178,50 @@ describe("shared requirement extraction orchestration", () => {
     });
     expect(mocks.settleAiBudget).toHaveBeenCalledOnce();
     expect(mocks.reserveAiEscalationBudget).not.toHaveBeenCalled();
+  });
+
+  it("retries and replaces a failed cached extraction", async () => {
+    mocks.selectResponses.push([]);
+    mocks.insertResponses.push([
+      row({ status: "failed", structuredOutput: null, errorCode: "API_CONNECTION_ERROR" }),
+    ]);
+    mocks.analyzeJob.mockRejectedValueOnce(new Error("temporary connection failure"));
+
+    await expect(extractSharedRequirements(options)).resolves.toMatchObject({
+      status: "failed",
+      errorCode: "API_CONNECTION_ERROR",
+    });
+
+    mocks.selectResponses.push([
+      row({ status: "failed", structuredOutput: null, errorCode: "API_CONNECTION_ERROR" }),
+    ]);
+    mocks.insertResponses.push([row()]);
+    mocks.analyzeJob.mockResolvedValueOnce(result(analysis()));
+
+    await expect(extractSharedRequirements(options)).resolves.toMatchObject({
+      status: "succeeded",
+      errorCode: null,
+    });
+    expect(mocks.analyzeJob).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries a previously budget-blocked extraction when capacity is available", async () => {
+    mocks.selectResponses.push([
+      row({
+        status: "budget_blocked",
+        structuredOutput: null,
+        errorCode: "MONTHLY_BUDGET_LIMIT",
+      }),
+    ]);
+    mocks.insertResponses.push([row()]);
+    mocks.analyzeJob.mockResolvedValueOnce(result(analysis()));
+
+    await expect(extractSharedRequirements(options)).resolves.toMatchObject({
+      status: "succeeded",
+      errorCode: null,
+    });
+    expect(mocks.reserveAiBudget).toHaveBeenCalledOnce();
+    expect(mocks.analyzeJob).toHaveBeenCalledOnce();
   });
 
   it("selectively escalates uncertain hard fields and accounts for both passes", async () => {

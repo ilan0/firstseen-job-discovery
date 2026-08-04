@@ -11,10 +11,10 @@ physical-device work.
 | --: | ----------------------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 |   0 | Baseline/compliance containment                 | Complete locally | Brave result fields removed from persistence; Adzuna promotion disabled by provider policy; backup/token discrepancies documented                                          |
 |   1 | Policy, contracts, and benchmark foundation     | Complete locally | Versioned provider capabilities/licenses and minimized URL-hash coverage benchmarks implemented; no fabricated independent recall claim                                    |
-|   2 | Detection, redirects, authority, query overhaul | Complete locally | Twelve stable cohorts; DNS-pinned, per-hop SSRF-safe redirects; organization authority contracts; custom JSON-LD independently verified                                   |
+|   2 | Detection, redirects, authority, query overhaul | Complete locally | Twelve stable cohorts; DNS-pinned, per-hop SSRF-safe redirects; organization authority contracts; custom JSON-LD independently verified                                    |
 |   3 | Public ATS connectors                           | Complete locally | Greenhouse, Lever, Ashby, Recruitee, and Pinpoint contract and live bounded smoke checks pass                                                                              |
 |   4 | Reviewed structured/licensed sensor foundation  | Partial          | Reviewed JSON-LD/RSS/Atom/sitemap contracts implemented; licensed-vendor bakeoff awaits a user-authorized account/contract                                                 |
-|   5 | Shared supply and private overlays              | Complete locally | Additive global schema, conservative backfill, dual write, global scheduler/outbox/fan-out, database-driven profiles, and SQL indexes tested behind disabled flags         |
+|   5 | Shared supply and private overlays              | Complete locally | Additive global schema/backfill/dual write; fair scheduler/outbox; per-snapshot extraction and per-user ranking events; DB-driven profiles; SQL indexes tested             |
 |   6 | Relationship CRM                                | Complete locally | Contacts, methods, company links, interactions, reminders, referral requests, best-contact rules, migration compatibility, UI and RLS coverage                             |
 |   7 | Applications and packet                         | Complete locally | Sessions, private resume metadata/storage policy, packet, application/stage/follow-up records, return prompt and outcome analytics; Apply never marks Applied              |
 |   8 | Installable PWA                                 | Complete locally | Manifest/icons, narrow service worker, no private response caching, offline/update UI, install and lifecycle tests                                                         |
@@ -82,11 +82,21 @@ physical-device work.
    regression test proves that a second-hop private answer is rejected before another request.
 9. Legacy CRM company identity prefers an attached verified global source, then an exact canonical
    domain. It never merges unrelated organizations solely because their normalized names match.
+10. A global scan now ends after the one authoritative fetch, canonical ingest, lifecycle update,
+    and durable extraction-event fan-out. Candidate-neutral extraction is serialized per snapshot;
+    personalized deterministic analysis is retried per user with bounded concurrency. New source
+    attachments and profile changes enqueue targeted rematching, while old personalized projections
+    are invalidated so unchanged official descriptions cannot preserve stale candidate rules.
+    Failed extraction cache rows and released Luna/Terra reservations are safely reusable on retry.
+11. Candidate-settings updates commit their rematch request through the existing private outbox before
+    attempting immediate Inngest delivery. A five-minute dispatcher recovers a failed delivery, and
+    snapshot-pinned legacy rematching keeps pre-rollout recommendations profile-driven without network
+    refetches. Queue actions update legacy and global private state in the same database transaction.
 
 ## Local release evidence
 
 - A clean `supabase db reset --local --no-seed` applied every migration through
-  `20260804162200_shared_extraction_escalation.sql`; `pnpm db:bootstrap` then created the local owner,
+  `20260804162700_invite_only_account_access.sql`; `pnpm db:bootstrap` then created the local owner,
   database-backed candidate profile/preferences, and browser fixture from zero.
 - Formatting, zero-warning lint, strict types, all 311 tests in 49 files, coverage, focused
   connector/evaluation/worker/PWA/security/load suites, zero-vulnerability audit, and optimized

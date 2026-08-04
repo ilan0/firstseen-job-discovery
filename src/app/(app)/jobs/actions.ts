@@ -16,6 +16,7 @@ import {
   userActions,
 } from "@/db/schema";
 import { requireOwner } from "@/lib/auth/owner";
+import { upsertGlobalQueueState } from "@/lib/supply/user-queue";
 
 const transitionSchema = z.object({
   jobId: z.string().uuid(),
@@ -75,6 +76,13 @@ export async function transitionQueue(formData: FormData) {
       )
       .returning({ id: queueStates.id });
     if (!updated) throw new Error("Queue transition conflicted. Refresh and try again.");
+    if (current.globalJobId)
+      await upsertGlobalQueueState(tx, {
+        userId: owner.id,
+        globalJobId: current.globalJobId,
+        status,
+        changedAt: new Date(),
+      });
     await tx.insert(userActions).values({
       id: actionId,
       userId: owner.id,
