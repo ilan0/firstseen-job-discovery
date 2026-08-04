@@ -22,6 +22,9 @@ export function sourceFailureCode(error: unknown) {
     }
     current = "cause" in current ? (current as { cause?: unknown }).cause : null;
   }
+  if (explicit === null && error instanceof Error) {
+    explicit = error.message.match(/^\[([A-Z0-9_]{1,80})\]/)?.[1] ?? null;
+  }
   const candidate =
     typeof explicit === "string" && explicit.length > 0
       ? explicit

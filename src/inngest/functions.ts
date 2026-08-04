@@ -176,7 +176,7 @@ export const sourceScan = inngest.createFunction(
         return await stageStoredSource(source, observedAt, started.sourceRunId);
       } catch (error) {
         if (error instanceof ConnectorError && !error.retryable)
-          throw new NonRetriableError(error.message, { cause: error });
+          throw new NonRetriableError(`[${error.code}] ${error.message}`, { cause: error });
         throw error;
       }
     });
