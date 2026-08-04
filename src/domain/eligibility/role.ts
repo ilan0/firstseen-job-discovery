@@ -39,7 +39,12 @@ export function classifyRole(title: string): Fact<RoleFamily> {
 }
 
 export function isPotentialSoftwareRole(title: string): boolean {
-  return /\b(?:software|developer|programmer|full[- ]stack|back[- ]end|backend|front[- ]end|frontend|mobile|web|ai|artificial intelligence|machine learning|ml|llm|data|cloud|devops|site reliability|sre|technical staff|technology analyst)\b/i.test(
-    title,
+  return (
+    /\b(?:software|developer|programmer|full[- ]stack|back[- ]end|backend|front[- ]end|frontend|mobile|web|technical staff|technology analyst)\b/i.test(
+      title,
+    ) ||
+    /\b(?:ai|artificial intelligence|machine learning|ml|llm|data|cloud|devops|site reliability|sre|platform)\b[^\n]{0,30}\b(?:engineer|developer)\b/i.test(
+      title,
+    )
   );
 }

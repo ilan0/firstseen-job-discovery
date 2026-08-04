@@ -6,7 +6,7 @@ import type {
   Recommendation,
 } from "./types";
 
-export const RANKING_VERSION = "2026-08-03.3";
+export const RANKING_VERSION = "2026-08-03.4";
 
 const advancedTitlePattern =
   /\b(?:senior|sr\.?|staff|principal|lead|manager|director|head|architect|intermediate)\b/i;

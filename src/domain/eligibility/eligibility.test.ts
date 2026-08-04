@@ -253,8 +253,12 @@ describe("deterministic eligibility", () => {
   it("allows ambiguous technical titles through to AI without admitting unrelated engineering", () => {
     expect(isPotentialSoftwareRole("Junior Developer")).toBe(true);
     expect(isPotentialSoftwareRole("Technology Analyst")).toBe(true);
+    expect(isPotentialSoftwareRole("Applied AI Engineer")).toBe(true);
+    expect(isPotentialSoftwareRole("AI / ML Engineer")).toBe(true);
     expect(isPotentialSoftwareRole("Mechanical Engineer")).toBe(false);
     expect(isPotentialSoftwareRole("Product Manager")).toBe(false);
+    expect(isPotentialSoftwareRole("AI Product Manager")).toBe(false);
+    expect(isPotentialSoftwareRole("Sales Development Representative (US AI startup)")).toBe(false);
   });
 
   it("preserves evidence for hard exclusions", () => {
