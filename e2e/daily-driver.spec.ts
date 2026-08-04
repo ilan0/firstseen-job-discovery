@@ -33,6 +33,26 @@ test("relationship capture, packet workflow, and PWA offline recovery", async ({
   await expect(person).toContainText("Asked about the team.");
 
   await page.goto("/applications/packet");
+  const resumeLabel = `QA resume ${testInfo.project.name} ${Date.now()}`;
+  await page.getByPlaceholder("General SWE · Aug 2026").fill(resumeLabel);
+  await page.locator('input[name="resume"]').setInputFiles({
+    name: `qa-resume-${testInfo.project.name}.pdf`,
+    mimeType: "application/pdf",
+    buffer: Buffer.from(`%PDF-1.4\n% FirstSeen ${resumeLabel}\n%%EOF\n`),
+  });
+  await page.getByRole("button", { name: "Save resume version", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText(`${resumeLabel} was uploaded privately`);
+  const resumeDownload = page.getByRole("link", { name: `Download ${resumeLabel}`, exact: true });
+  const resumeDownloadPath = await resumeDownload.getAttribute("href");
+  expect(resumeDownloadPath).toBeTruthy();
+  const signedDownload = await page.request.get(resumeDownloadPath!, { maxRedirects: 0 });
+  expect(signedDownload.status()).toBe(303);
+  const resumeRow = page.getByText(resumeLabel, { exact: true }).locator("../..");
+  await resumeRow.getByRole("button", { name: "Hide", exact: true }).click();
+  const hideDialog = page.getByRole("dialog", { name: "Are you sure?" });
+  await hideDialog.getByRole("button", { name: "Hide", exact: true }).click();
+  await expect(page.getByText(resumeLabel, { exact: true })).toBeHidden();
+
   const packetLabel = `Portfolio ${testInfo.project.name} ${Date.now()}`;
   await page.getByPlaceholder("Identity, links, work authorization…").fill("Links");
   await page.getByPlaceholder("Portfolio URL").fill(packetLabel);

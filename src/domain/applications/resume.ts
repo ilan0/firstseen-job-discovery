@@ -1,4 +1,5 @@
 export const MAX_RESUME_BYTES = 5 * 1024 * 1024;
+export const RESUME_BUCKET = "firstseen-resumes";
 
 export function detectResumeMime(bytes: Uint8Array): string | null {
   if (new TextDecoder().decode(bytes.slice(0, 5)) === "%PDF-") return "application/pdf";

@@ -93,7 +93,7 @@ database was then deleted; the protected backup remained unchanged.
 
 ## Production status
 
-- Additive Daily-Driver migrations through `20260804162200` applied to the guarded FirstSeen
+- Additive Daily-Driver migrations through `20260804162300` applied to the guarded FirstSeen
   database URL. `pnpm verify:production-schema` returned `ok: true`: 52 backfilled organizations and
   global sources, zero listed private tables without RLS, no Auth/anon read privilege on global raw
   observations, and latest migration present.

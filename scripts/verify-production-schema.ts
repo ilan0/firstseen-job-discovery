@@ -48,7 +48,7 @@ try {
         as global_raw_browser_read,
       exists(
         select 1 from supabase_migrations.schema_migrations
-        where version = '20260804162200'
+        where version = '20260804162300'
       ) as latest_migration_present
   `;
 

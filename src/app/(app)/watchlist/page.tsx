@@ -230,7 +230,6 @@ function CompanyCard({
   const evidence = row.evidence as {
     sensor?: string;
     discoveredAt?: string;
-    titleHint?: string;
   } | null;
   const discovered = row.scope === "discovered";
   const automaticOrigin = row.origin === "discovered";
@@ -254,7 +253,6 @@ function CompanyCard({
             <p className="mt-3 rounded-xl bg-[var(--paper)] p-3 text-xs leading-5 text-[var(--muted)]">
               <Radar aria-hidden="true" className="mr-1 inline text-[var(--green)]" size={14} />
               Found by {evidence?.sensor ?? "broad discovery"}
-              {evidence?.titleHint ? ` while looking for “${evidence.titleHint}”` : ""}
               {evidence?.discoveredAt
                 ? ` on ${new Date(evidence.discoveredAt).toLocaleDateString()}`
                 : ""}

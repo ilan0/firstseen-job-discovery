@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectResumeMime, MAX_RESUME_BYTES, safeResumeFilename } from "./resume";
+import { detectResumeMime, MAX_RESUME_BYTES, RESUME_BUCKET, safeResumeFilename } from "./resume";
 
 describe("private resume validation", () => {
   it("detects supported formats by magic bytes rather than filename", () => {
@@ -14,10 +14,11 @@ describe("private resume validation", () => {
   });
 
   it("sanitizes names and retains the five-megabyte server limit", () => {
-    expect(safeResumeFilename("../../Ilan Resume (final).pdf")).toBe(
-      "..-..-Ilan-Resume-final-.pdf",
+    expect(safeResumeFilename("../../Generic Resume (final).pdf")).toBe(
+      "..-..-Generic-Resume-final-.pdf",
     );
     expect(safeResumeFilename("🔥")).toBe("-");
     expect(MAX_RESUME_BYTES).toBe(5_242_880);
+    expect(RESUME_BUCKET).toBe("firstseen-resumes");
   });
 });

@@ -28,6 +28,7 @@ import {
 import {
   detectResumeMime,
   MAX_RESUME_BYTES,
+  RESUME_BUCKET,
   safeResumeFilename,
 } from "@/domain/applications/resume";
 import { requireOwner } from "@/lib/auth/owner";
@@ -376,7 +377,7 @@ export async function uploadResume(
   const safeName = safeResumeFilename(file.name);
   const storagePath = `${owner.id}/${randomUUID()}-${safeName}`;
   const supabase = createSupabaseAdminClient();
-  const uploaded = await supabase.storage.from("resumes").upload(storagePath, bytes, {
+  const uploaded = await supabase.storage.from(RESUME_BUCKET).upload(storagePath, bytes, {
     contentType: mimeType,
     upsert: false,
   });
@@ -392,7 +393,7 @@ export async function uploadResume(
       sizeBytes: file.size,
     });
   } catch (error) {
-    await supabase.storage.from("resumes").remove([storagePath]);
+    await supabase.storage.from(RESUME_BUCKET).remove([storagePath]);
     throw error;
   }
   revalidatePath("/applications/packet");

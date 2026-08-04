@@ -6,6 +6,7 @@ import { z } from "zod";
 import { db } from "@/db/client";
 import { candidateProfiles, resumeVersions, searchPreferences } from "@/db/schema";
 import { requireOwner } from "@/lib/auth/owner";
+import { RESUME_BUCKET } from "@/domain/applications/resume";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 const schema = z.object({
@@ -159,7 +160,7 @@ export async function deleteAccount(formData: FormData) {
   const { error } = await admin.auth.admin.deleteUser(owner.id);
   if (error) throw new Error("Account deletion failed. No data was intentionally removed.");
   if (resumePaths.length)
-    await admin.storage.from("resumes").remove(resumePaths.map((resume) => resume.path));
+    await admin.storage.from(RESUME_BUCKET).remove(resumePaths.map((resume) => resume.path));
   const session = await createSupabaseServerClient();
   await session.auth.signOut();
   redirect("/sign-in?deleted=1");

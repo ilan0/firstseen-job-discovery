@@ -5,6 +5,7 @@ import { resumeVersions } from "@/db/schema";
 import { requireOwner } from "@/lib/auth/owner";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { rolloutFlags } from "@/config/rollout";
+import { RESUME_BUCKET } from "@/domain/applications/resume";
 
 export async function GET(
   _request: Request,
@@ -21,7 +22,7 @@ export async function GET(
     .limit(1);
   if (!resume) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const signed = await createSupabaseAdminClient()
-    .storage.from("resumes")
+    .storage.from(RESUME_BUCKET)
     .createSignedUrl(resume.storagePath, 60, { download: true });
   if (signed.error) return NextResponse.json({ error: "Download unavailable" }, { status: 503 });
   return NextResponse.redirect(signed.data.signedUrl, 303);
