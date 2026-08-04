@@ -21,6 +21,7 @@ try {
       global_sources: string;
       private_tables_without_rls: string;
       global_raw_browser_read: boolean;
+      global_outbox_browser_read: boolean;
       latest_migration_present: boolean;
     }>
   >`
@@ -46,9 +47,12 @@ try {
       has_table_privilege('authenticated', 'public.global_raw_observations', 'select')
         or has_table_privilege('anon', 'public.global_raw_observations', 'select')
         as global_raw_browser_read,
+      has_table_privilege('authenticated', 'public.global_outbox_events', 'select')
+        or has_table_privilege('anon', 'public.global_outbox_events', 'select')
+        as global_outbox_browser_read,
       exists(
         select 1 from supabase_migrations.schema_migrations
-        where version = '20260804162300'
+        where version = '20260804162400'
       ) as latest_migration_present
   `;
 
@@ -57,6 +61,7 @@ try {
       ok:
         result?.private_tables_without_rls === "0" &&
         result.global_raw_browser_read === false &&
+        result.global_outbox_browser_read === false &&
         result.latest_migration_present,
       target: "dedicated-firstseen",
       ...result,

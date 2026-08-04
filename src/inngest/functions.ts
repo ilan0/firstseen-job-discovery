@@ -1,5 +1,4 @@
-import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, lt, lte, sql } from "drizzle-orm";
 import { NonRetriableError } from "inngest";
 import { z } from "zod";
 import { ConnectorError } from "@/connectors/errors";
@@ -10,6 +9,7 @@ import {
   companies,
   deadLetterRecords,
   globalCareerSources,
+  globalOutboxEvents,
   globalScanRuns,
   globalScanSchedules,
   outboxEvents,
@@ -38,6 +38,11 @@ import {
 import { recordSourceScanFailure } from "@/lib/scans/record-failure";
 import { rebalanceColdCadence } from "@/lib/scans/adaptive-cadence";
 import { loadGlobalSource, scanGlobalSource } from "@/lib/supply/global-source";
+import {
+  claimDueGlobalSources,
+  loadPendingGlobalScans,
+  markGlobalScansDispatched,
+} from "@/lib/supply/global-scheduler";
 import { inngest } from "./client";
 
 const sourceEventSchema = z.object({
@@ -54,96 +59,33 @@ const globalSourceEventSchema = z.object({
 });
 
 export const globalSourceScheduler = inngest.createFunction(
-  { id: "global-source-scheduler-v2", triggers: [{ cron: "*/5 * * * *" }] },
+  {
+    id: "global-source-scheduler-v2",
+    triggers: [{ cron: "*/5 * * * *" }],
+    concurrency: { limit: 1 },
+  },
   async ({ step }) => {
     if (!rolloutFlags().globalSupply) return { disabled: true };
-    const claimed = await step.run("claim-oldest-due-global-sources", async () => {
-      const now = new Date();
-      const due = await db
-        .select()
-        .from(globalScanSchedules)
-        .where(
-          and(
-            eq(globalScanSchedules.active, true),
-            lte(globalScanSchedules.nextRunAt, now),
-            or(isNull(globalScanSchedules.leasedUntil), lte(globalScanSchedules.leasedUntil, now)),
-          ),
-        )
-        .orderBy(
-          sql`case ${globalScanSchedules.monitoringTier} when 'priority' then 0 when 'standard' then 1 when 'warm' then 2 when 'cold' then 3 else 4 end`,
-          asc(globalScanSchedules.nextRunAt),
-          asc(globalScanSchedules.id),
-        )
-        .limit(100);
-      const runs: Array<{ id: string; sourceId: string; scheduledFor: Date }> = [];
-      for (const schedule of due) {
-        const run = await db.transaction(async (tx) => {
-          const token = randomUUID();
-          const [lease] = await tx
-            .update(globalScanSchedules)
-            .set({
-              leaseToken: token,
-              leasedUntil: new Date(now.getTime() + 10 * 60_000),
-              nextRunAt: new Date(now.getTime() + schedule.cadenceMinutes * 60_000),
-              updatedAt: now,
-            })
-            .where(
-              and(
-                eq(globalScanSchedules.id, schedule.id),
-                lte(globalScanSchedules.nextRunAt, now),
-                or(
-                  isNull(globalScanSchedules.leasedUntil),
-                  lte(globalScanSchedules.leasedUntil, now),
-                ),
-              ),
-            )
-            .returning({ id: globalScanSchedules.id });
-          if (!lease) return null;
-          const idempotencyKey = `global-source:${schedule.careerSourceId}:${schedule.nextRunAt.toISOString()}`;
-          const [created] = await tx
-            .insert(globalScanRuns)
-            .values({
-              careerSourceId: schedule.careerSourceId,
-              scheduleId: schedule.id,
-              status: "queued",
-              idempotencyKey,
-              scheduledFor: schedule.nextRunAt,
-            })
-            .onConflictDoNothing()
-            .returning({ id: globalScanRuns.id });
-          const [existing] = created
-            ? [created]
-            : await tx
-                .select({ id: globalScanRuns.id })
-                .from(globalScanRuns)
-                .where(eq(globalScanRuns.idempotencyKey, idempotencyKey))
-                .limit(1);
-          return existing
-            ? {
-                id: existing.id,
-                sourceId: schedule.careerSourceId,
-                scheduledFor: schedule.nextRunAt,
-              }
-            : null;
-        });
-        if (run) runs.push(run);
-      }
-      return runs;
-    });
-    if (claimed.length)
+    const claimed = await step.run("claim-oldest-due-global-sources", () =>
+      claimDueGlobalSources(),
+    );
+    const pending = await step.run("load-pending-global-source-outbox", () =>
+      loadPendingGlobalScans(),
+    );
+    if (pending.length) {
       await step.sendEvent(
         "dispatch-global-source-scans",
-        claimed.map((run) => ({
-          id: run.id,
-          name: "supply/source.scan.requested.v2" as const,
-          data: {
-            sourceId: run.sourceId,
-            scanRunId: run.id,
-            scheduledFor: run.scheduledFor,
-          },
+        pending.map((record) => ({
+          id: record.id,
+          name: record.eventName,
+          data: globalSourceEventSchema.parse(record.payload),
         })),
       );
-    return { claimed: claimed.length };
+      await step.run("mark-global-source-outbox-dispatched", () =>
+        markGlobalScansDispatched(pending.map((record) => record.id)),
+      );
+    }
+    return { claimed, dispatched: pending.length };
   },
 );
 
@@ -179,7 +121,9 @@ export const globalSourceScan = inngest.createFunction(
     },
   },
   async ({ event, step }) => {
-    if (!rolloutFlags().globalSupply) return { disabled: true };
+    // Once dispatched, a scan finishes even if rollout is deactivated. The
+    // disabled scheduler prevents new claims; completing in-flight work avoids
+    // a stranded queued run and lease.
     const data = globalSourceEventSchema.parse(event.data);
     const source = await step.run("load-global-source", () => loadGlobalSource(data.sourceId));
     if (!source) throw new NonRetriableError("Active global source was not found");
@@ -233,8 +177,8 @@ export const watchlistScheduler = inngest.createFunction(
         .from(watchlists)
         .where(and(eq(watchlists.active, true), lte(watchlists.nextScanAt, now)))
         .orderBy(
-          sql`case ${watchlists.monitoringTier} when 'priority' then 0 when 'standard' then 1 when 'warm' then 2 when 'cold' then 3 else 4 end`,
           asc(watchlists.nextScanAt),
+          sql`case ${watchlists.monitoringTier} when 'priority' then 0 when 'standard' then 1 when 'warm' then 2 when 'cold' then 3 else 4 end`,
           asc(watchlists.id),
         )
         .limit(100);
@@ -572,7 +516,20 @@ export const cleanupSchedule = inngest.createFunction(
         .delete(securityRateLimits)
         .where(lt(securityRateLimits.windowStartedAt, new Date(Date.now() - 7 * 86_400_000)))
         .returning({ keyHash: securityRateLimits.keyHash });
-      return { observationsDeleted: observations.length, rateLimitsDeleted: rateLimits.length };
+      const globalOutbox = await db
+        .delete(globalOutboxEvents)
+        .where(
+          and(
+            eq(globalOutboxEvents.status, "dispatched"),
+            lt(globalOutboxEvents.dispatchedAt, new Date(Date.now() - 30 * 86_400_000)),
+          ),
+        )
+        .returning({ id: globalOutboxEvents.id });
+      return {
+        observationsDeleted: observations.length,
+        rateLimitsDeleted: rateLimits.length,
+        globalOutboxDeleted: globalOutbox.length,
+      };
     }),
 );
 

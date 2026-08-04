@@ -20,6 +20,7 @@ import {
   jobLifecycleStatus,
   monitoringTier,
   observationStatus,
+  outboxStatus,
   queueStatus,
   recommendationBand,
   rankingDimension,
@@ -190,6 +191,32 @@ export const globalScanRuns = pgTable(
   (table) => [
     uniqueIndex("global_scan_runs_idempotency_unique").on(table.idempotencyKey),
     index("global_scan_runs_source_time_idx").on(table.careerSourceId, table.scheduledFor),
+  ],
+);
+
+export const globalOutboxEvents = pgTable(
+  "global_outbox_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    scanRunId: uuid("scan_run_id")
+      .notNull()
+      .references(() => globalScanRuns.id, { onDelete: "cascade" }),
+    eventName: text("event_name").notNull(),
+    aggregateId: uuid("aggregate_id")
+      .notNull()
+      .references(() => globalCareerSources.id, { onDelete: "cascade" }),
+    idempotencyKey: text("idempotency_key").notNull(),
+    payload: jsonb("payload").notNull(),
+    status: outboxStatus("status").default("pending").notNull(),
+    attemptCount: integer("attempt_count").default(0).notNull(),
+    availableAt: timestamp("available_at", { withTimezone: true }).defaultNow().notNull(),
+    dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
+    lastErrorCode: text("last_error_code"),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("global_outbox_events_idempotency_unique").on(table.idempotencyKey),
+    index("global_outbox_events_dispatch_idx").on(table.status, table.availableAt, table.id),
   ],
 );
 

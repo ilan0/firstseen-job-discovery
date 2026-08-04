@@ -19,7 +19,7 @@
     "test:connectors": "vitest run src/connectors",
     "test:eval": "vitest run src/ai src/domain/eligibility",
     "eval:corpus": "tsx scripts/evaluate-ai-corpus.ts",
-    "test:workers": "vitest run src/lib/scans src/inngest",
+    "test:workers": "vitest run src/lib/scans src/inngest src/db/global-scheduler.integration.test.ts",
     "test:pwa": "vitest run src/pwa",
     "test:security": "vitest run src/lib/security src/discovery/redirect-resolver.test.ts src/lib/notifications/push-capability.test.ts",
     "test:load": "vitest run src/lib/load",

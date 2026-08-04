@@ -102,7 +102,7 @@ physical-device work.
 
 ## Production release evidence
 
-- The ten additive Daily-Driver migrations through `20260804162300` applied to guarded dedicated
+- The eleven additive Daily-Driver migrations through `20260804162400` applied to guarded dedicated
   FirstSeen ref `tlhwxayhjamopnnlroke`. The read-only verifier reports 52 backfilled organizations/
   global sources, zero private workflow tables without RLS, no browser read privilege on global raw
   observations, and the latest migration present. New rollout flags remain opt-in.
