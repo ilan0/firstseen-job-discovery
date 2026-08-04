@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, or, sql } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { connectorVersions } from "@/connectors/versions";
@@ -12,6 +12,7 @@ import {
   globalCareerSources,
   globalScanSchedules,
   globalSourcePolicies,
+  organizationDomains,
   organizations,
   referrals,
   sourcePolicyReviews,
@@ -73,56 +74,14 @@ export async function addWatchCompany(
           ? { expectedOrganization: input.company, requireHiringOrganization: true }
           : {};
   const sourceId = await db.transaction(async (tx) => {
-    const [company] = await tx
-      .insert(companies)
-      .values({
-        userId: owner.id,
-        name: input.company,
-        normalizedName: normalizedName(input.company),
-        origin: input.referralPerson ? "referral" : "manual",
-        priority: input.priority,
-        interested: Boolean(input.interested),
-        notes: input.notes || null,
-      })
-      .onConflictDoUpdate({
-        target: [companies.userId, companies.normalizedName],
-        set: {
-          name: input.company,
-          origin: sql`case when ${companies.origin} = 'discovered' then ${companies.origin} else ${input.referralPerson ? "referral" : "manual"}::company_origin end`,
-          priority: input.priority,
-          interested: Boolean(input.interested),
-          notes: input.notes || null,
-          active: true,
-          updatedAt: new Date(),
-        },
-      })
-      .returning();
-    if (!company) throw new Error("Company could not be saved");
-    let organizationId = company.organizationId;
-    if (!organizationId) {
-      const [existingOrganization] = await tx
-        .select({ id: organizations.id })
-        .from(organizations)
-        .where(eq(organizations.normalizedName, normalizedName(input.company)))
-        .limit(1);
-      const [organization] = existingOrganization
-        ? [existingOrganization]
-        : await tx
-            .insert(organizations)
-            .values({
-              name: input.company,
-              normalizedName: normalizedName(input.company),
-            })
-            .returning({ id: organizations.id });
-      if (!organization) throw new Error("Organization could not be saved");
-      organizationId = organization.id;
-      await tx
-        .update(companies)
-        .set({ organizationId, updatedAt: new Date() })
-        .where(and(eq(companies.userId, owner.id), eq(companies.id, company.id)));
-    }
+    const now = new Date();
+    const sourceIdentity = `${resolved.kind}:${resolved.tenantId ?? resolved.officialUrl}`;
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${sourceIdentity}))`);
     const [existingGlobalSource] = await tx
-      .select({ id: globalCareerSources.id })
+      .select({
+        id: globalCareerSources.id,
+        organizationId: globalCareerSources.organizationId,
+      })
       .from(globalCareerSources)
       .where(
         or(
@@ -136,6 +95,47 @@ export async function addWatchCompany(
         ),
       )
       .limit(1);
+    const canonicalDomain = resolved.kind.startsWith("custom_")
+      ? url.hostname.toLowerCase().replace(/^www\./, "")
+      : null;
+    if (canonicalDomain)
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtext(${`organization:${canonicalDomain}`}))`,
+      );
+    const [knownDomainOrganization] =
+      !existingGlobalSource && canonicalDomain
+        ? await tx
+            .select({ id: organizations.id })
+            .from(organizationDomains)
+            .innerJoin(organizations, eq(organizationDomains.organizationId, organizations.id))
+            .where(eq(organizationDomains.domain, canonicalDomain))
+            .limit(1)
+        : [];
+    const [organization] = existingGlobalSource
+      ? [{ id: existingGlobalSource.organizationId }]
+      : knownDomainOrganization
+        ? [knownDomainOrganization]
+        : await tx
+            .insert(organizations)
+            .values({
+              name: input.company,
+              normalizedName: normalizedName(input.company),
+              canonicalDomain,
+            })
+            .returning({ id: organizations.id });
+    if (!organization) throw new Error("Organization could not be saved");
+    const organizationId = organization.id;
+    if (!existingGlobalSource && canonicalDomain)
+      await tx
+        .insert(organizationDomains)
+        .values({
+          organizationId,
+          domain: canonicalDomain,
+          authorityConfidence: 70,
+          verifiedAt: now,
+          evidence: { source: "owner_submitted_official_url" },
+        })
+        .onConflictDoNothing();
     const [globalSource] = existingGlobalSource
       ? [existingGlobalSource]
       : await tx
@@ -149,8 +149,62 @@ export async function addWatchCompany(
             publicConfig,
             parsingConfidence: resolved.kind.startsWith("custom_") ? 55 : 90,
           })
-          .returning({ id: globalCareerSources.id });
+          .returning({
+            id: globalCareerSources.id,
+            organizationId: globalCareerSources.organizationId,
+          });
     if (!globalSource) throw new Error("Global career source could not be saved");
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtext(${`company:${owner.id}:${organizationId}`}))`,
+    );
+    const normalizedCompanyName = normalizedName(input.company);
+    const [existingCompany] = await tx
+      .select()
+      .from(companies)
+      .where(
+        and(
+          eq(companies.userId, owner.id),
+          or(
+            eq(companies.organizationId, organizationId),
+            and(
+              isNull(companies.organizationId),
+              eq(companies.normalizedName, normalizedCompanyName),
+            ),
+          ),
+        ),
+      )
+      .limit(1);
+    const [company] = existingCompany
+      ? await tx
+          .update(companies)
+          .set({
+            organizationId,
+            name: input.company,
+            domain: existingCompany.domain ?? canonicalDomain,
+            origin: sql`case when ${companies.origin} = 'discovered' then ${companies.origin} else ${input.referralPerson ? "referral" : "manual"}::company_origin end`,
+            priority: input.priority,
+            interested: Boolean(input.interested),
+            notes: input.notes || null,
+            active: true,
+            updatedAt: now,
+          })
+          .where(eq(companies.id, existingCompany.id))
+          .returning()
+      : await tx
+          .insert(companies)
+          .values({
+            userId: owner.id,
+            organizationId,
+            name: input.company,
+            normalizedName: normalizedCompanyName,
+            domain: canonicalDomain,
+            origin: input.referralPerson ? "referral" : "manual",
+            priority: input.priority,
+            interested: Boolean(input.interested),
+            notes: input.notes || null,
+          })
+          .returning();
+    if (!company) throw new Error("Company could not be saved");
     await tx
       .insert(globalSourcePolicies)
       .values({
