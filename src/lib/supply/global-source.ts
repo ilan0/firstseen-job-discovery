@@ -296,7 +296,7 @@ async function personalizeListing(
   };
 }
 
-async function applyGlobalClosure(
+export async function applyGlobalClosure(
   source: StoredGlobalSource,
   listings: NormalizedListing[],
   observedAt: Date,
@@ -328,29 +328,36 @@ async function applyGlobalClosure(
       source.kind,
       observedAt,
     );
-    if (next.status !== job.lifecycleStatus) {
-      transitioned += 1;
-      await db.insert(globalJobLifecycleEvents).values({
-        jobId: job.id,
-        fromStatus: job.lifecycleStatus,
-        toStatus: next.status,
-        reason:
-          next.status === "closed" ? "Missing from complete official feed" : "Possibly missing",
-        evidence: { sourceId: source.id, complete: true },
-        occurredAt: observedAt,
-      });
-    }
-    await db
-      .update(globalJobs)
-      .set({
+    await db.transaction(async (tx) => {
+      if (next.status !== job.lifecycleStatus) {
+        transitioned += 1;
+        await tx.insert(globalJobLifecycleEvents).values({
+          jobId: job.id,
+          fromStatus: job.lifecycleStatus,
+          toStatus: next.status,
+          reason:
+            next.status === "closed" ? "Missing from complete official feed" : "Possibly missing",
+          evidence: { sourceId: source.id, complete: true },
+          occurredAt: observedAt,
+        });
+      }
+      const lifecycleFields = {
         lifecycleStatus: next.status,
         consecutiveSuccessfulMisses: next.consecutiveSuccessfulMisses,
         possiblyClosedAt: next.possiblyClosedAt,
         closedAt: next.closedAt,
         reopenedAt: next.reopenedAt,
         updatedAt: observedAt,
-      })
-      .where(eq(globalJobs.id, job.id));
+      } as const;
+      await tx.update(globalJobs).set(lifecycleFields).where(eq(globalJobs.id, job.id));
+      // The personalized queue still reads legacy-compatible job projections
+      // during the forward-only migration. Keep every linked private row in
+      // lifecycle lockstep with the single authoritative global observation.
+      await tx
+        .update(canonicalJobs)
+        .set(lifecycleFields)
+        .where(eq(canonicalJobs.globalJobId, job.id));
+    });
   }
   return transitioned;
 }
