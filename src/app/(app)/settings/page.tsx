@@ -95,6 +95,35 @@ export default async function SettingsPage({
               ))}
             </select>
           </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block text-sm font-black">
+              Default posted-date window
+              <select
+                className="mt-2 min-h-11 w-full rounded-xl border border-[var(--line)] bg-white px-3"
+                defaultValue={prefs?.defaultPostedWindow ?? "7d"}
+                name="defaultPostedWindow"
+              >
+                <option value="6h">6 hours</option>
+                <option value="24h">24 hours</option>
+                <option value="3d">3 days</option>
+                <option value="7d">7 days</option>
+                <option value="30d">30 days</option>
+                <option value="all">All listings</option>
+              </select>
+            </label>
+            <label className="block text-sm font-black">
+              Default match ordering
+              <select
+                className="mt-2 min-h-11 w-full rounded-xl border border-[var(--line)] bg-white px-3"
+                defaultValue={prefs?.defaultFeedSort ?? "posted_newest"}
+                name="defaultFeedSort"
+              >
+                <option value="posted_newest">Official date: newest</option>
+                <option value="detected_newest">FirstSeen detection</option>
+                <option value="urgency">Most urgent</option>
+              </select>
+            </label>
+          </div>
         </div>
         <SubmitButton
           className="mt-5 min-h-11 rounded-xl bg-[var(--green)] px-5 text-sm font-black text-white"

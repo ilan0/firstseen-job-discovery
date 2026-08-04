@@ -121,7 +121,14 @@ export function evaluateLocations(
           /\b(?:florida|virginia|washington,? dc|new york)\b/i.test(location),
       );
     if (!compatible && locations.length) {
-      return { value: "review", confidence: "medium", evidence };
+      const explicitForeignRestriction = locations.some((location) =>
+        /\b(?:canada|united kingdom|u\.?k\.?|england|scotland|wales|ireland|europe|european union|emea|india|australia|new zealand|latin america|latam|asia|apac)\b/i.test(
+          location,
+        ),
+      );
+      return explicitForeignRestriction
+        ? { value: "ineligible", confidence: "high", evidence }
+        : { value: "review", confidence: "medium", evidence };
     }
     return { value: "eligible", confidence: "high", evidence };
   }

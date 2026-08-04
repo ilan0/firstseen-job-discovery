@@ -12,14 +12,31 @@ import {
   recommendations,
   referrals,
 } from "@/db/schema";
-import { freshness } from "@/domain/jobs";
+import {
+  freshness,
+  parseFeedSort,
+  parsePostedWindow,
+  withinPostedWindow,
+  type FeedSort,
+  type PostedWindow,
+} from "@/domain/jobs";
+import { ELIGIBILITY_RULE_VERSION } from "@/domain/eligibility";
+import { RANKING_VERSION } from "@/domain/ranking";
 
 export type QueueStatus = "active" | "saved" | "applied" | "dismissed";
+export type FeedQuery = {
+  postedWithin?: PostedWindow;
+  sort?: FeedSort;
+  query?: string;
+  band?: "all" | "hot" | "strong" | "possible" | "review";
+  referralsOnly?: boolean;
+};
 
-export async function listQueue(userId: string, status: QueueStatus) {
+export async function listQueue(userId: string, status: QueueStatus, input: FeedQuery = {}) {
   const rows = await db
     .select({
       jobId: canonicalJobs.id,
+      companyId: canonicalJobs.companyId,
       title: canonicalJobs.title,
       company: companies.name,
       officialUrl: canonicalJobs.officialUrl,
@@ -27,6 +44,7 @@ export async function listQueue(userId: string, status: QueueStatus) {
       postedAt: canonicalJobs.postedAt,
       postedAtConfidence: canonicalJobs.postedAtConfidence,
       firstSeenAt: canonicalJobs.firstSeenAt,
+      reopenedAt: canonicalJobs.reopenedAt,
       verifiedAt: canonicalJobs.verifiedAt,
       band: recommendations.band,
       urgency: recommendations.urgency,
@@ -36,6 +54,10 @@ export async function listQueue(userId: string, status: QueueStatus) {
       routingReasons: recommendations.routingReasons,
       eligibilityFacts: eligibilityDecisions.normalizedFacts,
       snapshotFacts: jobDescriptionSnapshots.normalizedFacts,
+      snapshotCapturedAt: jobDescriptionSnapshots.capturedAt,
+      materialChangeReasons: jobDescriptionSnapshots.materialChangeReasons,
+      eligibilityRuleVersion: eligibilityDecisions.ruleVersion,
+      rankingVersion: recommendations.rankingVersion,
       sourceKind: careerSources.connectorKind,
       sourceConfidence: careerSources.parsingConfidence,
       queueStatus: queueStates.status,
@@ -62,6 +84,8 @@ export async function listQueue(userId: string, status: QueueStatus) {
           ? [
               inArray(canonicalJobs.lifecycleStatus, ["open", "reopened"]),
               inArray(recommendations.band, ["hot", "strong", "possible", "review"]),
+              eq(eligibilityDecisions.ruleVersion, ELIGIBILITY_RULE_VERSION),
+              eq(recommendations.rankingVersion, RANKING_VERSION),
             ]
           : []),
       ),
@@ -79,16 +103,6 @@ export async function listQueue(userId: string, status: QueueStatus) {
       ),
     );
   const referredCompanies = new Set(referralRows.map((row) => row.companyId));
-  const companyRows = await db
-    .select({ jobId: canonicalJobs.id, companyId: canonicalJobs.companyId })
-    .from(canonicalJobs)
-    .where(
-      inArray(
-        canonicalJobs.id,
-        rows.map((row) => row.jobId),
-      ),
-    );
-  const companyByJob = new Map(companyRows.map((row) => [row.jobId, row.companyId]));
   const now = new Date();
   return rows
     .map((row) => {
@@ -97,6 +111,7 @@ export async function listQueue(userId: string, status: QueueStatus) {
         row.postedAt,
         row.postedAtConfidence,
         row.firstSeenAt,
+        row.reopenedAt,
       );
       const eligibilityFacts = row.eligibilityFacts as {
         locations?: { value?: unknown };
@@ -116,16 +131,35 @@ export async function listQueue(userId: string, status: QueueStatus) {
         freshnessBand: currentFreshness.band,
         freshnessBasis: currentFreshness.basis,
         freshnessAgeHours: currentFreshness.ageHours,
+        freshnessSection: currentFreshness.section,
+        freshnessEffectiveAt: currentFreshness.effectiveAt,
+        updated: (row.materialChangeReasons?.length ?? 0) > 0,
         location: locations.join(" · ") || "Location not provided",
         workArrangement:
           typeof eligibilityFacts?.workArrangement?.value === "string"
             ? eligibilityFacts.workArrangement.value
             : "unknown",
         salary: typeof snapshotFacts?.salary === "string" ? snapshotFacts.salary : null,
-        hasReferral: referredCompanies.has(companyByJob.get(row.jobId) ?? ""),
+        hasReferral: referredCompanies.has(row.companyId),
       };
     })
-    .toSorted((a, b) => (b.urgency ?? -1) - (a.urgency ?? -1));
+    .filter((row) => {
+      if (status !== "active") return true;
+      const postedWithin = parsePostedWindow(input.postedWithin, "all");
+      const query = input.query?.trim().toLowerCase() ?? "";
+      return (
+        withinPostedWindow(row.freshnessAgeHours, postedWithin) &&
+        (!query || `${row.title} ${row.company}`.toLowerCase().includes(query)) &&
+        (!input.band || input.band === "all" || row.band === input.band) &&
+        (!input.referralsOnly || row.hasReferral)
+      );
+    })
+    .toSorted((a, b) => {
+      const sort = parseFeedSort(input.sort, status === "active" ? "posted_newest" : "urgency");
+      if (sort === "detected_newest") return b.firstSeenAt.getTime() - a.firstSeenAt.getTime();
+      if (sort === "urgency") return (b.urgency ?? -1) - (a.urgency ?? -1);
+      return b.freshnessEffectiveAt.getTime() - a.freshnessEffectiveAt.getTime();
+    });
 }
 
 export async function getJobDetail(userId: string, jobId: string) {
@@ -141,6 +175,7 @@ export async function getJobDetail(userId: string, jobId: string) {
       postedAt: canonicalJobs.postedAt,
       postedAtConfidence: canonicalJobs.postedAtConfidence,
       firstSeenAt: canonicalJobs.firstSeenAt,
+      reopenedAt: canonicalJobs.reopenedAt,
       lastSeenAt: canonicalJobs.lastSeenAt,
       verifiedAt: canonicalJobs.verifiedAt,
       sourceKind: careerSources.connectorKind,
@@ -166,7 +201,10 @@ export async function getJobDetail(userId: string, jobId: string) {
     .from(canonicalJobs)
     .innerJoin(companies, eq(canonicalJobs.companyId, companies.id))
     .innerJoin(careerSources, eq(canonicalJobs.authoritativeSourceId, careerSources.id))
-    .leftJoin(queueStates, eq(queueStates.jobId, canonicalJobs.id))
+    .leftJoin(
+      queueStates,
+      and(eq(queueStates.jobId, canonicalJobs.id), eq(queueStates.userId, userId)),
+    )
     .leftJoin(
       recommendations,
       and(eq(recommendations.jobId, canonicalJobs.id), eq(recommendations.active, true)),
@@ -202,6 +240,7 @@ export async function getJobDetail(userId: string, jobId: string) {
     job.postedAt,
     job.postedAtConfidence,
     job.firstSeenAt,
+    job.reopenedAt,
   );
   return {
     ...job,

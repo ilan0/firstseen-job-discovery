@@ -15,9 +15,10 @@ added only after the dedicated provider projects exist and the exact procedure i
 | Slack          | notification/digest status, attempt/error, retry             | One idempotency key                           |
 | Broad sensors  | usage ledger, candidate/source counts, error list            | One provider/query                            |
 
-The protected `/operations` page is the first stop. Confirm latest scan status/time, active source
-success/error, unresolved dead letters, notification failures, and provider/OpenAI usage. A stale
-source remains visible and does not silently close jobs.
+The protected `/operations` page is the first stop. Confirm latest scan status/time, source scope/
+tier/cadence, posted-time confidence, detection latency, scheduled scans/day, active-source errors,
+unresolved dead letters, notification failures, and provider/OpenAI usage. A stale source remains
+visible and does not silently close jobs.
 
 ## Local start and validation
 
@@ -43,6 +44,8 @@ pnpm lint
 pnpm typecheck
 pnpm test
 RUN_DATABASE_TESTS=true pnpm test
+RUN_DATABASE_TESTS=true pnpm test:coverage
+pnpm audit --audit-level=low
 pnpm build
 pnpm test:e2e
 ```
@@ -120,13 +123,29 @@ If provider terms/pricing change, disable its encrypted key/schedule path and re
 terms before continuing. Do not display or republish sensor vacancy content without the applicable
 license/attribution review.
 
+## Monitoring tiers and execution capacity
+
+- Priority is Interested or active referral, every 15 minutes. Standard is other My Companies and
+  Warm is an automatic company with a verified viable job no older than seven days; both are hourly.
+  Cold automatic sources are every four hours. Quarantined sources do not scan.
+- Tier changes are derived server-side after company/referral actions and successful scans. A stale,
+  Review-only, or excluded listing must not keep an automatic company Warm.
+- If the forecast approaches the internal daily execution budget, only Cold cadence may increase.
+  Treat any warning that protected work alone exceeds capacity as an upgrade/catalog-size incident;
+  never manually slow Priority monitoring to hide it.
+- A source with no priority success inside its target window is an operations warning. Check provider
+  health and trace state before replay; lack of a fresh job is not itself failure.
+
 ## Slack failure or duplicate prevention
 
-- `notifications.idempotency_key` and digest `(user, local date)` uniqueness prevent duplicates.
+- `notifications.idempotency_key` includes job plus snapshot/reopening occurrence, and digest
+  `(user, local date)` uniqueness prevents duplicates.
 - Quiet-hour exceptional alerts retain their exact stored payload until the deferred send.
 - Failed deliveries retain safe codes/attempt counts; the hourly notification workflow retries them.
-- A digest selects only open/reopened active recommendations and does not resurrect Save/Apply/
-  Dismiss actions.
+- A digest selects only unacted jobs first detected since the prior delivered digest and no older
+  than seven days, grouped Just posted/New/Recent. It skips empty output and does not resurrect Save/
+  Apply/Dismiss actions. Immediate alerts require reliable official/reopening freshness, Hot/Strong,
+  urgency ≥85, age ≤24h, and Active queue state.
 - Verify webhook/channel configuration using the explicitly labelled setup message:
 
 ```bash

@@ -20,6 +20,10 @@ export function WatchlistForm() {
         <Building2 aria-hidden="true" size={19} /> Add a company
       </h2>
       <div className="mt-5 space-y-4">
+        <label className="flex min-h-11 items-center gap-3 rounded-xl bg-[var(--paper)] px-3 text-xs font-black">
+          <input defaultChecked name="interested" type="checkbox" />
+          I’m interested in this company
+        </label>
         <label className="block text-xs font-black">
           Company name
           <input

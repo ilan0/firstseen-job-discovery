@@ -33,10 +33,10 @@ sequenceDiagram
   C->>C: Fan out one event per active source
   C->>ATS: Fetch/paginate with conditions, timeout, retry
   C->>DB: Stage observations and touch unchanged jobs
-  loop Each new or materially changed listing
+  loop Each new, materially changed, or reopened listing
     C->>DB: Canonicalize, dedupe, snapshot
     C->>DB: Run deterministic eligibility
-    opt Eligible/review plausible SWE and budget available
+    opt New/changed eligible-review plausible SWE and budget available
       C->>AI: Structured extraction from untrusted text
       AI-->>C: Strict schema result
     end
@@ -51,9 +51,10 @@ sequenceDiagram
 
 Descriptions never travel through orchestration state: the official fetch step stores them as
 short-lived observations and returns only observation IDs plus lifecycle identity. Only listings
-whose material hash is new/changed get independent `step.run` executions. This keeps each hosted
-invocation bounded, avoids unchanged AI cost, and allows a deployment or retry to resume after the
-last completed listing.
+whose material hash is new/changed, whose policy is stale, or whose official lifecycle has reopened
+get independent `step.run` executions. A reopening reuses its validated cached extraction. This
+keeps each hosted invocation bounded, avoids unchanged AI cost, and allows a deployment or retry to
+resume after the last completed listing.
 
 Broad discovery follows the same authority boundary: sensors return candidate URLs; only supported
 official ATS URLs create provisional company/source records and verification events. Sensor text
@@ -68,8 +69,8 @@ cannot create a job, eligibility decision, recommendation, or notification.
   unsupported-source policy, and contract fixtures.
 - `src/discovery` and `src/lib/discovery`: broad provider normalization, quotas, and official URL
   promotion.
-- `src/domain`: pure deterministic eligibility, lifecycle, identity/material hashing, freshness,
-  status transitions, and ranking.
+- `src/domain`: pure deterministic eligibility, lifecycle, identity/material hashing, shared
+  freshness, company monitoring policy, status transitions, and ranking.
 - `src/ai`: versioned prompt, Responses API schema, evidence checks, and token-cost estimation.
 - `src/lib/scans`: source loading, pagination, changed-listing staging/processing, and finalization.
 - `src/inngest`: cron/event workflows, concurrency, retries, failures, and retention.
@@ -82,16 +83,22 @@ cannot create a job, eligibility decision, recommendation, or notification.
 
 | Function              | Trigger                 | Responsibility                                                                           | Retry/isolation                                    |
 | --------------------- | ----------------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| Watchlist scheduler   | every 15 minutes        | Lease due watchlists and fan out active sources                                          | Conditional lease prevents duplicate schedules     |
+| Watchlist scheduler   | every 15 minutes        | Rebalance only Cold cadence, lease due tiered watches, and fan out active sources        | Conditional lease prevents duplicate schedules     |
 | Source scan           | event                   | Start run, official fetch/stage, per-changed-listing processing, closure/finalize, alert | Four retries; concurrency 3/user; one source/event |
 | Broad discovery       | minute 17 every 4 hours | Provider sensors, provisional sources, verification fan-out                              | Two retries; singleton                             |
-| Notification schedule | minute 7 hourly         | Exact-time digest, deferred alerts, failed delivery retry                                | Three retries; per-user steps                      |
+| Notification schedule | minute 0 hourly         | Exact-time digest, deferred alerts, failed delivery retry                                | Three retries; per-user steps                      |
 | Retention cleanup     | 03:43 UTC daily         | Expired observations and stale HMAC counters                                             | Two retries                                        |
 
 All workflow identity is derived from stable user/source/scheduled times or snapshot/rule/prompt
 versions. Database unique constraints and upserts protect duplicate delivery. Failure handling
 records a safe dead letter and marks only the affected source scan failed. Replays use a new event
 ID while preserving owner/source validation. No database transaction encloses HTTP or model calls.
+
+Cadence derives from independent interest, active referrals, personal/discovered scope, and a
+recent viable recommendation. Priority watches run every 15 minutes, personal Standard and
+discovered Warm every 60, and discovered Cold every 240. Dismissal is sticky quarantine. A workload
+forecast may lengthen only Cold cadence when protected work plus the catalog would exceed the
+configured daily execution budget.
 
 ## Authorization and trust boundaries
 
@@ -130,7 +137,7 @@ other.
 | Inngest     |                                        $0 Hobby |    $0 expected; Pro starts $99 if exceeded | [Hobby limits](https://www.inngest.com/pricing): 50,000 executions, concurrency 5, 24-hour traces. Changed-only steps and source concurrency protect the allowance.                                                                                                                            |
 | Brave       | About $3.60 usage, covered by monthly $5 credit |                                $0 expected | 720 searches × $0.005; 900-request breaker. Re-check [Brave pricing](https://brave.com/search/api/) before cadence increases.                                                                                                                                                                  |
 | Adzuna      |                                              $0 |                                $0 expected | 720 requests is below personal API limits; 900-request breaker.                                                                                                                                                                                                                                |
-| OpenAI Luna |                                  Usually $2–$12 |                       Hard app ceiling $25 | Changed plausible SWE roles only. At 1,000 analyses averaging 4k input/600 output, current Luna rates imply about $7.60; compact outputs, hashing, reservations. [Current model pricing](https://openai.com/index/gpt-5-6/) must be rechecked before release.                                  |
+| OpenAI Luna |                                  Usually $2–$12 |                       Hard app ceiling $25 | Changed plausible SWE roles only. At 1,000 analyses averaging 4k input/600 output, Luna rates imply about $7.60; compact outputs, hashing, reservations. [Current model pricing](https://developers.openai.com/api/docs/models) is versioned in code and rechecked before release.             |
 | Slack       |                                      $0 webhook |                                $0 expected | One destination; idempotent alerts/digest.                                                                                                                                                                                                                                                     |
 | Sentry      |                          $0 Developer, optional |                                $0 expected | Low trace samples and redaction; provider quotas apply. Vercel/Inngest/DB diagnostics are primary.                                                                                                                                                                                             |
 | **Total**   |                            **$0 cash expected** |                  **$25/month recommended** | Typical variable usage remains inside credits/free tiers; maximum app-controlled AI spend adds $25. Vercel Pro/Inngest Pro are not initially required.                                                                                                                                         |

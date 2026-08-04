@@ -29,6 +29,7 @@ const company = await admin
     domain: "qa.firstseen.local",
     origin: "referral",
     priority: 1,
+    interested: true,
   })
   .select("id")
   .single();
@@ -52,6 +53,53 @@ await admin.from("referrals").insert({
   person_name: "QA Referral",
   status: "available",
 });
+const personalWatch = await admin.from("watchlists").insert({
+  user_id: owner.id,
+  company_id: company.data.id,
+  scope: "personal",
+  monitoring_tier: "priority",
+  cadence_minutes: 15,
+});
+if (personalWatch.error) throw personalWatch.error;
+await admin
+  .from("companies")
+  .delete()
+  .eq("user_id", owner.id)
+  .eq("normalized_name", "firstseen qa discovery");
+const discoveredCompany = await admin
+  .from("companies")
+  .insert({
+    user_id: owner.id,
+    name: "FirstSeen QA Discovery",
+    normalized_name: "firstseen qa discovery",
+    origin: "discovered",
+    priority: 4,
+    discovery_evidence: {
+      sensor: "brave",
+      discoveredAt: new Date().toISOString(),
+      titleHint: "Junior Software Engineer",
+    },
+  })
+  .select("id")
+  .single();
+if (discoveredCompany.error) throw discoveredCompany.error;
+const discoveredSource = await admin.from("career_sources").insert({
+  user_id: owner.id,
+  company_id: discoveredCompany.data.id,
+  connector_kind: "ashby",
+  base_url: "https://jobs.ashbyhq.com/firstseen-qa-discovery",
+  normalized_url: "https://jobs.ashbyhq.com/firstseen-qa-discovery",
+  parsing_confidence: 90,
+});
+if (discoveredSource.error) throw discoveredSource.error;
+const discoveredWatch = await admin.from("watchlists").insert({
+  user_id: owner.id,
+  company_id: discoveredCompany.data.id,
+  scope: "discovered",
+  monitoring_tier: "cold",
+  cadence_minutes: 240,
+});
+if (discoveredWatch.error) throw discoveredWatch.error;
 const listing: NormalizedListing = {
   externalId: "qa-swe-1",
   requisitionId: "QA-1",

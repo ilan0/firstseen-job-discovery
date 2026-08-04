@@ -17,6 +17,7 @@ import {
   materialHash,
   normalizeOfficialUrl,
   normalizeTitle,
+  normalizePostedTimestamp,
 } from "@/domain/jobs";
 
 export type IngestContext = {
@@ -34,6 +35,11 @@ export type IngestResult = {
   snapshotId: string | null;
   changed: boolean;
   firstSeenAt: Date;
+  postedAt: Date | null;
+  postedAtConfidence: "low" | "medium" | "high";
+  postedAtAnomalous: boolean;
+  reopenedAt: Date | null;
+  reopened: boolean;
 };
 
 function date(value: string | null): Date | null {
@@ -58,6 +64,11 @@ export async function ingestListing(
   listing: NormalizedListing,
 ): Promise<IngestResult> {
   const normalizedUrl = normalizeOfficialUrl(listing.officialUrl);
+  const normalizedPosted = normalizePostedTimestamp(
+    listing.postedAt,
+    listing.postedAtConfidence,
+    context.observedAt,
+  );
   const hash = materialHash(listing);
   const fields = materialFields(listing);
   const fingerprints = jobFingerprints({
@@ -68,8 +79,12 @@ export async function ingestListing(
   });
   return db.transaction(async (tx) => {
     const [existingFingerprint] = await tx
-      .select({ jobId: dedupeFingerprints.jobId })
+      .select({
+        jobId: dedupeFingerprints.jobId,
+        lifecycleStatus: canonicalJobs.lifecycleStatus,
+      })
       .from(dedupeFingerprints)
+      .innerJoin(canonicalJobs, eq(dedupeFingerprints.jobId, canonicalJobs.id))
       .where(
         and(
           eq(dedupeFingerprints.userId, context.userId),
@@ -82,7 +97,26 @@ export async function ingestListing(
       )
       .limit(1);
     let jobId = existingFingerprint?.jobId;
+    let previousLifecycle = existingFingerprint?.lifecycleStatus;
+    if (!jobId) {
+      const [existingUrl] = await tx
+        .select({ id: canonicalJobs.id, lifecycleStatus: canonicalJobs.lifecycleStatus })
+        .from(canonicalJobs)
+        .where(
+          and(
+            eq(canonicalJobs.userId, context.userId),
+            eq(canonicalJobs.normalizedOfficialUrl, normalizedUrl),
+          ),
+        )
+        .limit(1);
+      jobId = existingUrl?.id;
+      previousLifecycle = existingUrl?.lifecycleStatus;
+    }
+    const reopened = previousLifecycle === "closed" || previousLifecycle === "possibly_closed";
     let firstSeenAt = context.observedAt;
+    let reopenedAt: Date | null = null;
+    let persistedPostedAt = date(normalizedPosted.postedAt);
+    let persistedPostedAtConfidence = normalizedPosted.confidence;
     if (!jobId) {
       const [job] = await tx
         .insert(canonicalJobs)
@@ -98,8 +132,8 @@ export async function ingestListing(
           officialUrl: listing.officialUrl,
           normalizedOfficialUrl: normalizedUrl,
           lifecycleStatus: "open",
-          postedAt: date(listing.postedAt),
-          postedAtConfidence: listing.postedAtConfidence,
+          postedAt: date(normalizedPosted.postedAt),
+          postedAtConfidence: normalizedPosted.confidence,
           firstSeenAt: context.observedAt,
           verifiedAt: context.observedAt,
           lastSeenAt: context.observedAt,
@@ -110,20 +144,32 @@ export async function ingestListing(
             title: listing.title,
             normalizedTitle: normalizeTitle(listing.title),
             employmentType: employment(listing.employmentType),
-            lifecycleStatus: "open",
+            lifecycleStatus: sql`case when ${canonicalJobs.lifecycleStatus} in ('closed', 'possibly_closed') then 'reopened'::job_lifecycle_status when ${canonicalJobs.lifecycleStatus} = 'reopened' then 'reopened'::job_lifecycle_status else 'open'::job_lifecycle_status end`,
             externalJobId: listing.externalId,
             requisitionId: listing.requisitionId,
-            postedAt: date(listing.postedAt),
-            postedAtConfidence: listing.postedAtConfidence,
+            postedAt: persistedPostedAt ?? canonicalJobs.postedAt,
+            postedAtConfidence: persistedPostedAt
+              ? persistedPostedAtConfidence
+              : canonicalJobs.postedAtConfidence,
+            reopenedAt: sql`case when ${canonicalJobs.lifecycleStatus} in ('closed', 'possibly_closed') then ${context.observedAt.toISOString()} else ${canonicalJobs.reopenedAt} end`,
             verifiedAt: context.observedAt,
             lastSeenAt: context.observedAt,
             updatedAt: new Date(),
           },
         })
-        .returning({ id: canonicalJobs.id, firstSeenAt: canonicalJobs.firstSeenAt });
+        .returning({
+          id: canonicalJobs.id,
+          firstSeenAt: canonicalJobs.firstSeenAt,
+          reopenedAt: canonicalJobs.reopenedAt,
+          postedAt: canonicalJobs.postedAt,
+          postedAtConfidence: canonicalJobs.postedAtConfidence,
+        });
       if (!job) throw new Error("Canonical job could not be persisted");
       jobId = job.id;
       firstSeenAt = job.firstSeenAt;
+      reopenedAt = job.reopenedAt;
+      persistedPostedAt = job.postedAt;
+      persistedPostedAtConfidence = job.postedAtConfidence;
     } else {
       const [job] = await tx
         .update(canonicalJobs)
@@ -133,18 +179,29 @@ export async function ingestListing(
           employmentType: employment(listing.employmentType),
           officialUrl: listing.officialUrl,
           normalizedOfficialUrl: normalizedUrl,
-          lifecycleStatus: "open",
+          lifecycleStatus: sql`case when ${canonicalJobs.lifecycleStatus} in ('closed', 'possibly_closed') then 'reopened'::job_lifecycle_status when ${canonicalJobs.lifecycleStatus} = 'reopened' then 'reopened'::job_lifecycle_status else 'open'::job_lifecycle_status end`,
           externalJobId: listing.externalId,
           requisitionId: listing.requisitionId,
-          postedAt: date(listing.postedAt),
-          postedAtConfidence: listing.postedAtConfidence,
+          postedAt: persistedPostedAt ?? canonicalJobs.postedAt,
+          postedAtConfidence: persistedPostedAt
+            ? persistedPostedAtConfidence
+            : canonicalJobs.postedAtConfidence,
+          reopenedAt: sql`case when ${canonicalJobs.lifecycleStatus} in ('closed', 'possibly_closed') then ${context.observedAt.toISOString()} else ${canonicalJobs.reopenedAt} end`,
           verifiedAt: context.observedAt,
           lastSeenAt: context.observedAt,
           updatedAt: new Date(),
         })
         .where(and(eq(canonicalJobs.userId, context.userId), eq(canonicalJobs.id, jobId)))
-        .returning({ firstSeenAt: canonicalJobs.firstSeenAt });
+        .returning({
+          firstSeenAt: canonicalJobs.firstSeenAt,
+          reopenedAt: canonicalJobs.reopenedAt,
+          postedAt: canonicalJobs.postedAt,
+          postedAtConfidence: canonicalJobs.postedAtConfidence,
+        });
       firstSeenAt = job?.firstSeenAt ?? firstSeenAt;
+      reopenedAt = job?.reopenedAt ?? reopenedAt;
+      persistedPostedAt = job?.postedAt ?? persistedPostedAt;
+      persistedPostedAtConfidence = job?.postedAtConfidence ?? persistedPostedAtConfidence;
     }
     const [current] = await tx
       .select({ materialHash: canonicalJobs.currentMaterialHash })
@@ -187,10 +244,9 @@ export async function ingestListing(
           materialHash: hash,
           descriptionText: listing.descriptionText,
           normalizedFacts: fields,
-          materialChangeReasons: materialChangeReasons(
-            (previous?.facts as ReturnType<typeof materialFields> | undefined) ?? null,
-            fields,
-          ),
+          materialChangeReasons: previous?.facts
+            ? materialChangeReasons(previous.facts as ReturnType<typeof materialFields>, fields)
+            : [],
           capturedAt: context.observedAt,
         })
         .onConflictDoNothing()
@@ -257,6 +313,16 @@ export async function ingestListing(
           ],
           set: { active: true, updatedAt: new Date() },
         });
-    return { jobId, snapshotId, changed, firstSeenAt };
+    return {
+      jobId,
+      snapshotId,
+      changed,
+      firstSeenAt,
+      postedAt: persistedPostedAt,
+      postedAtConfidence: persistedPostedAtConfidence,
+      postedAtAnomalous: normalizedPosted.anomalous,
+      reopenedAt,
+      reopened,
+    };
   });
 }

@@ -31,6 +31,7 @@ export type RankingInput = {
   candidateSkills: string[];
   postedAt: Date | null;
   firstSeenAt: Date;
+  reopenedAt?: Date | null;
   now: Date;
   reliablePostedAt: boolean;
   hasReferral: boolean;

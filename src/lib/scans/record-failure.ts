@@ -100,7 +100,7 @@ export async function recordSourceScanFailure(options: {
     if (quarantineSource && source) {
       await tx
         .update(watchlists)
-        .set({ active: false, updatedAt: now })
+        .set({ active: false, monitoringTier: "quarantined", updatedAt: now })
         .where(
           and(eq(watchlists.userId, options.userId), eq(watchlists.companyId, source.companyId)),
         );

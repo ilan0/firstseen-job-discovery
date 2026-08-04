@@ -67,6 +67,8 @@ export const searchPreferences = pgTable(
     quietHoursStartLocal: integer("quiet_hours_start_local").default(22).notNull(),
     quietHoursEndLocal: integer("quiet_hours_end_local").default(7).notNull(),
     broadDiscoveryCadenceMinutes: integer("broad_discovery_cadence_minutes").default(240).notNull(),
+    defaultPostedWindow: text("default_posted_window").default("7d").notNull(),
+    defaultFeedSort: text("default_feed_sort").default("posted_newest").notNull(),
     preferencesVersion: integer("preferences_version").default(1).notNull(),
     ...timestamps,
   },
@@ -77,5 +79,13 @@ export const searchPreferences = pgTable(
       sql`${table.idealRequiredYearsMax} <= ${table.eligibleRequiredYearsMax}`,
     ),
     check("search_preferences_digest_hour", sql`${table.digestHourLocal} between 0 and 23`),
+    check(
+      "search_preferences_posted_window",
+      sql`${table.defaultPostedWindow} in ('6h', '24h', '3d', '7d', '30d', 'all')`,
+    ),
+    check(
+      "search_preferences_feed_sort",
+      sql`${table.defaultFeedSort} in ('posted_newest', 'detected_newest', 'urgency')`,
+    ),
   ],
 );

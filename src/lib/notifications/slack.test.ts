@@ -16,10 +16,15 @@ describe("Slack rendering", () => {
         urgency: 98,
         jobId: "job",
         hasReferral: true,
+        band: "hot",
+        officialUrl: "https://jobs.example/job",
+        freshnessAgeHours: 2,
+        freshnessBasis: "posted_at",
+        primaryConcern: "Limited React evidence",
       },
       "https://firstseen.example",
     );
-    expect(payload.text).toContain("Exceptional");
+    expect(payload.text).toContain("Fresh hot match");
     expect(JSON.stringify(payload)).toContain("/jobs/job");
     expect(JSON.stringify(payload)).toContain("Referral");
   });
@@ -32,6 +37,13 @@ describe("Slack rendering", () => {
       urgency: 90,
       jobId: `${index}`,
       hasReferral: false,
+      officialUrl: `https://jobs.example/${index}`,
+      freshnessSection:
+        index < 4 ? ("just_posted" as const) : index < 9 ? ("new" as const) : ("recent" as const),
+      freshnessAgeHours: index + 1,
+      freshnessBasis: "posted_at" as const,
+      detectionAgeHours: index,
+      primaryConcern: "None",
     }));
     const payload = digestPayload(jobs, "2026-08-03", "https://firstseen.example");
     expect(JSON.stringify(payload)).toContain("Plus 2 more");

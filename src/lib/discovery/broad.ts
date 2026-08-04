@@ -181,6 +181,8 @@ async function registerCandidate(userId: string, candidate: DiscoveryCandidate) 
       .values({
         userId,
         companyId: company.id,
+        scope: "discovered",
+        monitoringTier: "cold",
         cadenceMinutes: 240,
         nextScanAt: new Date(Date.now() + 240 * 60_000),
       })
@@ -243,8 +245,21 @@ export async function discoverBroadSources(
 }
 
 export async function promoteDiscoveredCompany(userId: string, companyId: string) {
-  await db
-    .update(companies)
-    .set({ provisional: false, priority: 3, updatedAt: new Date() })
-    .where(and(eq(companies.userId, userId), eq(companies.id, companyId)));
+  const now = new Date();
+  await db.transaction(async (tx) => {
+    await tx
+      .update(companies)
+      .set({ provisional: false, priority: 3, updatedAt: now })
+      .where(and(eq(companies.userId, userId), eq(companies.id, companyId)));
+    await tx
+      .update(watchlists)
+      .set({ monitoringTier: "warm", cadenceMinutes: 60, nextScanAt: now, updatedAt: now })
+      .where(
+        and(
+          eq(watchlists.userId, userId),
+          eq(watchlists.companyId, companyId),
+          eq(watchlists.scope, "discovered"),
+        ),
+      );
+  });
 }

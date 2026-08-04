@@ -23,7 +23,8 @@ remote against one another, and application volume is not artificially capped.
   approximately one hour of Fairfax, Virginia in the DMV; or inside New York City's five boroughs.
   New Jersey is excluded from the NYC rule.
 - Fully remote jobs are eligible when the employer can employ the candidate in an accepted US
-  jurisdiction. Unclear state restrictions route to review.
+  jurisdiction. An explicit unsupported-country/region restriction is ineligible; genuinely unclear
+  state restrictions route to review.
 - Role preference, in order: general SWE by a large margin, full stack, backend, frontend, AI
   engineering, embedded/C, internal tools/automation, and customer-facing engineering. Lower
   preference is not automatic ineligibility.
@@ -34,8 +35,11 @@ remote against one another, and application volume is not artificially capped.
 
 - The owner can add a company, official career URL, referral person, priority, status, and notes
   with minimal friction.
-- Referral/priority watchlists are leased every 15 minutes and scanned at their configured cadence;
-  priority companies default to approximately hourly.
+- Company interest and referrals are independent. My Companies contains intentionally followed
+  companies; automatic discoveries remain in Discovered Companies with provider provenance.
+- Interested or active-referral companies scan every 15 minutes; other followed and warm discovered
+  companies scan hourly; cold discovered companies scan every four hours. Sticky dismissal
+  quarantines a source. Adaptive cadence may slow only cold automatic sources.
 - Broad discovery runs every four hours initially. Brave and Adzuna are sensors, never authorities.
 - Every recommended listing must be verified through an official supported employer/ATS URL.
 - The official listing description, not an aggregator snippet or seniority label, determines fit.
@@ -45,8 +49,15 @@ remote against one another, and application volume is not artificially capped.
   skip unchanged source responses.
 - Closure requires successful authoritative misses according to connector policy. A failed source
   scan is never closure evidence.
-- A promising broadly discovered company becomes a low-priority monitored company only after an
-  official role is successfully analyzed.
+- A broadly discovered company becomes Warm only after a verified eligible Hot, Strong, or Possible
+  role no older than seven days. Irrelevant, excluded, Review-only, or stale roles cannot promote it.
+- Freshness has one shared dynamic policy. The default feed is official postings no older than seven
+  days, grouped into Just posted (0–24h), New (1–3d), and Recent (3–7d). Hot/Strong postings from
+  7–30 days appear only as Older exceptional matches; older jobs remain in All listings/history.
+- Cards/details distinguish official posting, FirstSeen detection, and last official verification.
+  Low-confidence or anomalous official timestamps visibly fall back to first verified sighting.
+  Reopening is fresh from `reopened_at` without replacing the original posting date; material edits
+  receive Updated and do not become newly posted.
 
 ## Recommendations and actions
 
@@ -61,8 +72,11 @@ remote against one another, and application volume is not artificially capped.
 - Apply opens the verified official application for manual completion with Simplify. Save and
   Dismiss remove the item from Active and persist it in the corresponding category. Applied,
   Saved, and Dismissed records remain visible if a job later closes.
-- Immediate Slack alerts are reserved for exceptional hot matches. Morning digest delivery uses an
-  exact configured hour and IANA time zone, is idempotent per local date, and respects quiet hours.
+- Immediate Slack alerts are reserved for verified Hot or Strong matches under 24 hours old, or a
+  newly verified reopening, with urgency at least 85 and reliable time provenance. Morning digest
+  includes only unacted jobs detected since the prior digest and no older than seven days, grouped
+  by age; an empty digest is skipped. Delivery uses an exact configured hour and IANA time zone, is
+  idempotent, and respects quiet hours.
 
 ## Interface
 
@@ -70,7 +84,7 @@ remote against one another, and application volume is not artificially capped.
   responsive behavior at phone, tablet, laptop, and large desktop sizes.
 - Active matches, Saved, Applied, Dismissed, job details, Watchlist/Referrals, Operations health,
   Notification/Candidate settings, export, and deletion.
-- Search/filter/sort, referral and band filters, official verification, scan freshness, worker
+- Search/filter/sort, posted windows (6h/24h/3d/7d/30d/All), referral and band filters, official verification, scan freshness, worker
   health, quota/cost visibility, retry/dead-letter recovery, and provider diagnostics.
 - Accessible labels/focus, keyboard operability, robust long descriptions, loading/empty/stale/error
   states, validation, success feedback, network recovery, and destructive confirmation.
@@ -101,11 +115,11 @@ complex applicant-tracking workflow beyond Applied/Saved/Dismissed.
 
 ## Initial service targets
 
-- Cached dashboard response: p95 under 1.5 seconds; queue action acknowledgement: p95 under 500 ms.
-- Priority source discovery begins within 15 minutes of its due lease; changed-listing recommendation
-  appears within 10 minutes of a successful source fetch.
-- Exceptional Slack alert within five minutes after recommendation; digest within ten minutes of
-  configured local hour.
+- Dashboard server response: p95 under 1.5 seconds; queue interaction perceived acknowledgement
+  under 300 ms.
+- Priority source discovery-to-feed p95 under 20 minutes; standard monitoring under 75 minutes under
+  normal provider conditions.
+- Exceptional Slack alert within five minutes after recommendation; morning digest by 08:02 local.
 - Each durable listing step remains below the host's 60-second Hobby invocation ceiling; network
   calls have explicit shorter timeouts.
 - Filtering 1,000 normalized roles in deterministic code under 250 ms in isolation.

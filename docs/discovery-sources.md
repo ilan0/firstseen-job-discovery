@@ -95,11 +95,23 @@ Required behavior:
 - Contract tests cover pagination, normalization, 304, 404/410, malformed payloads, rate limiting,
   retries, and same-host official URL rules.
 
-## Expansion strategy
+## Expansion and monitoring strategy
 
-Near-term coverage grows by adding high-value employers to the watchlist and implementing approved
-structured adapters, not by crawling hundreds of arbitrary sites hourly. Broad sensors continually
-surface supported ATS tenants. A provisional discovered company starts at four-hour cadence and is
-promoted to priority 3 monitoring only after at least one official role is analyzed. This focuses
-future scans on companies demonstrably relevant to the candidate while keeping network/AI cost
-bounded.
+Near-term coverage grows through manually followed/referral employers, sensor-discovered supported
+ATS tenants, and approved structured adapters—not by crawling arbitrary sites or competitive boards
+hourly. Origin remains immutable provenance even when an automatic company is followed.
+
+Monitoring policy is deterministic:
+
+- Interested or active-referral company: Priority, 15 minutes.
+- Other personally followed company: Standard, 60 minutes.
+- Automatic company with a verified eligible Hot/Strong/Possible job no older than seven days:
+  Warm, 60 minutes.
+- Other verified automatic source: Cold, 240 minutes.
+- Newly provisional official source: verify immediately.
+- Dismissed, unsafe, or quarantined source: no automatic scans.
+
+Review-only, ineligible, stale, and unrelated roles cannot warm a company. Policy refresh cools a
+company when its qualifying jobs age out. A workload forecaster may increase only the Cold cadence
+to protect the Inngest execution allowance; it never silently slows Priority, Standard, or Warm
+monitoring. Operations exposes scope, tier, cadence, timestamp confidence, and detection latency.

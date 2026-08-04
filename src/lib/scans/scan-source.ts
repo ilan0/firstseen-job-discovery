@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { and, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { connectorFor } from "@/connectors/registry";
 import type { ConnectorSource, NormalizedListing } from "@/connectors/types";
@@ -12,13 +12,17 @@ import {
   companies,
   connectorRegistrations,
   eligibilityDecisions,
+  jobDescriptionSnapshots,
   rawObservations,
   recommendations,
   referrals,
+  queueStates,
 } from "@/db/schema";
 import { ELIGIBILITY_RULE_VERSION } from "@/domain/eligibility";
-import { materialHash, normalizeOfficialUrl, transitionLifecycle } from "@/domain/jobs";
+import { isRecentViableRecommendation } from "@/domain/companies/monitoring";
+import { freshness, materialHash, normalizeOfficialUrl, transitionLifecycle } from "@/domain/jobs";
 import { RANKING_VERSION } from "@/domain/ranking";
+import { refreshCompanyMonitoring } from "@/lib/companies/monitoring";
 import { analyzeAndRankListing } from "@/lib/jobs/analyze-and-rank";
 import { ingestListing } from "@/lib/jobs/ingest";
 import { discoverAllPages } from "./discover-pages";
@@ -174,6 +178,7 @@ export async function stageStoredSource(
           jobId: canonicalJobs.id,
           normalizedUrl: canonicalJobs.normalizedOfficialUrl,
           materialHash: canonicalJobs.currentMaterialHash,
+          lifecycleStatus: canonicalJobs.lifecycleStatus,
           ruleVersion: eligibilityDecisions.ruleVersion,
           rankingVersion: recommendations.rankingVersion,
         })
@@ -194,6 +199,13 @@ export async function stageStoredSource(
         )
     : [];
   const existingHashes = new Map(existing.map((job) => [job.normalizedUrl, job.materialHash]));
+  const reopeningUrls = new Set(
+    existing
+      .filter(
+        (job) => job.lifecycleStatus === "closed" || job.lifecycleStatus === "possibly_closed",
+      )
+      .map((job) => job.normalizedUrl),
+  );
   const processingIsCurrent = new Set(
     existing
       .filter(
@@ -206,7 +218,8 @@ export async function stageStoredSource(
     const normalizedUrl = normalizeOfficialUrl(listing.officialUrl);
     const unchanged =
       existingHashes.get(normalizedUrl) === materialHash(listing) &&
-      processingIsCurrent.has(normalizedUrl);
+      processingIsCurrent.has(normalizedUrl) &&
+      !reopeningUrls.has(normalizedUrl);
     const storage = observationStorage(listing, unchanged);
     return {
       userId: source.userId,
@@ -249,7 +262,7 @@ export async function stageStoredSource(
     await db
       .update(canonicalJobs)
       .set({
-        lifecycleStatus: "open",
+        lifecycleStatus: sql`case when ${canonicalJobs.lifecycleStatus} in ('closed', 'possibly_closed') then 'reopened'::job_lifecycle_status when ${canonicalJobs.lifecycleStatus} = 'reopened' then 'reopened'::job_lifecycle_status else 'open'::job_lifecycle_status end`,
         verifiedAt: observedAt,
         lastSeenAt: observedAt,
         consecutiveSuccessfulMisses: 0,
@@ -278,7 +291,33 @@ export async function stageStoredSource(
   };
 }
 
-export async function processStagedListing(source: StoredSource, observationId: string) {
+export type ExceptionalAlert = {
+  jobId: string;
+  snapshotId: string;
+  title: string;
+  company: string;
+  headline: string;
+  urgency: number;
+  hasReferral: boolean;
+  band: "hot" | "strong";
+  officialUrl: string;
+  freshnessAgeHours: number;
+  freshnessBasis: "posted_at" | "reopened_at";
+  primaryConcern: string;
+  occurrenceId: string;
+};
+
+export type ProcessedListingResult = {
+  changed: number;
+  analyzed: number;
+  recentViable: boolean;
+  exceptional: ExceptionalAlert[];
+};
+
+export async function processStagedListing(
+  source: StoredSource,
+  observationId: string,
+): Promise<ProcessedListingResult> {
   const [observation] = await db
     .select()
     .from(rawObservations)
@@ -325,26 +364,74 @@ export async function processStagedListing(source: StoredSource, observationId: 
     hasReferral: referralRows.length > 0,
     now: observation.observedAt,
   });
-  const exceptional =
+  const [queue] = await db
+    .select({ status: queueStates.status })
+    .from(queueStates)
+    .where(and(eq(queueStates.userId, source.userId), eq(queueStates.jobId, ingest.jobId)))
+    .limit(1);
+  const [latestSnapshot] = ingest.snapshotId
+    ? [{ id: ingest.snapshotId }]
+    : ingest.reopened
+      ? await db
+          .select({ id: jobDescriptionSnapshots.id })
+          .from(jobDescriptionSnapshots)
+          .where(
+            and(
+              eq(jobDescriptionSnapshots.userId, source.userId),
+              eq(jobDescriptionSnapshots.jobId, ingest.jobId),
+            ),
+          )
+          .orderBy(desc(jobDescriptionSnapshots.capturedAt))
+          .limit(1)
+      : [];
+  const currentFreshness = freshness(
+    observation.observedAt,
+    ingest.postedAt,
+    ingest.postedAtConfidence,
+    ingest.firstSeenAt,
+    ingest.reopenedAt,
+  );
+  const recentViable =
     result.state === "analyzed" &&
-    result.recommendation.band === "hot" &&
+    isRecentViableRecommendation({
+      band: result.recommendation.band,
+      eligibilityOutcome: result.decision.outcome,
+      ageHours: currentFreshness.ageHours,
+    });
+  const exceptional: ExceptionalAlert[] =
+    result.state === "analyzed" &&
+    (result.recommendation.band === "hot" || result.recommendation.band === "strong") &&
     result.recommendation.urgency >= 85 &&
-    ingest.snapshotId
+    currentFreshness.ageHours <= 24 &&
+    currentFreshness.basis !== "first_seen" &&
+    queue?.status === "active" &&
+    latestSnapshot?.id
       ? [
           {
             jobId: ingest.jobId,
-            snapshotId: ingest.snapshotId,
+            snapshotId: latestSnapshot.id,
             title: listing.title,
             company: source.companyName,
             headline: result.recommendation.headline,
             urgency: result.recommendation.urgency,
             hasReferral: referralRows.length > 0,
+            band: result.recommendation.band,
+            officialUrl: listing.officialUrl,
+            freshnessAgeHours: currentFreshness.ageHours,
+            freshnessBasis: currentFreshness.basis,
+            primaryConcern:
+              result.recommendation.routingReasons[0] ?? "No material concern identified",
+            occurrenceId:
+              ingest.reopened && ingest.reopenedAt
+                ? `reopened:${ingest.reopenedAt.toISOString()}`
+                : `snapshot:${latestSnapshot.id}`,
           },
         ]
       : [];
   return {
     changed: ingest.changed ? 1 : 0,
     analyzed: result.state === "analyzed" ? 1 : 0,
+    recentViable,
     exceptional,
   };
 }
@@ -352,23 +439,21 @@ export async function processStagedListing(source: StoredSource, observationId: 
 export async function finalizeStagedSource(
   source: StoredSource,
   staged: StagedSourceResult,
-  processed: Awaited<ReturnType<typeof processStagedListing>>[],
+  processed: ProcessedListingResult[],
   observedAt = new Date(),
 ) {
   const changed = processed.reduce((sum, item) => sum + item.changed, 0);
   const analyzed = processed.reduce((sum, item) => sum + item.analyzed, 0);
   const exceptional = processed.flatMap((item) => item.exceptional);
-  if (analyzed > 0)
-    await db
-      .update(companies)
-      .set({ provisional: false, priority: 3, updatedAt: observedAt })
-      .where(
-        and(
-          eq(companies.userId, source.userId),
-          eq(companies.id, source.companyId),
-          eq(companies.provisional, true),
-        ),
-      );
+  const hasRecentViable = processed.some((item) => item.recentViable);
+  await db
+    .update(companies)
+    .set({
+      provisional: false,
+      ...(analyzed > 0 ? { priority: 3 } : {}),
+      updatedAt: observedAt,
+    })
+    .where(and(eq(companies.userId, source.userId), eq(companies.id, source.companyId)));
   if (!staged.notModified) {
     const existing = await db
       .select()
@@ -431,11 +516,13 @@ export async function finalizeStagedSource(
       })
       .where(eq(connectorRegistrations.careerSourceId, source.id));
   });
+  await refreshCompanyMonitoring(source.userId, source.companyId, observedAt);
   return {
     discovered: staged.discovered,
     changed,
     analyzed,
     exceptional,
+    hasRecentViable,
     notModified: staged.notModified,
   };
 }

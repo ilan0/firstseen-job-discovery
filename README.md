@@ -14,20 +14,26 @@ CAPTCHA, or turns an aggregator result directly into a recommendation.
 - Private four-digit access-code sign-in for one configured owner, backed by a server-created
   Supabase session, server authorization, PostgreSQL RLS, durable throttling, account export, and
   deletion. The plaintext code is never stored by the application.
-- Responsive Active, Saved, Applied, Dismissed, Watchlist, Operations, Settings, and explainable
-  job-detail views.
+- Responsive freshness-first Matches, Saved, Applied, Dismissed, My/Discovered Companies,
+  Operations, Settings, and explainable job-detail views.
 - Greenhouse, Lever, Ashby, and reviewed JSON-LD connectors with pagination, conditional requests,
   safe outbound HTTP, retries, confidence, change detection, closure, and reopening.
 - Brave Search and Adzuna discovery sensors. A result advances only when it resolves to a supported
   official ATS URL.
 - Canonical identity, cross-source fingerprints, snapshots, first/last-seen times, material hashes,
   no unchanged reanalysis, aging, and duplicate-safe queue transitions.
+- Default seven-day feed grouped into Just posted, New, and Recent, with official-posted,
+  FirstSeen-detected, and last-verified times kept distinct. Posted windows and official/detection/
+  urgency sorts are server-backed and URL-restorable.
+- Independent company interest and referrals with 15-minute Priority, hourly Standard/Warm, and
+  four-hour Cold monitoring. Automatic provenance survives Follow; Not relevant is sticky.
 - Deterministic full-time, experience, clearance/Public Trust, sponsorship, role, and location
   rules before schema-constrained OpenAI analysis.
 - Ten visible ranking dimensions rather than an opaque match score.
 - Inngest schedules for priority scanning, broad discovery, per-listing durable processing,
   notifications, retries/dead letters, and retention.
-- Idempotent Slack exceptional alerts and an exact-time-zone morning digest.
+- Idempotent fresh Hot/Strong Slack alerts and an exact-time-zone, age-grouped morning digest that
+  skips empty days.
 - Database-backed scan diagnostics, worker attempts, provider usage/cost ledger, and optional
   privacy-redacted Sentry reporting.
 
@@ -70,7 +76,9 @@ pnpm format:check
 pnpm lint
 pnpm typecheck
 pnpm test
-RUN_DATABASE_TESTS=true pnpm vitest run src/db/*.integration.test.ts
+RUN_DATABASE_TESTS=true pnpm test
+RUN_DATABASE_TESTS=true pnpm test:coverage
+pnpm audit --audit-level=low
 pnpm build
 pnpm test:e2e
 ```

@@ -69,7 +69,7 @@ export async function analyzeAndRankListing(options: {
     if (!snapshot) return { state: "unchanged" as const };
     snapshotId = snapshot.id;
   }
-  if (!options.ingest.changed) {
+  if (!options.ingest.changed && !options.ingest.reopened) {
     const [current] = await db
       .select({ id: recommendations.id })
       .from(recommendations)
@@ -195,10 +195,11 @@ export async function analyzeAndRankListing(options: {
       ...candidateSeed.skills.frameworksAndData,
       ...candidateSeed.skills.aiAndTools,
     ],
-    postedAt: options.listing.postedAt ? new Date(options.listing.postedAt) : null,
+    postedAt: options.ingest.postedAt,
     firstSeenAt: options.ingest.firstSeenAt,
+    reopenedAt: options.ingest.reopenedAt,
     now,
-    reliablePostedAt: options.listing.postedAtConfidence !== "low",
+    reliablePostedAt: options.ingest.postedAtConfidence !== "low",
     hasReferral: options.hasReferral,
     sourceConfidence: options.sourceConfidence ?? confidence(options.listing.sourceConfidence),
     extractionConfidence,

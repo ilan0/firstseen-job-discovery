@@ -10,6 +10,8 @@ import {
   materialHash,
   normalizeOfficialUrl,
   transitionLifecycle,
+  normalizePostedTimestamp,
+  withinPostedWindow,
   type LifecycleState,
 } from ".";
 
@@ -90,17 +92,62 @@ describe("freshness", () => {
   it("uses reliable employer-posted time", () => {
     expect(
       freshness(now, new Date("2026-08-03T12:00:00Z"), "high", new Date("2026-08-03T18:00:00Z")),
-    ).toMatchObject({ band: "hot", basis: "posted_at", ageHours: 8 });
+    ).toMatchObject({
+      band: "very_fresh",
+      section: "just_posted",
+      basis: "posted_at",
+      ageHours: 8,
+    });
   });
 
   it("falls back to first seen when posted time is low confidence", () => {
     expect(
       freshness(now, new Date("2026-06-01T12:00:00Z"), "low", new Date("2026-08-03T18:00:00Z")),
-    ).toMatchObject({ band: "hot", basis: "first_seen", ageHours: 2 });
+    ).toMatchObject({ band: "hot", section: "just_posted", basis: "first_seen", ageHours: 2 });
   });
 
   it("marks jobs stale after thirty days", () => {
     expect(freshness(now, null, "low", new Date("2026-06-01T12:00:00Z")).band).toBe("stale");
+  });
+
+  it("uses a verified reopening without rewriting the original posted time", () => {
+    expect(
+      freshness(
+        now,
+        new Date("2026-01-01T12:00:00Z"),
+        "high",
+        new Date("2026-01-01T12:00:00Z"),
+        new Date("2026-08-03T19:00:00Z"),
+      ),
+    ).toMatchObject({ basis: "reopened_at", ageHours: 1, section: "just_posted" });
+  });
+
+  it.each([
+    [6, "6h", true],
+    [6.01, "6h", false],
+    [24, "24h", true],
+    [24.01, "24h", false],
+    [72, "3d", true],
+    [72.01, "3d", false],
+    [168, "7d", true],
+    [168.01, "7d", false],
+    [720, "30d", true],
+    [720.01, "30d", false],
+  ] as const)("enforces the %sh posted-window boundary", (ageHours, window, expected) => {
+    expect(withinPostedWindow(ageHours, window)).toBe(expected);
+  });
+
+  it("rejects malformed and future official timestamps", () => {
+    expect(normalizePostedTimestamp("not-a-date", "high", now)).toEqual({
+      postedAt: null,
+      confidence: "low",
+      anomalous: true,
+    });
+    expect(normalizePostedTimestamp("2026-08-03T21:00:00Z", "high", now)).toEqual({
+      postedAt: null,
+      confidence: "low",
+      anomalous: true,
+    });
   });
 });
 

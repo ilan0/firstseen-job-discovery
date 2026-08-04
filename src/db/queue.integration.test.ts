@@ -4,6 +4,8 @@ import dotenv from "dotenv";
 import { createClient, type User } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { NormalizedListing } from "@/connectors/types";
+import { ELIGIBILITY_RULE_VERSION } from "@/domain/eligibility";
+import { RANKING_VERSION } from "@/domain/ranking";
 
 dotenv.config({ path: ".env.local", quiet: true });
 vi.mock("server-only", () => ({}));
@@ -90,7 +92,7 @@ describe.runIf(enabled)("queue lifecycle and dynamic freshness", () => {
         job_id: jobId,
         snapshot_id: ingest.snapshotId,
         outcome: "eligible",
-        rule_version: "queue-integration",
+        rule_version: ELIGIBILITY_RULE_VERSION,
       })
       .select("id")
       .single();
@@ -103,7 +105,7 @@ describe.runIf(enabled)("queue lifecycle and dynamic freshness", () => {
       band: "hot",
       urgency: 100,
       headline: "Integration fixture",
-      ranking_version: "queue-integration",
+      ranking_version: RANKING_VERSION,
     });
     if (recommendation.error) throw recommendation.error;
     const queued = await admin.from("queue_states").insert({
@@ -123,6 +125,23 @@ describe.runIf(enabled)("queue lifecycle and dynamic freshness", () => {
     const active = await listQueue(user.id, "active");
     expect(active).toHaveLength(1);
     expect(active[0]).toMatchObject({ jobId, freshnessBand: "stale", urgency: 25 });
+    expect(await listQueue(user.id, "active", { postedWithin: "7d" })).toHaveLength(0);
+    expect(await listQueue(user.id, "active", { postedWithin: "all" })).toHaveLength(1);
+
+    const reopenedAt = new Date();
+    const reopened = await admin
+      .from("canonical_jobs")
+      .update({ lifecycle_status: "reopened", reopened_at: reopenedAt.toISOString() })
+      .eq("id", jobId);
+    if (reopened.error) throw reopened.error;
+    expect(await listQueue(user.id, "active", { postedWithin: "24h" })).toEqual([
+      expect.objectContaining({
+        jobId,
+        lifecycleStatus: "reopened",
+        freshnessBasis: "reopened_at",
+        freshnessSection: "just_posted",
+      }),
+    ]);
 
     const hidden = await admin
       .from("recommendations")

@@ -1,4 +1,5 @@
 import { preferenceSeed } from "@/config/candidate";
+import { freshness as jobFreshness } from "@/domain/jobs";
 import type {
   RankingDimensionName,
   RankingDimensionResult,
@@ -6,7 +7,7 @@ import type {
   Recommendation,
 } from "./types";
 
-export const RANKING_VERSION = "2026-08-03.4";
+export const RANKING_VERSION = "2026-08-04.1";
 
 const advancedTitlePattern =
   /\b(?:senior|sr\.?|staff|principal|lead|manager|director|head|architect|intermediate)\b/i;
@@ -104,14 +105,18 @@ function roleDimension(input: RankingInput): RankingDimensionResult {
 }
 
 function freshnessDimension(input: RankingInput): RankingDimensionResult {
-  const basis = input.reliablePostedAt && input.postedAt ? input.postedAt : input.firstSeenAt;
-  const hours = Math.max(0, (input.now.getTime() - basis.getTime()) / 3_600_000);
-  const value = hours <= 6 ? 100 : hours <= 24 ? 92 : hours <= 72 ? 78 : hours <= 168 ? 55 : 25;
+  const current = jobFreshness(
+    input.now,
+    input.postedAt,
+    input.reliablePostedAt ? "high" : "low",
+    input.firstSeenAt,
+    input.reopenedAt,
+  );
   return dimension(
     "freshness",
-    value,
-    input.reliablePostedAt ? 95 : 70,
-    `${input.reliablePostedAt ? "Official posting time" : "First verified sighting"} is ${Math.round(hours)} hours old.`,
+    current.value,
+    current.basis === "posted_at" ? 95 : current.basis === "reopened_at" ? 100 : 70,
+    `${current.basis === "posted_at" ? "Official posting time" : current.basis === "reopened_at" ? "Official reopening" : "First verified sighting"} is ${Math.round(current.ageHours)} hours old.`,
   );
 }
 

@@ -11,9 +11,11 @@ import {
   referrals,
   searchPreferences,
 } from "@/db/schema";
+import { freshness } from "@/domain/jobs";
+import { rolloutFlags } from "@/config/rollout";
 import { serverEnv } from "@/lib/env/server";
 import { deliverPendingNotification } from "./slack";
-import { digestPayload, exceptionalPayload, payloadHash } from "./slack-payload";
+import { digestPayload, exceptionalPayload, payloadHash, type DigestJob } from "./slack-payload";
 import { hoursUntilQuietEnd, inQuietHours, zonedParts } from "./time";
 
 export async function queueExceptionalAlert(options: {
@@ -25,6 +27,12 @@ export async function queueExceptionalAlert(options: {
   headline: string;
   urgency: number;
   hasReferral: boolean;
+  band: "hot" | "strong";
+  officialUrl: string;
+  freshnessAgeHours: number;
+  freshnessBasis: "posted_at" | "reopened_at";
+  primaryConcern: string;
+  occurrenceId: string;
   now?: Date;
 }) {
   const [prefs] = await db
@@ -33,7 +41,9 @@ export async function queueExceptionalAlert(options: {
     .where(eq(searchPreferences.userId, options.userId))
     .limit(1);
   if (!prefs?.exceptionalAlertsEnabled) return null;
+  if (!rolloutFlags().freshnessSlack && options.band !== "hot") return null;
   const now = options.now ?? new Date();
+  if (options.freshnessAgeHours > 24) return null;
   const quiet = inQuietHours(
     zonedParts(now, prefs.timezone).hour,
     prefs.quietHoursStartLocal,
@@ -45,7 +55,7 @@ export async function queueExceptionalAlert(options: {
     prefs.quietHoursEndLocal,
   );
   const payload = exceptionalPayload(options, serverEnv().NEXT_PUBLIC_APP_URL);
-  const key = `exceptional:${options.jobId}:${options.snapshotId}`;
+  const key = `exceptional:${options.jobId}:${options.occurrenceId}`;
   const [notification] = await db
     .insert(notifications)
     .values({
@@ -83,6 +93,13 @@ export async function deliverMorningDigest(userId: string, now = new Date()) {
     )
     .limit(1);
   if (existing) return { state: "already_delivered" as const };
+  const [previousDigest] = await db
+    .select({ deliveredAt: digestDeliveries.deliveredAt })
+    .from(digestDeliveries)
+    .where(and(eq(digestDeliveries.userId, userId), eq(digestDeliveries.status, "delivered")))
+    .orderBy(desc(digestDeliveries.deliveredAt))
+    .limit(1);
+  const detectedAfter = previousDigest?.deliveredAt ?? new Date(now.getTime() - 7 * 24 * 3_600_000);
   const rows = await db
     .select({
       jobId: canonicalJobs.id,
@@ -91,13 +108,24 @@ export async function deliverMorningDigest(userId: string, now = new Date()) {
       companyId: companies.id,
       band: recommendations.band,
       urgency: recommendations.urgency,
+      officialUrl: canonicalJobs.officialUrl,
+      postedAt: canonicalJobs.postedAt,
+      postedAtConfidence: canonicalJobs.postedAtConfidence,
+      firstSeenAt: canonicalJobs.firstSeenAt,
+      reopenedAt: canonicalJobs.reopenedAt,
+      weaknesses: recommendations.weaknesses,
+      routingReasons: recommendations.routingReasons,
     })
     .from(recommendations)
     .innerJoin(canonicalJobs, eq(recommendations.jobId, canonicalJobs.id))
     .innerJoin(companies, eq(canonicalJobs.companyId, companies.id))
     .innerJoin(
       queueStates,
-      and(eq(queueStates.jobId, canonicalJobs.id), eq(queueStates.status, "active")),
+      and(
+        eq(queueStates.jobId, canonicalJobs.id),
+        eq(queueStates.userId, userId),
+        eq(queueStates.status, "active"),
+      ),
     )
     .where(
       and(
@@ -105,7 +133,7 @@ export async function deliverMorningDigest(userId: string, now = new Date()) {
         eq(recommendations.active, true),
         inArray(canonicalJobs.lifecycleStatus, ["open", "reopened"]),
         inArray(recommendations.band, ["hot", "strong", "possible", "review"]),
-        gte(recommendations.recommendedAt, new Date(now.getTime() - 36 * 3_600_000)),
+        gte(canonicalJobs.firstSeenAt, detectedAfter),
       ),
     )
     .orderBy(desc(recommendations.urgency))
@@ -113,9 +141,54 @@ export async function deliverMorningDigest(userId: string, now = new Date()) {
   const referralRows = await db
     .select({ companyId: referrals.companyId })
     .from(referrals)
-    .where(eq(referrals.userId, userId));
+    .where(
+      and(
+        eq(referrals.userId, userId),
+        inArray(referrals.status, ["available", "requested", "submitted"]),
+      ),
+    );
   const referred = new Set(referralRows.map((row) => row.companyId));
-  const jobs = rows.map((row) => ({ ...row, hasReferral: referred.has(row.companyId) }));
+  const jobs = rows
+    .flatMap((row): Array<DigestJob & { effectiveAt: Date }> => {
+      const current = freshness(
+        now,
+        row.postedAt,
+        row.postedAtConfidence,
+        row.firstSeenAt,
+        row.reopenedAt,
+      );
+      const weaknesses = Array.isArray(row.weaknesses)
+        ? row.weaknesses.filter((item): item is string => typeof item === "string")
+        : [];
+      const routingReasons = Array.isArray(row.routingReasons)
+        ? row.routingReasons.filter((item): item is string => typeof item === "string")
+        : [];
+      if (
+        current.section !== "just_posted" &&
+        current.section !== "new" &&
+        current.section !== "recent"
+      )
+        return [];
+      return [
+        {
+          title: row.title,
+          company: row.company,
+          band: row.band,
+          urgency: row.urgency,
+          jobId: row.jobId,
+          officialUrl: row.officialUrl,
+          hasReferral: referred.has(row.companyId),
+          freshnessSection: current.section,
+          freshnessAgeHours: current.ageHours,
+          freshnessBasis: current.basis,
+          detectionAgeHours: Math.max(0, (now.getTime() - row.firstSeenAt.getTime()) / 3_600_000),
+          primaryConcern: weaknesses[0] ?? routingReasons[0] ?? "No material concern identified",
+          effectiveAt: current.effectiveAt,
+        },
+      ];
+    })
+    .toSorted((a, b) => b.effectiveAt.getTime() - a.effectiveAt.getTime());
+  if (!jobs.length) return { state: "empty" as const };
   const payload = digestPayload(jobs, local.localDate, serverEnv().NEXT_PUBLIC_APP_URL);
   const key = `digest:${userId}:${local.localDate}`;
   const result = await db.transaction(async (tx) => {

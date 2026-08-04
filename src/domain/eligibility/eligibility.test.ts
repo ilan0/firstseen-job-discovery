@@ -219,15 +219,18 @@ describe("deterministic eligibility", () => {
     ).toBe("ineligible");
   });
 
-  it("reviews a remote job restricted to an unsupported country", () => {
-    expect(
-      decide({
-        locations: ["Remote - Canada"],
-        workplaceType: "Remote",
-        description: "Full-time remote software role.",
-      }).outcome,
-    ).toBe("review");
-  });
+  it.each(["Remote - Canada", "United Kingdom (Remote)", "EMEA - Remote"])(
+    "rejects a remote job explicitly restricted to an unsupported region: %s",
+    (location) => {
+      expect(
+        decide({
+          locations: [location],
+          workplaceType: "Remote",
+          description: "Full-time remote software role.",
+        }).outcome,
+      ).toBe("ineligible");
+    },
+  );
 
   it("accepts no-sponsorship language for the candidate", () => {
     const decision = decide({

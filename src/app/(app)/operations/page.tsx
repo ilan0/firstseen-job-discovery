@@ -5,10 +5,12 @@ import { SubmitButton } from "@/components/forms/submit-button";
 import { db } from "@/db/client";
 import {
   careerSources,
+  canonicalJobs,
   companies,
   deadLetterRecords,
   scanRuns,
   usageCostLedger,
+  watchlists,
 } from "@/db/schema";
 import { requireOwner } from "@/lib/auth/owner";
 
@@ -18,6 +20,7 @@ export default async function OperationsPage({
   searchParams: Promise<{ started?: string }>;
 }) {
   const owner = await requireOwner();
+  const checkedAt = new Date();
   const query = await searchParams;
   const successMessage =
     query.started === "scan"
@@ -41,11 +44,29 @@ export default async function OperationsPage({
       lastAttemptAt: careerSources.lastAttemptAt,
       lastSuccessAt: careerSources.lastSuccessAt,
       lastError: careerSources.lastErrorCode,
+      tier: watchlists.monitoringTier,
+      scope: watchlists.scope,
+      cadence: watchlists.cadenceMinutes,
+      nextScanAt: watchlists.nextScanAt,
     })
     .from(careerSources)
     .innerJoin(companies, eq(careerSources.companyId, companies.id))
+    .innerJoin(
+      watchlists,
+      and(eq(watchlists.companyId, companies.id), eq(watchlists.userId, owner.id)),
+    )
     .where(and(eq(careerSources.userId, owner.id), eq(careerSources.active, true)))
     .orderBy(companies.name);
+  const jobs = await db
+    .select({
+      postedAt: canonicalJobs.postedAt,
+      postedAtConfidence: canonicalJobs.postedAtConfidence,
+      firstSeenAt: canonicalJobs.firstSeenAt,
+      verifiedAt: canonicalJobs.verifiedAt,
+      lifecycleStatus: canonicalJobs.lifecycleStatus,
+    })
+    .from(canonicalJobs)
+    .where(eq(canonicalJobs.userId, owner.id));
   const monthStart = new Date();
   monthStart.setUTCDate(1);
   monthStart.setUTCHours(0, 0, 0, 0);
@@ -69,6 +90,25 @@ export default async function OperationsPage({
     )
     .orderBy(desc(deadLetterRecords.failedAt))
     .limit(10);
+  const reliablePosted = jobs.filter((job) => job.postedAt && job.postedAtConfidence !== "low");
+  const detectionLatencies = reliablePosted
+    .map((job) => Math.max(0, job.firstSeenAt.getTime() - job.postedAt!.getTime()) / 3_600_000)
+    .toSorted((a, b) => a - b);
+  const medianDetectionLatency = detectionLatencies.length
+    ? (detectionLatencies[Math.floor(detectionLatencies.length / 2)] ?? null)
+    : null;
+  const scheduledScansPerDay = sources.reduce((sum, source) => sum + 1_440 / source.cadence, 0);
+  const stalePrioritySources = sources.filter(
+    (source) =>
+      source.tier === "priority" &&
+      (!source.lastSuccessAt ||
+        source.lastSuccessAt.getTime() <
+          checkedAt.getTime() - Math.max(60, source.cadence * 3) * 60_000),
+  );
+  const activeSourceErrors = sources.filter((source) => source.lastError).length;
+  const adaptedColdSources = sources.filter(
+    (source) => source.tier === "cold" && source.cadence > 240,
+  ).length;
   return (
     <div className="mx-auto max-w-6xl">
       <header className="flex flex-wrap items-end justify-between gap-5">
@@ -99,13 +139,44 @@ export default async function OperationsPage({
           {successMessage}
         </p>
       ) : null}
-      <div className="mt-7 grid gap-4 sm:grid-cols-3">
+      {stalePrioritySources.length || activeSourceErrors || adaptedColdSources ? (
+        <div
+          className="mt-6 rounded-2xl border border-[var(--coral)] bg-[#fff5ed] p-4 text-sm"
+          role="alert"
+        >
+          <p className="font-black">Monitoring attention required</p>
+          <p className="mt-1 text-[var(--muted)]">
+            {stalePrioritySources.length} stale priority source
+            {stalePrioritySources.length === 1 ? "" : "s"} · {activeSourceErrors} active source
+            error{activeSourceErrors === 1 ? "" : "s"} · {adaptedColdSources} quota-adapted cold
+            source{adaptedColdSources === 1 ? "" : "s"}. Priority cadence has not been reduced.
+          </p>
+        </div>
+      ) : null}
+      <div className="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Stat icon={Activity} label="Active sources" value={String(sources.length)} />
         <Stat icon={CircleX} label="Unresolved dead letters" value={String(dead?.count ?? 0)} />
         <Stat
           icon={Clock3}
           label="Estimated cost this month"
           value={`$${Number(cost?.usd ?? 0).toFixed(2)}`}
+        />
+        <Stat
+          icon={Radar}
+          label="Scheduled official scans/day"
+          value={scheduledScansPerDay.toFixed(0)}
+        />
+        <Stat
+          icon={Clock3}
+          label="Median posted-to-detected latency"
+          value={
+            medianDetectionLatency === null ? "No data" : `${medianDetectionLatency.toFixed(1)}h`
+          }
+        />
+        <Stat
+          icon={CircleCheck}
+          label="Reliable official timestamps"
+          value={`${reliablePosted.length}/${jobs.length}`}
         />
       </div>
       <section className="mt-8">
@@ -122,7 +193,8 @@ export default async function OperationsPage({
                     <div>
                       <h3 className="font-black">{source.company}</h3>
                       <p className="mt-1 text-xs text-[var(--muted)]">
-                        {source.connector.replaceAll("_", " ")}
+                        {source.connector.replaceAll("_", " ")} · {source.scope} · {source.tier} ·
+                        every {source.cadence}m
                       </p>
                     </div>
                     {source.lastError ? (
@@ -168,6 +240,7 @@ export default async function OperationsPage({
                   <tr>
                     <th className="p-4">Company</th>
                     <th className="p-4">Connector</th>
+                    <th className="p-4">Tier</th>
                     <th className="p-4">Last success</th>
                     <th className="p-4">Last attempt</th>
                     <th className="p-4">State</th>
@@ -179,6 +252,9 @@ export default async function OperationsPage({
                     <tr className="border-b border-[var(--line)] last:border-0" key={source.id}>
                       <td className="p-4 font-black">{source.company}</td>
                       <td className="p-4">{source.connector}</td>
+                      <td className="p-4">
+                        {source.scope} · {source.tier} · {source.cadence}m
+                      </td>
                       <td className="p-4 text-[var(--muted)]">
                         {source.lastSuccessAt?.toLocaleString() ?? "Never"}
                       </td>

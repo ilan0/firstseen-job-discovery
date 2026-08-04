@@ -32,7 +32,7 @@ notification idempotency.
 | Background check     | Ordinary check allowed                                                              | Only if it is actually clearance/suitability                                                 | Ambiguous federal language          |
 | Sponsorship          | No sponsorship needed; employer restrictions compatible                             | Employer requires an incompatible work status                                                | State/work authorization unclear    |
 | Onsite/hybrid        | Configured South Florida, Fairfax-centered DMV, or NYC five boroughs                | Proven outside accepted areas; New Jersey is not NYC                                         | City/region too vague               |
-| Fully remote         | Employer can employ candidate in compatible US location                             | Proven incompatible state/country restriction                                                | Allowed states/jurisdiction missing |
+| Fully remote         | Employer can employ candidate in compatible US location                             | Proven incompatible state/country/region restriction                                         | Allowed states/jurisdiction missing |
 | Role                 | Software/AI engineering families are rankable                                       | Proven non-software role is not recommended                                                  | Unclear technical family            |
 | Salary/industry      | Any salary and industry                                                             | —                                                                                            | Missing salary does not block       |
 
@@ -77,19 +77,28 @@ and ranking version:
   capped as a job ages.
 
 Recommendation bands are Hot, Strong, Possible, Review, or Not Recommended. There is no displayed
-opaque match score. A Hot alert additionally requires open/reopened lifecycle, urgency at least 85,
-a current snapshot, and notification idempotency. Closed/uncertain jobs cannot open through Apply or
-restore to Active.
+opaque match score. A Hot or Strong alert additionally requires open/reopened lifecycle, urgency at
+least 85, age under 24 hours from a reliable official posting or verified reopening, an Active queue
+state, a current snapshot, and occurrence-level notification idempotency. Closed/uncertain jobs
+cannot open through Apply or restore to Active.
 
 ## Freshness and lifecycle
 
-- Prefer `posted_at` only when its source confidence is not low; otherwise use `first_seen_at`.
-- Fresh, aging, and stale bands alter the freshness dimension and cap effective urgency at query
-  time so stored scores cannot keep an old job hot.
+- Prefer `reopened_at` for a verified reopening occurrence, then `posted_at` when its source
+  confidence is not low; otherwise visibly use `first_seen_at`. Reject malformed timestamps and
+  values more than five minutes in the future as anomalous Review-confidence input.
+- Shared dynamic boundaries are Fresh <6h, Very fresh ≤24h, Current ≤7d, Aging ≤30d, and Stale
+  thereafter. Feed sections are Just posted ≤24h, New ≤3d, Recent ≤7d, and Older ≤30d. The default
+  feed uses the first three; only Hot/Strong jobs enter Older exceptional matches.
+- Freshness alters the freshness dimension and caps effective urgency at query time so stored scores
+  cannot keep an old job hot. FirstSeen discovery never makes an ancient official posting fresh.
 - A complete successful source fetch supplies the seen external IDs and URLs. Missing jobs advance
   a connector-specific successful-miss lifecycle; failed/incomplete fetches do nothing to closure.
 - A seen possibly-closed/closed job returns to Open, clears misses/closure timestamps, and records a
   reopening time. Saved/Applied/Dismissed history is not reset.
+- An unchanged reopened description is reranked from the validated cached extraction without a new
+  model call. Its reopening alert has a new occurrence identity, while previous user action still
+  suppresses an alert.
 - A material fingerprint includes title, description, locations, workplace/employment, salary, and
   other application-relevant fields. Cosmetic source metadata does not trigger AI.
 - An unchanged listing is deterministically reprocessed when the eligibility or ranking policy

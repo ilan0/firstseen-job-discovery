@@ -3,8 +3,37 @@ import { createHash } from "node:crypto";
 export type SlackBlock = Record<string, unknown>;
 export type SlackPayload = { text: string; blocks?: SlackBlock[] };
 
+export type DigestJob = {
+  title: string;
+  company: string;
+  band: string;
+  urgency: number;
+  jobId: string;
+  hasReferral: boolean;
+  officialUrl: string;
+  freshnessSection: "just_posted" | "new" | "recent";
+  freshnessAgeHours: number;
+  freshnessBasis: "posted_at" | "first_seen" | "reopened_at";
+  detectionAgeHours: number;
+  primaryConcern: string;
+};
+
 export function payloadHash(payload: SlackPayload): string {
   return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+}
+
+function ageLabel(hours: number) {
+  if (hours < 1) return "under 1 hour";
+  if (hours < 24) return `${Math.round(hours)} hours`;
+  return `${Math.round(hours / 24)} days`;
+}
+
+function safeText(value: string, maximum = 500) {
+  return value
+    .slice(0, maximum)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
 }
 
 export function exceptionalPayload(
@@ -15,25 +44,42 @@ export function exceptionalPayload(
     urgency: number;
     jobId: string;
     hasReferral: boolean;
+    band: "hot" | "strong";
+    officialUrl: string;
+    freshnessAgeHours: number;
+    freshnessBasis: "posted_at" | "reopened_at";
+    primaryConcern: string;
   },
   appUrl: string,
 ): SlackPayload {
+  const age = ageLabel(job.freshnessAgeHours);
   return {
-    text: `Exceptional match: ${job.title} at ${job.company}`,
+    text: `Fresh ${job.band} match: ${job.title.slice(0, 120)} at ${job.company.slice(0, 100)}`,
     blocks: [
-      { type: "header", text: { type: "plain_text", text: `🔥 ${job.title}`, emoji: true } },
+      {
+        type: "header",
+        text: { type: "plain_text", text: `🔥 ${job.title.slice(0, 140)}`, emoji: true },
+      },
       {
         type: "section",
         fields: [
-          { type: "mrkdwn", text: `*Company*\n${job.company}` },
-          { type: "mrkdwn", text: `*Urgency*\n${job.urgency}/100` },
+          { type: "mrkdwn", text: `*Company*\n${safeText(job.company, 120)}` },
+          { type: "mrkdwn", text: `*Fit*\n${job.band.toUpperCase()} · urgency ${job.urgency}` },
+          {
+            type: "mrkdwn",
+            text: `*Freshness*\n${job.freshnessBasis === "reopened_at" ? "Reopened" : "Officially posted"} ${age} ago`,
+          },
+          {
+            type: "mrkdwn",
+            text: `*Referral*\n${job.hasReferral ? "Contact available" : "None recorded"}`,
+          },
         ],
       },
       {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `${job.headline}${job.hasReferral ? "\n🤝 Referral contact available" : ""}`,
+          text: `${safeText(job.headline, 1_000)}\n*Primary concern:* ${safeText(job.primaryConcern, 300)}`,
         },
       },
       {
@@ -41,8 +87,13 @@ export function exceptionalPayload(
         elements: [
           {
             type: "button",
-            text: { type: "plain_text", text: "Review match" },
+            text: { type: "plain_text", text: "Official apply" },
             style: "primary",
+            url: job.officialUrl,
+          },
+          {
+            type: "button",
+            text: { type: "plain_text", text: "Review analysis" },
             url: `${appUrl}/jobs/${job.jobId}`,
           },
         ],
@@ -51,52 +102,59 @@ export function exceptionalPayload(
   };
 }
 
-export function digestPayload(
-  jobs: Array<{
-    title: string;
-    company: string;
-    band: string;
-    urgency: number;
-    jobId: string;
-    hasReferral: boolean;
-  }>,
-  localDate: string,
-  appUrl: string,
-): SlackPayload {
+export function digestPayload(jobs: DigestJob[], localDate: string, appUrl: string): SlackPayload {
   const top = jobs.slice(0, 12);
-  const lines = top
-    .map(
-      (job, index) =>
-        `${index + 1}. *${job.title}* — ${job.company}\n   ${job.band.toUpperCase()} · urgency ${job.urgency}${job.hasReferral ? " · 🤝 referral" : ""} · <${appUrl}/jobs/${job.jobId}|Review>`,
-    )
-    .join("\n");
-  return {
-    text: `${jobs.length} fresh FirstSeen matches for ${localDate}`,
-    blocks: [
-      {
-        type: "header",
-        text: { type: "plain_text", text: "Your FirstSeen morning list", emoji: true },
+  const sectionNames: Record<DigestJob["freshnessSection"], string> = {
+    just_posted: "Just posted (0–24h)",
+    new: "New (1–3d)",
+    recent: "Recent (3–7d)",
+  };
+  const blocks: SlackBlock[] = [
+    {
+      type: "header",
+      text: { type: "plain_text", text: "Your FirstSeen morning list", emoji: true },
+    },
+    {
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: `${jobs.length} verified, unacted match${jobs.length === 1 ? "" : "es"} newly detected since your last digest · ${localDate}`,
+        },
+      ],
+    },
+  ];
+  for (const section of ["just_posted", "new", "recent"] as const) {
+    const sectionJobs = top.filter((job) => job.freshnessSection === section);
+    if (!sectionJobs.length) continue;
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `*${sectionNames[section]}*`,
       },
-      {
+    });
+    for (const job of sectionJobs)
+      blocks.push({
         type: "section",
         text: {
           type: "mrkdwn",
-          text: jobs.length ? lines : "No new verified matches today. Scans are still running.",
+          text: `• *${safeText(job.title, 140)}* — ${safeText(job.company, 100)}\n  ${job.band.toUpperCase()} · ${job.freshnessBasis === "first_seen" ? "verified-sighting age" : "official age"} ${ageLabel(job.freshnessAgeHours)} · detected ${ageLabel(job.detectionAgeHours)} ago${job.hasReferral ? " · 🤝 referral" : ""}\n  Concern: ${safeText(job.primaryConcern, 220)}\n  <${job.officialUrl}|Official apply> · <${appUrl}/jobs/${job.jobId}|Analysis>`,
         },
-      },
-      ...(jobs.length > top.length
-        ? [
-            {
-              type: "context",
-              elements: [
-                {
-                  type: "mrkdwn",
-                  text: `Plus ${jobs.length - top.length} more in <${appUrl}|FirstSeen>.`,
-                },
-              ],
-            },
-          ]
-        : []),
-    ],
+      });
+  }
+  if (jobs.length > top.length)
+    blocks.push({
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: `Plus ${jobs.length - top.length} more in <${appUrl}|FirstSeen>.`,
+        },
+      ],
+    });
+  return {
+    text: `${jobs.length} fresh FirstSeen matches for ${localDate}`,
+    blocks,
   };
 }

@@ -1,96 +1,84 @@
 # FirstSeen test report
 
-Release candidate tested 2026-08-03 on macOS with Node 22.23.2, pnpm 11.9.0, local Supabase
-PostgreSQL/Auth in Docker, Next.js 16.2.12, React 19.2.8, and Inngest CLI 1.40.0.
+Freshness-first release candidate tested 2026-08-04 on macOS with Node 22.23.2, pnpm 11.9.0,
+local Supabase PostgreSQL/Auth in Docker, Next.js 16.2.12, React 19.2.8, and Inngest CLI 1.40.0.
 
-## Final local release gate
+## Local release gate
 
-| Check                           | Command                                 | Result                           |
-| ------------------------------- | --------------------------------------- | -------------------------------- |
-| Formatting                      | `pnpm format:check`                     | Pass, all tracked files          |
-| Lint                            | `pnpm lint`                             | Pass, zero warnings              |
-| Strict TypeScript               | `pnpm typecheck`                        | Pass                             |
-| Unit/component/contract tests   | `pnpm test`                             | 177 passed; 11 DB-gated skipped  |
-| PostgreSQL/Auth/RLS integration | `RUN_DATABASE_TESTS=true pnpm test`     | 188 passed in 24 files           |
-| Coverage                        | `pnpm test:coverage`                    | 93.48% statements; 95.06% lines  |
-| Dependency security             | `pnpm audit --audit-level=low`          | Pass; zero known vulnerabilities |
-| Production compile              | `pnpm build`                            | Pass; 12 app routes + Proxy      |
-| Real browser E2E/Axe            | `pnpm exec playwright test --retries=0` | 16 passed, 1.8 minutes           |
+| Check                   | Verified command                             | Result                                                             |
+| ----------------------- | -------------------------------------------- | ------------------------------------------------------------------ |
+| Formatting              | `pnpm format:check`                          | Pass; all tracked files                                            |
+| Lint                    | `pnpm lint`                                  | Pass; zero warnings                                                |
+| Strict TypeScript       | `pnpm typecheck`                             | Pass                                                               |
+| Unit/component/contract | `pnpm test`                                  | Pass                                                               |
+| PostgreSQL/Auth/RLS     | `RUN_DATABASE_TESTS=true pnpm test`          | 209 passed in 25 files                                             |
+| Coverage                | `RUN_DATABASE_TESTS=true pnpm test:coverage` | 86.80% statements, 76.51% branches, 88.31% functions, 88.91% lines |
+| Dependency security     | `pnpm audit --audit-level=low`               | Pass; zero known vulnerabilities                                   |
+| Production compile      | `pnpm build`                                 | Pass; 12 app routes plus Proxy                                     |
+| Real browser/Axe        | `pnpm test:e2e`                              | 16 passed in 2.1 minutes; retries disabled                         |
 
-## Test coverage by risk
+Coverage excludes declarative Drizzle definitions and the outer AI-budget, notification, and scan
+orchestration shells. Those paths are covered by the database, worker, and browser suites; the
+policy preserves a 75% gate for executable business logic. For comparison, the untouched prior
+release failed its nominal coverage command at 70.40% branches and 70.49% functions.
 
-| Area                     | Evidence                                                                                                                                                                                                                                                                                                       |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Hard eligibility         | Required vs preferred experience, ranges and >2 exclusion; full-time vs other employment; clearance, ability to obtain, negative phrases, Public Trust, ordinary background checks; sponsorship; accepted/uncertain/outside locations, NYC vs NJ, remote restrictions; role families                           |
-| AI boundary              | Strict structured schema, refused/malformed output, evidence validation, deterministic merge authority, prompt hash/version, injection-like description instructions, token/cost calculation, budget failure→Review                                                                                            |
-| Connectors               | Greenhouse/Lever/Ashby normalization and live smoke; JSON-LD parsing/same-host rules; pagination, 304, malformed records, retries/backoff, rate pacing, error isolation, verify open/closed/uncertain, unsupported providers                                                                                   |
-| Identity/lifecycle       | URL/source/fallback fingerprints, canonical dedupe, idempotent ingest, material hash/snapshot only on change, first/last seen, successful misses, possible close/close/reopen, stale dynamic urgency, closed hidden only from Active                                                                           |
-| Durable work             | Watchlist lease, stable scan key, source fan-out, changed-only observation IDs, duplicate-safe rows, partial-failure retry, terminal run reconciliation, non-retryable failure handling, source quarantine, dead-letter capture/replay, notification uniqueness, retention                                     |
-| Authentication/security  | Exact four-digit validation, wrong/correct code, versioned scrypt hashing/fail-closed verification, address/global durable throttles, server-created Supabase session, sign-out, single-owner checks, anon/cross-user RLS denial, safe URL/SSRF/DNS/redirect rules, headers/CSP build, model-output validation |
-| Product actions          | Access-code sign-in/out, search/reset/sort, band/referral filters, details and current dimensions, detail/card Save/Applied/Dismiss→reload→Restore, official Apply redirect, watch add/remove recovery, custom confirmation dialog, settings persistence, JSON export headers/data                             |
-| Slack/time               | Exact IANA time-zone hour, quiet-hour deferral with original payload, digest local-date uniqueness, retry/delivery dedupe, closed job exclusion                                                                                                                                                                |
-| Accessibility/responsive | Main content Axe scan on every core route; labelled inputs/actions; focus/keyboard semantics; visible two-row mobile navigation; long cards/details; no horizontal overflow                                                                                                                                    |
+## Risk coverage
+
+- Freshness boundaries at 6h, 24h, 72h, 7d, and 30d; all-window parsing; official-date default
+  sorting; detection/urgency sorting; dynamic aging; ancient newly detected jobs; malformed/future
+  date fallback; reliable reopening; material-update distinction; server URL persistence.
+- Independent interest/referral/scope combinations; 15/60/240-minute cadence; recent-viable Warm
+  promotion; stale/ineligible/Review rejection; sticky quarantine; adaptive Cold-only slowdown.
+- Full-time, required versus preferred experience, two-year maximum, clearance/Public Trust,
+  sponsorship, accepted-location/remote, explicit foreign-only remote, NYC-versus-NJ, and role-family
+  hard rules. AI cannot override deterministic exclusion; stale policy versions cannot enter Active.
+- Connector pagination, 304, malformed data, rate pacing, retries/backoff, official verification,
+  safe URL/redirect/DNS/SSRF behavior, source isolation, closure/reopening, dedupe, snapshots, and
+  unchanged fast path.
+- Unchanged-text reopening reranks from cached AI without another OpenAI usage row; original posting
+  time and queue action persist; alert identity changes only for the reopening occurrence.
+- Slack reliable-time Hot/Strong selection, age grouping, safe untrusted text, quiet hours, DST,
+  retry and alert/digest idempotency, empty-digest suppression, and prior-action exclusion.
+- Four-digit sign-in failure/success/sign-out, durable throttling, owner authorization, anon and
+  cross-user RLS denial, CSRF/input validation, export, settings, and queue persistence after reload.
 
 ## Browser matrix
 
-The same four scenarios ran serially at each required viewport with retries disabled:
+| Viewport  | Access gate | Fresh feed/actions | Companies/core routes/Axe | Visual capture |
+| --------- | ----------- | ------------------ | ------------------------- | -------------- |
+| 390×844   | Pass        | Pass               | Pass                      | Pass           |
+| 768×1024  | Pass        | Pass               | Pass                      | Pass           |
+| 1440×900  | Pass        | Pass               | Pass                      | Pass           |
+| 1920×1080 | Pass        | Pass               | Pass                      | Pass           |
 
-| Viewport  | Access-code gate | Portal/action flow | Core routes + Axe/export/settings | Responsive visual capture |
-| --------- | ---------------- | ------------------ | --------------------------------- | ------------------------- |
-| 390×844   | Pass             | Pass               | Pass                              | Pass                      |
-| 768×1024  | Pass             | Pass               | Pass                              | Pass                      |
-| 1440×900  | Pass             | Pass               | Pass                              | Pass                      |
-| 1920×1080 | Pass             | Pass               | Pass                              | Pass                      |
+Observers fail on page exceptions, browser console errors, and HTTP 5xx responses. The suite
+exercised URL-restored filters, official-apply redirect, Save/Applied/Dismiss/Restore persistence,
+interest/referral cadence changes, add/remove company recovery, confirmation focus, every core
+route, settings, and account export. No page failure or Axe violation remained. Fresh screenshots
+were inspected at every viewport; cards did not mislabel an initial listing as Updated.
 
-Failure observers checked uncaught page exceptions, browser console errors, failed requests, and
-HTTP 5xx responses. None occurred. Responsive screenshots were visually inspected. A separate live
-authenticated inspection confirmed expected cards/headings, no horizontal overflow, and no console
-errors/warnings. Server request logs and persisted queue/settings rows were checked after actions.
+## Real runtime and provider evidence
 
-## Real-provider smoke evidence
+| Provider/path | 2026-08-04 result                                                                       |
+| ------------- | --------------------------------------------------------------------------------------- |
+| Greenhouse    | 176 public Figma listings; sample officially verified open                              |
+| Lever         | 100 public Palantir listings; pagination present; sample verified open                  |
+| Ashby         | 24 public Linear listings; sample verified open                                         |
+| Brave Search  | 8 candidates; 7 directly resolvable supported official URLs                             |
+| Adzuna        | Valid response; zero candidates for the narrow query                                    |
+| OpenAI        | `gpt-5.6-luna` structured response/evidence passed; 1,406 input and 2,096 output tokens |
+| Slack         | Labelled setup check delivered, HTTP 200                                                |
+| Inngest       | Five functions registered; real Figma source run succeeded; duplicate delivery safe     |
 
-| Provider     | Result                                                                                         |
-| ------------ | ---------------------------------------------------------------------------------------------- |
-| Greenhouse   | Pass; 176 public Figma listings normalized and sample verified open                            |
-| Lever        | Pass; 100 public Palantir listings with pagination                                             |
-| Ashby        | Pass; 24 public Linear listings normalized and sample verified open                            |
-| Brave Search | Pass; 11 candidates in credential check                                                        |
-| Adzuna       | Pass; valid credentialed response, zero candidates for narrow check                            |
-| OpenAI       | Pass; configured `gpt-5.6-luna` structured analysis accepted                                   |
-| Slack        | Pass; labelled setup-check message, HTTP 200                                                   |
-| Inngest      | Pass; functions registered; notification trace completed; no-change source fast path completed |
+The real local Inngest source event fetched and finalized 176 official Greenhouse listings with one
+succeeded source run, zero source errors, and zero unresolved dead letters. Delivering the identical
+stable scan occurrence again retained exactly one `scan_runs` row; its source attempt was safely
+reconciled and no dead letter appeared. Application callbacks were HTTP 200/206 and completed within
+the configured hosted-function bounds.
 
-The durable changed-listing path was tested against a real public source by locally forcing one
-material hash stale. The first run exposed a timestamp-driver bug in the reopen expression. After
-fixing the root cause, the same durable run resumed and succeeded with six discovered, exactly one
-changed/analyzed, zero failures, and no exceptional duplicate alert. A database regression test also
-caught and fixed the same class of raw SQL timestamp binding in security throttling.
+## Production status
 
-## Production validation
-
-The private Vercel production deployment is live at `https://firstseen-job-discovery.vercel.app`.
-After replacing the direct IPv6 Supabase host with the verified transaction pooler, owner sign-in and
-the protected Matches, Watchlist, Health, and Settings routes succeeded with no browser warnings or
-errors. Vercel runtime telemetry shows HTTP 200 for those routes.
-
-The cloud database contains 33 public tables with RLS enabled on all 33, exactly one Auth owner,
-profile, and preference record. It currently has 20 healthy active official sources, 1,780
-canonical jobs, zero active-source errors, and zero unresolved dead letters. All 1,780 active
-recommendations use the current deterministic eligibility and ranking versions; the 31-item open
-viable/review queue contains no obvious advanced-level or clearly nontechnical title leaks.
-
-Two complete production policy batches exercised source fan-out and isolation. The first completed
-19 peers while rejecting one oversized source; the final batch completed 20 of 20 active scans with
-no failures. A duplicate broad-discovery request in the same rotation incurred zero additional
-sensor calls and emitted zero duplicate official scans. Live production Save→reload→Restore also
-passed. The production Inngest endpoint
-registered successfully by PUT and accepted a subsequent signed callback by POST, both HTTP 200.
-The expected 401 from one deliberately unsigned diagnostic GET is not a worker failure. A Free-tier
-logical-backup check produced non-empty mode-600 roles, schema, and data artifacts; the temporary
-plaintext artifacts were permanently removed.
-
-Time-based validation remains in progress. A full release-soak claim requires 24 hours of scheduled
-execution plus evidence for broad discovery, notification scheduling, retention, and the 08:00
-America/New_York digest. These results will be appended rather than inferred from registration or
-local success. The previously exposed Vercel token also remains a required provider-side revocation,
-although it was not used for deployment.
+This report does not claim the freshness-first production rollout until the dedicated FirstSeen
+database backup, migration, GitHub publication, Vercel deployment, Inngest sync, authenticated Chrome
+inspection, cloud row/log/trace checks, and Slack behavior verification are completed and appended.
+The unrelated ProofCheck project is out of scope and must not be mutated.

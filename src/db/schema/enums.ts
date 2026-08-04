@@ -1,6 +1,14 @@
 import { pgEnum } from "drizzle-orm/pg-core";
 
 export const companyOrigin = pgEnum("company_origin", ["manual", "referral", "discovered"]);
+export const watchlistScope = pgEnum("watchlist_scope", ["personal", "discovered"]);
+export const monitoringTier = pgEnum("monitoring_tier", [
+  "priority",
+  "standard",
+  "warm",
+  "cold",
+  "quarantined",
+]);
 export const referralStatus = pgEnum("referral_status", [
   "available",
   "requested",

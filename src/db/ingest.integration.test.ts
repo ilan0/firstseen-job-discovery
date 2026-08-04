@@ -114,10 +114,42 @@ describe.runIf(enabled)("canonical ingestion persistence", () => {
       },
     );
     expect(duplicate.jobId).toBe(first.jobId);
+    expect(duplicate).toMatchObject({
+      postedAt: new Date("2026-08-03T12:00:00Z"),
+      postedAtConfidence: "high",
+      postedAtAnomalous: true,
+    });
+    const closed = await admin
+      .from("canonical_jobs")
+      .update({ lifecycle_status: "closed", closed_at: "2026-08-04T11:00:00Z" })
+      .eq("id", first.jobId);
+    if (closed.error) throw closed.error;
+    const reopened = await ingestListing(
+      { ...context, observedAt: new Date("2026-08-04T13:00:00Z") },
+      {
+        ...listing,
+        title: "Software Engineer, Platform",
+        employmentType: "Contract",
+        requisitionId: "REQ-UPDATED",
+        postedAt: "2026-08-04T12:00:00Z",
+        officialUrl: "https://jobs.lever.co/integration/alternate-url",
+        applyUrl: "https://jobs.lever.co/integration/alternate-url",
+        descriptionText: `${listing.descriptionText} TypeScript required.`,
+      },
+    );
+    expect(reopened).toMatchObject({
+      jobId: first.jobId,
+      changed: false,
+      snapshotId: null,
+      reopened: true,
+      reopenedAt: new Date("2026-08-04T13:00:00Z"),
+    });
     const jobs = await admin.from("canonical_jobs").select("id").eq("user_id", user.id);
     const canonical = await admin
       .from("canonical_jobs")
-      .select("title,employment_type,requisition_id,posted_at,official_url")
+      .select(
+        "title,employment_type,requisition_id,posted_at,posted_at_confidence,official_url,lifecycle_status,reopened_at",
+      )
       .eq("id", first.jobId)
       .single();
     const snapshots = await admin
@@ -131,7 +163,10 @@ describe.runIf(enabled)("canonical ingestion persistence", () => {
       employment_type: "contract",
       requisition_id: "REQ-UPDATED",
       official_url: "https://jobs.lever.co/integration/alternate-url",
+      posted_at: "2026-08-04T12:00:00+00:00",
+      posted_at_confidence: "high",
+      lifecycle_status: "reopened",
+      reopened_at: "2026-08-04T13:00:00+00:00",
     });
-    expect(canonical.data?.posted_at).toContain("2026-08-04");
   });
 });

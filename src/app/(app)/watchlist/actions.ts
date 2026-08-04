@@ -14,6 +14,7 @@ import {
   watchlists,
 } from "@/db/schema";
 import { resolveOfficialSource } from "@/discovery/resolve-official";
+import { refreshCompanyMonitoring } from "@/lib/companies/monitoring";
 import { requireOwner } from "@/lib/auth/owner";
 import { inngest } from "@/inngest/client";
 
@@ -23,6 +24,7 @@ const addSchema = z.object({
   referralPerson: z.string().trim().max(160).optional(),
   notes: z.string().trim().max(2_000).optional(),
   priority: z.coerce.number().int().min(1).max(5),
+  interested: z.enum(["on"]).optional(),
 });
 
 function normalizedName(value: string) {
@@ -60,14 +62,16 @@ export async function addWatchCompany(
         normalizedName: normalizedName(input.company),
         origin: input.referralPerson ? "referral" : "manual",
         priority: input.priority,
+        interested: Boolean(input.interested),
         notes: input.notes || null,
       })
       .onConflictDoUpdate({
         target: [companies.userId, companies.normalizedName],
         set: {
           name: input.company,
-          origin: input.referralPerson ? "referral" : "manual",
+          origin: sql`case when ${companies.origin} = 'discovered' then ${companies.origin} else ${input.referralPerson ? "referral" : "manual"}::company_origin end`,
           priority: input.priority,
+          interested: Boolean(input.interested),
           notes: input.notes || null,
           active: true,
           updatedAt: new Date(),
@@ -119,13 +123,17 @@ export async function addWatchCompany(
       .values({
         userId: owner.id,
         companyId: company.id,
-        cadenceMinutes: input.priority <= 2 ? 60 : 120,
+        scope: "personal",
+        monitoringTier: input.interested || input.referralPerson ? "priority" : "standard",
+        cadenceMinutes: input.interested || input.referralPerson ? 15 : 60,
       })
       .onConflictDoUpdate({
         target: [watchlists.userId, watchlists.companyId],
         set: {
           active: true,
-          cadenceMinutes: input.priority <= 2 ? 60 : 120,
+          scope: "personal",
+          monitoringTier: input.interested || input.referralPerson ? "priority" : "standard",
+          cadenceMinutes: input.interested || input.referralPerson ? 15 : 60,
           nextScanAt: new Date(),
           updatedAt: new Date(),
         },
@@ -186,13 +194,91 @@ export async function addWatchCompany(
 }
 
 const idSchema = z.string().uuid();
+
+async function ownedCompanyId(formData: FormData, ownerId: string) {
+  const companyId = idSchema.parse(formData.get("companyId"));
+  const [company] = await db
+    .select({ id: companies.id })
+    .from(companies)
+    .where(and(eq(companies.userId, ownerId), eq(companies.id, companyId)))
+    .limit(1);
+  if (!company) throw new Error("Company not found");
+  return companyId;
+}
+
+export async function followDiscoveredCompany(formData: FormData) {
+  const owner = await requireOwner();
+  const companyId = await ownedCompanyId(formData, owner.id);
+  const now = new Date();
+  await db
+    .update(watchlists)
+    .set({ active: true, scope: "personal", nextScanAt: now, updatedAt: now })
+    .where(and(eq(watchlists.userId, owner.id), eq(watchlists.companyId, companyId)));
+  await refreshCompanyMonitoring(owner.id, companyId, now);
+  revalidatePath("/watchlist");
+}
+
+export async function toggleCompanyInterest(formData: FormData) {
+  const owner = await requireOwner();
+  const companyId = await ownedCompanyId(formData, owner.id);
+  const interested = formData.get("interested") === "true";
+  await db
+    .update(companies)
+    .set({ interested, updatedAt: new Date() })
+    .where(and(eq(companies.userId, owner.id), eq(companies.id, companyId)));
+  await refreshCompanyMonitoring(owner.id, companyId);
+  revalidatePath("/watchlist");
+}
+
+const referralSchema = z.object({
+  companyId: z.string().uuid(),
+  personName: z.string().trim().min(2).max(160),
+});
+
+export async function addCompanyReferral(formData: FormData) {
+  const owner = await requireOwner();
+  const input = referralSchema.parse(Object.fromEntries(formData));
+  await ownedCompanyId(formData, owner.id);
+  const [existing] = await db
+    .select({ id: referrals.id })
+    .from(referrals)
+    .where(
+      and(
+        eq(referrals.userId, owner.id),
+        eq(referrals.companyId, input.companyId),
+        sql`lower(${referrals.personName}) = lower(${input.personName})`,
+      ),
+    )
+    .limit(1);
+  if (!existing)
+    await db.insert(referrals).values({
+      userId: owner.id,
+      companyId: input.companyId,
+      personName: input.personName,
+      status: "available",
+    });
+  await refreshCompanyMonitoring(owner.id, input.companyId);
+  revalidatePath("/watchlist");
+}
+
+export async function removeCompanyReferral(formData: FormData) {
+  const owner = await requireOwner();
+  const referralId = idSchema.parse(formData.get("referralId"));
+  const [removed] = await db
+    .delete(referrals)
+    .where(and(eq(referrals.userId, owner.id), eq(referrals.id, referralId)))
+    .returning({ companyId: referrals.companyId });
+  if (removed) await refreshCompanyMonitoring(owner.id, removed.companyId);
+  revalidatePath("/watchlist");
+}
+
 export async function removeWatchCompany(formData: FormData) {
   const owner = await requireOwner();
-  const companyId = idSchema.parse(formData.get("companyId"));
+  const companyId = await ownedCompanyId(formData, owner.id);
   await db.transaction(async (tx) => {
     await tx
       .update(watchlists)
-      .set({ active: false, updatedAt: new Date() })
+      .set({ active: false, monitoringTier: "quarantined", updatedAt: new Date() })
       .where(and(eq(watchlists.userId, owner.id), eq(watchlists.companyId, companyId)));
     await tx
       .update(companies)

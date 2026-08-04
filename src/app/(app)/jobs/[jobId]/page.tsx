@@ -76,6 +76,11 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
           <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-black uppercase">
             {job.freshness.band.replaceAll("_", " ")}
           </span>
+          {job.materialChangeReasons?.length ? (
+            <span className="rounded-full bg-[#fff0d8] px-3 py-1 text-xs font-black text-[#7a4c0d] uppercase">
+              Updated · {job.materialChangeReasons.join(", ")}
+            </span>
+          ) : null}
         </div>
         <h1 className="mt-5 text-3xl font-black tracking-[-0.04em] sm:text-5xl">{job.title}</h1>
         <p className="mt-2 flex items-center gap-2 text-lg text-white/75">
@@ -211,10 +216,17 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
       <section className="mt-6 grid gap-4 sm:grid-cols-3">
         <Metadata
           icon={<CalendarDays aria-hidden="true" size={18} />}
-          label={job.freshness.basis === "posted_at" ? "Officially posted" : "First discovered"}
-          value={(job.postedAt ?? job.firstSeenAt).toLocaleString("en-US", {
-            timeZone: "America/New_York",
-          })}
+          label="Officially posted"
+          value={
+            job.postedAt && job.postedAtConfidence !== "low"
+              ? job.postedAt.toLocaleString("en-US", { timeZone: "America/New_York" })
+              : "Unavailable or low confidence — freshness uses first verified sighting"
+          }
+        />
+        <Metadata
+          icon={<Clock3 aria-hidden="true" size={18} />}
+          label="FirstSeen detected"
+          value={job.firstSeenAt.toLocaleString("en-US", { timeZone: "America/New_York" })}
         />
         <Metadata
           icon={<ShieldCheck aria-hidden="true" size={18} />}
@@ -228,6 +240,13 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
             job.verifiedAt?.toLocaleString("en-US", { timeZone: "America/New_York" }) ?? "Pending"
           }
         />
+        {job.reopenedAt ? (
+          <Metadata
+            icon={<Clock3 aria-hidden="true" size={18} />}
+            label="Verified reopening"
+            value={job.reopenedAt.toLocaleString("en-US", { timeZone: "America/New_York" })}
+          />
+        ) : null}
       </section>
       <section className="mt-6 rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-6">
         <h2 className="text-lg font-black">Explainable dimensions</h2>

@@ -147,6 +147,6 @@ describe.runIf(enabled)("source scan terminal failure persistence", () => {
     });
     expect(source?.active).toBe(false);
     expect(company?.active).toBe(false);
-    expect(watchlist?.active).toBe(false);
+    expect(watchlist).toMatchObject({ active: false, monitoringTier: "quarantined" });
   });
 });

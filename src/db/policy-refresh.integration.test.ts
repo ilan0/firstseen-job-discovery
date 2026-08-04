@@ -268,6 +268,36 @@ describe.runIf(enabled)("unchanged-listing policy refresh", () => {
     expect(preserved.error).toBeNull();
     expect(preserved.data?.model).toBe("cached-test-model");
     expect(preserved.data?.structured_output).toEqual(cachedAnalysis);
+
+    const closed = await admin
+      .from("canonical_jobs")
+      .update({ lifecycle_status: "closed", closed_at: "2026-08-03T16:30:00Z" })
+      .eq("id", ingest.jobId);
+    if (closed.error) throw closed.error;
+    const reopenedIngest = await ingestListing(
+      { ...context, observedAt: new Date("2026-08-03T17:00:00Z") },
+      eligibleListing,
+    );
+    expect(reopenedIngest).toMatchObject({ changed: false, reopened: true, snapshotId: null });
+    const reopened = await analyzeAndRankListing({
+      userId: user.id,
+      listing: eligibleListing,
+      ingest: reopenedIngest,
+      hasReferral: false,
+      now: new Date("2026-08-03T17:00:00Z"),
+    });
+    expect(reopened).toMatchObject({ state: "analyzed", analysisStatus: "succeeded" });
+    const lifecycle = await admin
+      .from("canonical_jobs")
+      .select("lifecycle_status,reopened_at,posted_at")
+      .eq("id", ingest.jobId)
+      .single();
+    expect(lifecycle.error).toBeNull();
+    expect(lifecycle.data).toMatchObject({
+      lifecycle_status: "reopened",
+      reopened_at: "2026-08-03T17:00:00+00:00",
+      posted_at: "2026-08-03T12:00:00+00:00",
+    });
     const usage = await admin
       .from("usage_cost_ledger")
       .select("id")

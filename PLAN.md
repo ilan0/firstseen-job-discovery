@@ -1,127 +1,88 @@
 # FirstSeen implementation plan and evidence
 
-Approved 2026-08-03. The implementation and production deployment are complete. The 24-hour
-scheduled-work soak is in progress; this file records objective evidence rather than anticipated
-progress.
+Original system approved 2026-08-03 and deployed. Freshness-first overhaul approved 2026-08-04.
+This living record distinguishes verified evidence from pending production work.
 
-|   # | Milestone                                         | Status                             | Exit evidence                                                                                                                    |
-| --: | ------------------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-|   1 | Project foundation and living specification       | Complete                           | Clean Next/TypeScript/pnpm foundation, Git main history, living docs                                                             |
-|   2 | Local workflow and dedicated service projects     | Complete                           | Node 22, local stack verified, private GitHub history published, dedicated empty Supabase project provisioned                    |
-|   3 | Database, authentication, authorization, and RLS  | Complete                           | 33 typed tables including security counters, migrations/seed, Auth, owner checks, RLS/grants integration tests                   |
-|   4 | Candidate profile and deterministic eligibility   | Complete                           | Resume-derived seed; full-time/experience/clearance/Public Trust/sponsorship/location/role tests                                 |
-|   5 | Connector platform and compliant network layer    | Complete                           | Contract, safe HTTP/SSRF, pagination, conditions, retries/pacing/confidence/unsupported diagnostics                              |
-|   6 | Official ATS and employer connectors              | Complete                           | Greenhouse/Lever/Ashby live smokes; JSON-LD contract tests; gated providers documented                                           |
-|   7 | Broad discovery and company expansion             | Complete                           | Brave/Adzuna live smokes, sensor-only promotion, quotas/usage, promising-company promotion                                       |
-|   8 | Canonicalization, change detection, and lifecycle | Complete                           | Identity/fingerprints, snapshots/material hash, unchanged fast path, closure/reopen/stale DB tests                               |
-|   9 | AI extraction, evaluation, and budget controls    | Complete                           | Responses structured output, schema/evidence/prompt-injection defense, changed-only calls, $25 breaker, live smoke               |
-|  10 | Explainable ranking, recommendations, and actions | Complete                           | Ten dimensions, bands/urgency/freshness, optimistic queue actions/history/audit, Apply lifecycle guards                          |
-|  11 | Durable scheduled workflow                        | Complete                           | Five registered functions, stable identity/retries/concurrency/dead letters; terminal failure reconciliation and quarantine      |
-|  12 | Slack alerts and morning digest                   | Complete                           | Block Kit, exact Eastern time, quiet defer, idempotency/retry; labelled real setup check succeeded                               |
-|  13 | Responsive portal                                 | Complete                           | All routes/actions/states, four viewport Playwright matrix and Axe checks passed, live console/network inspection clean          |
-|  14 | Security, privacy, observability, and recovery    | Complete                           | Rate limits, validation, SSRF, CSP/headers, safe logs/export/delete, operations diagnostics, optional redacted Sentry            |
-|  15 | Integrated QA, production deployment, and soak    | Production live / soak in progress | Release gate, isolated database, Vercel deployment, authenticated smoke, and Inngest registration complete; 24-hour soak remains |
+## Freshness-first milestones
 
-## Implemented milestones
+|   # | Milestone                         | Status         | Objective evidence                                                                                                                        |
+| --: | --------------------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+|   1 | Baseline and policy specification | Complete       | Production baseline captured; shared deterministic freshness/company policy and independent rollout flags implemented                     |
+|   2 | Backward-compatible persistence   | Local complete | Idempotent migration rebuilds from empty local database; checks/indexes/backfill and all Auth/RLS tests pass                              |
+|   3 | Company domain/lifecycle          | Local complete | Interest/referral/scope independent; Follow preserves origin; dismissal quarantine sticky; cadence combinations tested                    |
+|   4 | Freshness policy/server feed      | Local complete | Dynamic official/reopen/fallback policy, age sections, server windows/sorts, URL restoration, ancient-date prevention tested              |
+|   5 | Matches UX                        | Local complete | Explicit three-time provenance, responsive controls/sections/states/actions; four-viewport visual/Axe/browser pass                        |
+|   6 | Company UX                        | Local complete | My/Discovered/All views, automatic provenance, interest/referral/follow/dismiss controls and persisted cadence exercised                  |
+|   7 | Discovery/scheduling              | Local complete | 15/60/240 tiers, immediate provisional verification, valid Warm transition, Cold-only adaptive cadence, real durable source run           |
+|   8 | Slack overhaul                    | Local complete | Fresh Hot/Strong occurrence alerts, grouped since-prior digest, empty skip, safe Block Kit and idempotency; labelled webhook smoke passed |
+|   9 | Observability/cost/docs           | Local complete | Tier/cadence/date-confidence/detection-latency/capacity diagnostics, current model prices, test/operations/product/source docs            |
+|  10 | Production rollout and iteration  | In progress    | Local release gate complete; backup, cloud migration, staged flags, deployment, production rows/logs/traces/browser remain                |
 
-1. Foundation: Next.js 16, React 19, strict exact-optional TypeScript, Tailwind, ESLint zero warnings,
-   Prettier, Vitest, Playwright/Axe, pnpm lockfile/build-script allowlist, CI, Node 22.
-2. Persistence/Auth: PostgreSQL schema/migrations, seed, versioned scrypt four-digit code gate,
-   server-created Supabase owner sessions, defense-in-depth RLS, user scoping, and durable
-   per-address/global HMAC sign-in throttles.
-3. Matching: authoritative normalized descriptions, deterministic hard filtering before AI,
-   uncertain Review, compact versioned OpenAI extraction, evidence validation, durable cost budget,
-   ten persisted dimensions and deterministic routing.
-4. Discovery/lifecycle: compliant connector registry and safe HTTP, official ATS connectors, broad
-   sensors, provisional expansion, canonical dedupe, observations/snapshots, change/closure/reopen.
-5. Operations: Inngest leases/fan-out/per-changed-listing steps, retries/failure/dead-letter replay,
-   exact-time Slack, usage accounting, cleanup, operations health.
-6. Product: polished responsive queue/detail/watchlist/referral/operations/settings portal,
-   Apply/Save/Dismiss persistence, accessibility, success/error/loading/empty/stale states,
-   export/deletion.
-7. Release: unit/component/connector/API/domain/worker/database/security/browser suites, real
-   provider smokes, production build, browser console/network/server/worker/database inspection,
-   architecture/source/matching/operations/test documentation.
+## Captured baseline
 
-## Evidence log
+- Production initially had 37 active matches: zero under 24 hours, one at 1–3 days, eight at 3–7
+  days, five at 7–30 days, and 23 older than 30 days. There were 17 Possible and 20 Review jobs.
+- All 34 active company watches originated from broad discovery, with no referrals, but the prior UI
+  presented them as a personal watchlist.
+- Scheduler ran every 15 minutes, broad discovery every four hours, and notifications hourly. Prior
+  immediate alerts were Hot-only; digest could include up to 36-hour recommendation age and send an
+  empty message.
+- Proposed shadow membership is queryable behind `FRESHNESS_FIRST_FEED_ENABLED`,
+  `COMPANY_SCOPE_UI_ENABLED`, and `FRESHNESS_FIRST_SLACK_ENABLED`. Flags default enabled but may be
+  disabled independently during rollout.
 
-- Initial inspection found no existing FirstSeen repository or source code. A dedicated Git
-  repository was initialized on `main`; unrelated configured projects were excluded.
-- The attached resume was extracted and visually inspected before implementing the candidate seed.
-- Local Supabase Docker services run with all migrations and seed applied. Local owner credentials
-  are generated without output and stored in macOS Keychain.
-- A separate FirstSeen Supabase Free project was created only after its empty public schema was
-  verified. Four migrations produced 33 public tables, all 33 have RLS enabled, and exactly one
-  owner, candidate profile, and preference record were created. The unrelated ProofCheck project
-  was queried read-only and received no FirstSeen tables, migrations, Auth changes, or data writes.
-- The dedicated repository deploy key has repository-only read/write access. Release commits were
-  published to private GitHub `main`, and the remote head was verified against the local commit.
-- Auth/RLS tests prove owner access, cross-user denial, and anon denial. Database suites prove
-  idempotent ingest/material snapshots, closure/reopening, status history, stale urgency, and closed
-  queue behavior.
-- Real official connector checks most recently returned 176 Greenhouse, 100 paginated Lever, and 24 Ashby
-  listings. Brave and Adzuna credentialed checks completed; OpenAI structured extraction succeeded
-  with the configured `gpt-5.6-luna` model.
-- A labelled Slack setup check returned HTTP 200. A real local Inngest notification trace completed
-  all database/digest/deferred/retry steps.
-- Source worker no-change path completed with 304/no analysis. A forced local material change first
-  exposed a driver timestamp defect, then the same durable run retried and succeeded: six official
-  jobs, exactly one changed/analyzed listing, zero failures. Regression tests cover the root cause.
-- The comprehensive access/matching/product audit expanded the default unit/component/contract
-  suites to 177 passing tests with 11 database-gated cases skipped. Explicitly enabling the
-  database/Auth/RLS suites passes all 188 tests across 24 files. Coverage is 93.48% statements,
-  80.36% branches, 93.97% functions, and 95.06% lines; the low-threshold dependency audit reports
-  zero known vulnerabilities.
-- Playwright passes 16 scenarios in 1.8 minutes with retries disabled across 390×844, 768×1024,
-  1440×900, and 1920×1080. Core views produced no Axe violations. Access-code
-  failure/success/sign-out, all queue
-  transitions from cards and details, official application routing, search/sort/filter, custom
-  dialogs, watchlist lifecycle, export, settings persistence, mobile navigation, browser console,
-  network, server logs, and persisted rows were inspected. The visual matrix waits for network idle
-  and fails on console errors, page errors, or HTTP 5xx responses.
-- Live authenticated portal inspection found expected heading/cards, no horizontal overflow, and no
-  browser console errors/warnings. Responsive screenshots were visually inspected.
-- Vercel project `rug-desk/firstseen-job-discovery` is live at
-  `https://firstseen-job-discovery.vercel.app`. Seventeen required values were stored as sensitive,
-  Production-only environment variables; deployment/GitHub tokens and optional unconfigured Sentry
-  values were not added to application runtime.
-- The first cloud sign-in exposed that Vercel could not resolve the direct IPv6 Supabase database
-  host. The production database URL was replaced with the tested us-east-1 transaction-pooler URL,
-  the release was redeployed, and owner authentication plus Matches, Watchlist, Health, and Settings
-  routes then returned successfully. Runtime logs show protected route HTTP 200 responses.
-- The unique `firstseen-job-discovery` Inngest app registered through the production endpoint. The
-  unauthenticated sync PUT returned HTTP 200 and a subsequent signed Inngest POST returned HTTP 200.
-  An unsigned diagnostic GET returned the expected HTTP 401; browser execution does not use it.
-- Production broad discovery and two complete policy-refresh batches exercised the real cloud
-  fan-out. One batch isolated an oversized source while 19 peers succeeded; the final batch
-  completed 20 of 20 active source scans successfully. Exhausted source failures now reconcile run,
-  source-run, and worker-attempt rows; non-retryable connector errors stop immediately; unsafe
-  oversized/non-employer tenants are quarantined; broad sensor requests are claimed before the
-  provider call so duplicate delivery cannot incur duplicate cost.
-- A post-audit database inspection found 33 public tables, all 33 protected by RLS, one Auth owner,
-  one candidate profile, 20 healthy active official sources, 1,780 canonical jobs and active
-  recommendations, and zero unresolved dead letters or active-source errors. Every active
-  recommendation is on eligibility policy `2026-08-03.3` and ranking policy `2026-08-03.4`.
-  The open queue contains 31 viable/review roles, zero obvious advanced-title leaks, and zero clear
-  nontechnical-title leaks.
-- Repeating broad discovery inside the same four-hour rotation produced zero additional sensor API
-  requests and zero duplicate official scans. A live Save→reload→Restore flow persisted and
-  recovered successfully against production.
-- The Free-tier logical-backup procedure generated non-empty roles, schema, and data dumps with mode 600. Temporary plaintext verification artifacts were permanently removed immediately afterward.
+## Implemented design evidence
 
-## Remaining release follow-up
+1. `src/domain/jobs/freshness.ts` is authoritative for normalized timestamps, dynamic age, feed
+   section, posted window, and sorting inputs. Official date never derives from sensor text.
+2. The feed defaults to seven days/newest official occurrence and exposes 6h/24h/3d/7d/30d/All,
+   detection-newest, and urgency parameters. Saved/Applied/Dismissed history bypasses freshness
+   deletion.
+3. Initial snapshots have no material-change reasons. Actual edits show Updated but retain posting
+   age. A closed unchanged listing is first-class reopening: it reranks cached extraction without a
+   new AI call and uses reopening occurrence idempotency.
+4. `src/domain/companies/monitoring.ts` derives Priority/Standard/Warm/Cold/Quarantined. Only a
+   verified eligible Hot/Strong/Possible job no older than seven days can make discovery Warm.
+5. Broad providers remain sensor-only. Greenhouse, Lever, Ashby, and reviewed JSON-LD remain the
+   only implemented official paths. LinkedIn/Indeed/Glassdoor scraping is absent.
+6. Slack uses the shared freshness policy. Immediate alerts require reliable official/reopening age
+   ≤24h, Hot/Strong, urgency ≥85, and Active action. Digest is since the previous delivery, ≤7d,
+   grouped Just posted/New/Recent, and skips empty.
+7. The active queue requires current deterministic eligibility and ranking versions. This hides
+   stale-policy recommendations during rollout instead of exposing them before source refresh.
+   Explicit unsupported-country remote restrictions are hard exclusions; ambiguous US restrictions
+   still route Review.
 
-These items do not block the live application, but remain release-owner follow-up:
+## Local release evidence
 
-1. The prior Vercel token appeared in a CLI response and is considered compromised. Deployment used
-   the authenticated Vercel dashboard instead of that token. The token still must be revoked in
-   Vercel and removed/replaced in the ignored consolidated secrets file.
-2. Optional Sentry has an auth token but no DSN/project configuration. Deployment can proceed with
-   Vercel/Inngest/database diagnostics; Sentry may be enabled after a project is created.
-3. Keep the release under observation for 24 hours and append scheduled broad-discovery,
-   notification-schedule, retention, and morning-digest evidence. An empty digest is a valid run but
-   must not be inferred before its scheduled execution.
+- Exact local database reset applied all five migrations including
+  `20260804090000_freshness_first.sql` from scratch.
+- Formatting, zero-warning lint, strict types, all 209 tests, coverage gate, low-threshold dependency
+  audit, and optimized build pass.
+- Coverage: 86.80% statements, 76.51% branches, 88.31% functions, 88.91% lines. The untouched prior
+  release failed its configured branch/function gate; layered exclusions now assign outer network/
+  worker and declarative schema verification to database/worker/browser suites.
+- Playwright: 16/16 with retries disabled at 390×844, 768×1024, 1440×900, and 1920×1080. No page
+  console error, page exception, HTTP 5xx, or Axe violation remained; fresh visuals were inspected.
+- Real providers: Greenhouse 176/open, Lever 100 paginated/open, Ashby 24/open; Brave 8 candidates
+  (7 supported official URLs), Adzuna valid/zero; OpenAI Luna structured evidence valid; labelled
+  Slack HTTP 200.
+- Real app plus Inngest run finalized 176 official Figma listings successfully. Redelivery of the
+  identical occurrence kept exactly one scan row and produced no unresolved dead letter.
 
-No 24-hour production-soak claim is made until time-based evidence exists. The live deployment,
-database bootstrap, authenticated production browser smoke, Inngest registration/callback, and
-logical-backup verification are complete.
+## Release constraints and follow-up
+
+- Only dedicated Supabase ref `tlhwxayhjamopnnlroke` may receive FirstSeen schema/data changes.
+  ProofCheck ref `cuwfwassuxozafpbvjao` must never be mutated.
+- Create and validate non-empty logical backup artifacts immediately before the production
+  migration. Do not retain plaintext backup in the repository.
+- Apply backward-compatible schema before app behavior. Inspect old versus new membership, then
+  enable company scope, freshness feed, and Slack independently. Preserve stale jobs and all user
+  history.
+- Verify GitHub remote head, Vercel immutable deployment, Inngest registration/signed callbacks,
+  browser console/network, server logs, worker traces, Supabase rows, date/source of every visible
+  production match, notification/dead-letter state, and immediate post-rollout health.
+- A previously exposed Vercel token was already considered compromised in the original release and
+  must remain revoked/replaced provider-side; do not use it if still present in an ignored file.
+- Optional Sentry remains unnecessary without a DSN/project; Vercel, Inngest, operations data, and
+  provider dashboards are the production diagnostics.

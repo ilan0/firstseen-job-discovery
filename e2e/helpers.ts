@@ -25,7 +25,7 @@ export async function signIn(page: Page) {
   await page.goto("/");
   await page.getByLabel("Access code", { exact: true }).fill(code);
   await page.getByRole("button", { name: "Open FirstSeen", exact: true }).click();
-  await page.getByRole("heading", { name: "Today’s matches" }).waitFor();
+  await page.getByRole("heading", { name: "Fresh matches" }).waitFor();
 }
 
 export function observeFailures(page: Page) {

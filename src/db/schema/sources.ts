@@ -11,7 +11,14 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { companyOrigin, connectorKind, policyStatus, referralStatus } from "./enums";
+import {
+  companyOrigin,
+  connectorKind,
+  monitoringTier,
+  policyStatus,
+  referralStatus,
+  watchlistScope,
+} from "./enums";
 
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -30,6 +37,7 @@ export const companies = pgTable(
     priority: integer("priority").default(3).notNull(),
     notes: text("notes"),
     provisional: boolean("provisional").default(false).notNull(),
+    interested: boolean("interested").default(false).notNull(),
     active: boolean("active").default(true).notNull(),
     discoveryEvidence: jsonb("discovery_evidence").default({}).notNull(),
     ...timestamps,
@@ -68,6 +76,8 @@ export const watchlists = pgTable(
       .notNull()
       .references(() => companies.id, { onDelete: "cascade" }),
     active: boolean("active").default(true).notNull(),
+    scope: watchlistScope("scope").default("personal").notNull(),
+    monitoringTier: monitoringTier("monitoring_tier").default("standard").notNull(),
     cadenceMinutes: integer("cadence_minutes").default(60).notNull(),
     nextScanAt: timestamp("next_scan_at", { withTimezone: true }).defaultNow().notNull(),
     ...timestamps,
@@ -75,6 +85,7 @@ export const watchlists = pgTable(
   (table) => [
     uniqueIndex("watchlists_user_company_unique").on(table.userId, table.companyId),
     index("watchlists_due_idx").on(table.active, table.nextScanAt),
+    index("watchlists_user_scope_idx").on(table.userId, table.scope),
     check("watchlists_cadence_minimum", sql`${table.cadenceMinutes} >= 15`),
   ],
 );

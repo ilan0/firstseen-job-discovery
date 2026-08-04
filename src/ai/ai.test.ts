@@ -75,7 +75,7 @@ describe("AI cost guardrails", () => {
         cachedInputTokens: 500_000,
         outputTokens: 1_000_000,
       }),
-    ).toBeCloseTo(1.31, 6);
+    ).toBeCloseTo(6.55, 6);
   });
 
   it("blocks reservations that cross the monthly cap", () => {

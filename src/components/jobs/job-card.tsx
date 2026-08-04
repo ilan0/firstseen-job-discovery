@@ -4,6 +4,7 @@ import {
   BriefcaseBusiness,
   Building2,
   Clock3,
+  History,
   MapPin,
   RotateCcw,
   X,
@@ -23,10 +24,14 @@ type JobCardProps = {
     headline: string | null;
     firstSeenAt: Date;
     postedAt: Date | null;
+    postedAtConfidence: "low" | "medium" | "high";
+    reopenedAt: Date | null;
     lifecycleStatus: "pending_verification" | "open" | "possibly_closed" | "closed" | "reopened";
     freshnessBand: "hot" | "very_fresh" | "current" | "aging" | "stale";
-    freshnessBasis: "posted_at" | "first_seen";
+    freshnessBasis: "posted_at" | "first_seen" | "reopened_at";
     freshnessAgeHours: number;
+    freshnessSection: "just_posted" | "new" | "recent" | "older" | "stale";
+    updated: boolean;
     location: string;
     workArrangement: string;
     salary: string | null;
@@ -42,6 +47,18 @@ type JobCardProps = {
 function timeAgo(date: Date): string {
   const hours = Math.max(0, Math.round((Date.now() - date.getTime()) / 3_600_000));
   return hours < 1 ? "just now" : hours < 24 ? `${hours}h ago` : `${Math.round(hours / 24)}d ago`;
+}
+
+function exactDate(date: Date): string {
+  return date.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/New_York",
+    timeZoneName: "short",
+  });
 }
 
 const freshnessLabels: Record<JobCardProps["job"]["freshnessBand"], string> = {
@@ -95,17 +112,25 @@ export function JobCard({ job }: JobCardProps) {
         {job.hasReferral ? (
           <span className="rounded-full bg-[#e8e0ff] px-2.5 py-1 text-[#54379a]">Referral</span>
         ) : null}
+        {job.lifecycleStatus === "reopened" ? (
+          <span className="rounded-full bg-[#dff3ff] px-2.5 py-1 text-[#215f7a]">Reopened</span>
+        ) : null}
+        {job.updated ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-[#fff0d8] px-2.5 py-1 text-[#7a4c0d]">
+            <History aria-hidden="true" size={12} /> Updated
+          </span>
+        ) : null}
         {!isOfficiallyOpen ? (
           <span className="rounded-full bg-[#f2e8e5] px-2.5 py-1 text-[#7c342b]">
             {job.lifecycleStatus.replaceAll("_", " ")}
           </span>
         ) : null}
         <span className="inline-flex items-center gap-1 text-[var(--muted)]">
-          <Clock3 aria-hidden="true" size={13} /> Seen {timeAgo(job.firstSeenAt)}
+          <Clock3 aria-hidden="true" size={13} /> Detected {timeAgo(job.firstSeenAt)}
         </span>
         <span
           className="rounded-full bg-[var(--paper)] px-2.5 py-1 text-[var(--muted)]"
-          title={`Freshness based on ${job.freshnessBasis === "posted_at" ? "the official posting time" : "FirstSeen verification"}`}
+          title={`Freshness based on ${job.freshnessBasis === "posted_at" ? "the official posting time" : job.freshnessBasis === "reopened_at" ? "the verified reopening time" : "FirstSeen's first verified sighting"}`}
         >
           {freshnessLabels[job.freshnessBand]}
         </span>
@@ -133,6 +158,37 @@ export function JobCard({ job }: JobCardProps) {
         </div>
       </div>
       <p className="mt-4 text-sm leading-6">{job.headline ?? "Analysis is pending."}</p>
+      <dl className="mt-4 grid gap-2 rounded-2xl bg-[var(--paper)] p-3 text-xs sm:grid-cols-3">
+        <div>
+          <dt className="font-black text-[var(--muted)]">
+            {job.freshnessBasis === "first_seen" ? "Posting date fallback" : "Officially posted"}
+          </dt>
+          <dd className="mt-1 font-bold">
+            {job.postedAt && job.postedAtConfidence !== "low"
+              ? `${timeAgo(job.postedAt)} · ${exactDate(job.postedAt)}`
+              : `Unavailable · using verified sighting (${job.postedAtConfidence} confidence)`}
+            {job.freshnessBasis === "reopened_at" && job.reopenedAt ? (
+              <span className="mt-1 block text-[#215f7a]">
+                Reopened {timeAgo(job.reopenedAt)} · {exactDate(job.reopenedAt)}
+              </span>
+            ) : null}
+          </dd>
+        </div>
+        <div>
+          <dt className="font-black text-[var(--muted)]">FirstSeen detected</dt>
+          <dd className="mt-1 font-bold">
+            {timeAgo(job.firstSeenAt)} · {exactDate(job.firstSeenAt)}
+          </dd>
+        </div>
+        <div>
+          <dt className="font-black text-[var(--muted)]">Last officially verified</dt>
+          <dd className="mt-1 font-bold">
+            {job.verifiedAt
+              ? `${timeAgo(job.verifiedAt)} · ${exactDate(job.verifiedAt)}`
+              : "Pending"}
+          </dd>
+        </div>
+      </dl>
       <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs font-bold text-[var(--muted)]">
         <span>{job.workArrangement.replaceAll("_", " ")}</span>
         {job.salary ? <span>{job.salary}</span> : null}

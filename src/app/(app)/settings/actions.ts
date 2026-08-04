@@ -12,6 +12,8 @@ const schema = z.object({
   digestEnabled: z.enum(["on"]).optional(),
   alertsEnabled: z.enum(["on"]).optional(),
   digestHour: z.coerce.number().int().min(0).max(23),
+  defaultPostedWindow: z.enum(["6h", "24h", "3d", "7d", "30d", "all"]),
+  defaultFeedSort: z.enum(["posted_newest", "detected_newest", "urgency"]),
 });
 export async function updateNotifications(formData: FormData) {
   const owner = await requireOwner();
@@ -19,6 +21,8 @@ export async function updateNotifications(formData: FormData) {
     digestEnabled: formData.get("digestEnabled") ?? undefined,
     alertsEnabled: formData.get("alertsEnabled") ?? undefined,
     digestHour: formData.get("digestHour"),
+    defaultPostedWindow: formData.get("defaultPostedWindow"),
+    defaultFeedSort: formData.get("defaultFeedSort"),
   });
   await db
     .update(searchPreferences)
@@ -26,6 +30,8 @@ export async function updateNotifications(formData: FormData) {
       digestEnabled: Boolean(value.digestEnabled),
       exceptionalAlertsEnabled: Boolean(value.alertsEnabled),
       digestHourLocal: value.digestHour,
+      defaultPostedWindow: value.defaultPostedWindow,
+      defaultFeedSort: value.defaultFeedSort,
       preferencesVersion: sql`${searchPreferences.preferencesVersion} + 1`,
       updatedAt: new Date(),
     })

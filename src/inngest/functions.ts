@@ -27,6 +27,7 @@ import {
   stageStoredSource,
 } from "@/lib/scans/scan-source";
 import { recordSourceScanFailure } from "@/lib/scans/record-failure";
+import { rebalanceColdCadence } from "@/lib/scans/adaptive-cadence";
 import { inngest } from "./client";
 
 const sourceEventSchema = z.object({
@@ -40,6 +41,7 @@ export const watchlistScheduler = inngest.createFunction(
   { id: "watchlist-scheduler", triggers: [{ cron: "*/15 * * * *" }] },
   async ({ step }) => {
     const due = await step.run("lease-due-watchlists", async () => {
+      await rebalanceColdCadence();
       const now = new Date();
       const rows = await db
         .select()
@@ -280,7 +282,7 @@ export const broadDiscovery = inngest.createFunction(
 );
 
 export const notificationSchedule = inngest.createFunction(
-  { id: "notification-schedule", triggers: [{ cron: "7 * * * *" }], retries: 3 },
+  { id: "notification-schedule", triggers: [{ cron: "0 * * * *" }], retries: 3 },
   async ({ step }) => {
     const users = await step.run("load-users", () =>
       db.select({ userId: candidateProfiles.userId }).from(candidateProfiles),
