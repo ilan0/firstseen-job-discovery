@@ -25,6 +25,7 @@ try {
       storage_cleanup_browser_read: boolean;
       duplicate_user_organizations: string;
       identity_indexes_present: boolean;
+      notification_preference_indexes_present: boolean;
       latest_migration_present: boolean;
     }>
   >`
@@ -75,9 +76,18 @@ try {
             'companies_user_legacy_name_unique'
           ])
       ) as identity_indexes_present,
+      (
+        select count(*) = 2
+        from pg_indexes
+        where schemaname = 'public'
+          and indexname = any(array[
+            'notification_preferences_channel_global_unique',
+            'notification_preferences_channel_org_unique'
+          ])
+      ) as notification_preference_indexes_present,
       exists(
         select 1 from supabase_migrations.schema_migrations
-        where version = '20260804162700'
+        where version = '20260804162800'
       ) as latest_migration_present
   `;
 
@@ -90,6 +100,7 @@ try {
         result.storage_cleanup_browser_read === false &&
         result.duplicate_user_organizations === "0" &&
         result.identity_indexes_present &&
+        result.notification_preference_indexes_present &&
         result.latest_migration_present,
       target: "dedicated-firstseen",
       ...result,
