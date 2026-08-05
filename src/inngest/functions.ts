@@ -294,7 +294,7 @@ export const globalUserPersonalization = inngest.createFunction(
     id: "global-user-personalization-v2",
     triggers: [{ event: "supply/user.job.personalize.requested.v2" }],
     retries: 4,
-    concurrency: [{ limit: 1, key: "event.data.userId" }, { limit: 10 }],
+    concurrency: [{ limit: 1, key: "event.data.userId" }, { limit: 5 }],
   },
   async ({ event, step }) => {
     const data = globalPersonalizationEventSchema.parse(event.data);
@@ -708,7 +708,7 @@ export const attachGlobalSourceOverlays = inngest.createFunction(
     id: "attach-global-source-overlays-v2",
     triggers: [{ event: "supply/user.sources.attach.requested.v2" }],
     retries: 4,
-    concurrency: [{ limit: 1, key: "event.data.userId" }, { limit: 10 }],
+    concurrency: [{ limit: 1, key: "event.data.userId" }, { limit: 5 }],
   },
   async ({ event, step }) => {
     const data = attachGlobalSourcesEventSchema.parse(event.data);
@@ -823,7 +823,7 @@ export const legacyUserJobRematch = inngest.createFunction(
     id: "legacy-user-job-rematch-v2",
     triggers: [{ event: "firstseen/user.job.rematch.requested.v2" }],
     retries: 4,
-    concurrency: [{ limit: 1, key: "event.data.userId" }, { limit: 10 }],
+    concurrency: [{ limit: 1, key: "event.data.userId" }, { limit: 5 }],
   },
   async ({ event, step }) => {
     const data = legacyJobRematchEventSchema.parse(event.data);
@@ -922,7 +922,7 @@ export const userNotificationDelivery = inngest.createFunction(
     id: "user-notification-delivery",
     triggers: [{ event: "firstseen/user.notifications.requested" }],
     retries: 3,
-    concurrency: [{ limit: 1, key: "event.data.userId" }, { limit: 10 }],
+    concurrency: [{ limit: 1, key: "event.data.userId" }, { limit: 5 }],
   },
   async ({ event, step }) => {
     const data = notificationUserEventSchema.parse(event.data);
