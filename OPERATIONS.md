@@ -273,3 +273,9 @@ pnpm verify:production-schema
 It refuses any project/database URL other than `tlhwxayhjamopnnlroke`. Require the latest migration,
 zero listed private tables without RLS, and no authenticated/anonymous read privilege on global raw
 observations.
+
+The canonical private portal is `https://firstseen-job-discovery-tau.vercel.app`. After each remote
+build, register `/api/inngest`, confirm an HTTP 200 registration response, inspect only the canonical
+deployment for new HTTP 5xx logs, and verify zero active-source errors, unresolved dead letters,
+recent worker failures, failed notification deliveries, and pending outbox events. The active Inngest
+plan permits a total concurrency limit of five; function declarations must not exceed that limit.

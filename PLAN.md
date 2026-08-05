@@ -7,24 +7,24 @@ physical-device work.
 
 ## Daily-Driver master-plan milestones
 
-|   # | Milestone                                       | Status           | Objective evidence or remaining gate                                                                                                                                                          |
-| --: | ----------------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-|   0 | Baseline/compliance containment                 | Complete locally | Brave result fields removed from persistence; Adzuna promotion disabled by provider policy; backup/token discrepancies documented                                                             |
-|   1 | Policy, contracts, and benchmark foundation     | Complete locally | Versioned provider capabilities/licenses and minimized URL-hash coverage benchmarks implemented; no fabricated independent recall claim                                                       |
-|   2 | Detection, redirects, authority, query overhaul | Complete locally | Twelve stable cohorts; DNS-pinned, per-hop SSRF-safe redirects; organization authority contracts; custom JSON-LD independently verified                                                       |
-|   3 | Public ATS connectors                           | Complete locally | Greenhouse, Lever, Ashby, Recruitee, and Pinpoint contract and live bounded smoke checks pass                                                                                                 |
-|   4 | Reviewed structured/licensed sensor foundation  | Partial          | Reviewed JSON-LD/RSS/Atom/sitemap contracts implemented; licensed-vendor bakeoff awaits a user-authorized account/contract                                                                    |
-|   5 | Shared supply and private overlays              | Complete locally | Additive global schema/backfill/dual write; fair scheduler/outbox; strictest shared watcher cadence; per-snapshot extraction and per-user ranking events; DB-driven profiles                  |
-|   6 | Relationship CRM                                | Complete locally | Contacts, methods, company links, interactions, reminders, referral requests, best-contact rules, migration compatibility, UI and RLS coverage                                                |
-|   7 | Applications and packet                         | Complete locally | Sessions, private resume metadata/storage policy, packet, application/stage/follow-up records, return prompt and outcome analytics; Apply never marks Applied                                 |
-|   8 | Installable PWA                                 | Complete locally | Manifest/icons, narrow service worker, no private response caching, offline/update UI, install and lifecycle tests                                                                            |
-|   9 | Channel orchestration and Web Push              | Complete locally | Encrypted per-device subscriptions, channel/device idempotency, bounded retries, unknown-outcome dead letters, replay, and 404/410 cleanup; device rollout pending                            |
-|  10 | Mobile detail and Simplify handoff              | Complete locally | Deep-link recovery, mobile action parity, referral/application packet context, Continue Later/Desktop behavior; physical extension/device checks pending                                      |
-|  11 | Shared AI extraction and escalation             | Complete locally | Explicit Luna, strict evidence, durable paid-call steps, selective capped Terra, current pricing, cost/budget ledgers and regression evaluator; 300-item corpus remains a human-labeling gate |
-|  12 | Invite-only multi-user foundations              | Complete locally | Individual email route/onboarding and per-user runtime preferences implemented behind disabled flags; custom SMTP/public signup remain out of scope                                           |
-|  13 | Integrated local certification                  | Complete         | From-zero migration/bootstrap, 386 tests, strengthened coverage floor, focused suites, zero-vulnerability audit, build, and retry-free four-viewport browser suite pass                       |
-|  14 | Production rollout and seven-day soak           | Pending rollout  | Isolated backup restore passes; requires safe FirstSeen-only deployment, Web Push/iPhone acceptance, then seven consecutive scheduled days                                                    |
-|  15 | Final evidence audit                            | Pending          | Runs after the soak; current documentation intentionally lists remaining blind spots                                                                                                          |
+|   # | Milestone                                       | Status           | Objective evidence or remaining gate                                                                                                                                                               |
+| --: | ----------------------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|   0 | Baseline/compliance containment                 | Complete locally | Brave result fields removed from persistence; Adzuna promotion disabled by provider policy; backup/token discrepancies documented                                                                  |
+|   1 | Policy, contracts, and benchmark foundation     | Complete locally | Versioned provider capabilities/licenses and minimized URL-hash coverage benchmarks implemented; no fabricated independent recall claim                                                            |
+|   2 | Detection, redirects, authority, query overhaul | Complete locally | Twelve stable cohorts; DNS-pinned, per-hop SSRF-safe redirects; organization authority contracts; custom JSON-LD independently verified                                                            |
+|   3 | Public ATS connectors                           | Complete locally | Greenhouse, Lever, Ashby, Recruitee, and Pinpoint contract and live bounded smoke checks pass                                                                                                      |
+|   4 | Reviewed structured/licensed sensor foundation  | Partial          | Reviewed JSON-LD/RSS/Atom/sitemap contracts implemented; licensed-vendor bakeoff awaits a user-authorized account/contract                                                                         |
+|   5 | Shared supply and private overlays              | Complete locally | Additive global schema/backfill/dual write; fair scheduler/outbox; strictest shared watcher cadence; per-snapshot extraction and per-user ranking events; DB-driven profiles                       |
+|   6 | Relationship CRM                                | Complete locally | Contacts, methods, company links, interactions, reminders, referral requests, best-contact rules, migration compatibility, UI and RLS coverage                                                     |
+|   7 | Applications and packet                         | Complete locally | Sessions, private resume metadata/storage policy, packet, application/stage/follow-up records, return prompt and outcome analytics; Apply never marks Applied                                      |
+|   8 | Installable PWA                                 | Complete locally | Manifest/icons, narrow service worker, no private response caching, offline/update UI, install and lifecycle tests                                                                                 |
+|   9 | Channel orchestration and Web Push              | Complete locally | Encrypted per-device subscriptions, channel/device idempotency, bounded retries, unknown-outcome dead letters, replay, and 404/410 cleanup; device rollout pending                                 |
+|  10 | Mobile detail and Simplify handoff              | Complete locally | Deep-link recovery, mobile action parity, referral/application packet context, Continue Later/Desktop behavior; physical extension/device checks pending                                           |
+|  11 | Shared AI extraction and escalation             | Complete locally | Explicit Luna, strict evidence, durable paid-call steps, selective capped Terra, current pricing, cost/budget ledgers and regression evaluator; 300-item corpus remains a human-labeling gate      |
+|  12 | Invite-only multi-user foundations              | Complete locally | Individual email route/onboarding and per-user runtime preferences implemented behind disabled flags; custom SMTP/public signup remain out of scope                                                |
+|  13 | Integrated local certification                  | Complete         | From-zero migration/bootstrap, 386 tests, strengthened coverage floor, focused suites, zero-vulnerability audit, build, and retry-free four-viewport browser suite pass                            |
+|  14 | Production rollout and seven-day soak           | Soak in progress | FirstSeen-only migration/deployment, worker registration, current-policy replay, provider/Slack smokes, and production browser audit pass; seven-day temporal gate and physical iPhone Push remain |
+|  15 | Final evidence audit                            | In progress      | Release evidence is reconciled below; the final temporal certification runs after the seven-day soak                                                                                               |
 
 ## Freshness-first milestones
 
@@ -137,43 +137,44 @@ physical-device work.
 - Playwright: 17 passed and three intentional viewport-independent skips in approximately three
   minutes, with retries disabled at 390×844, 768×1024, 1440×900, and 1920×1080. Console, page,
   unexpected response, persistence, application, relationship, and Axe observers remained clean.
-- Real providers: Greenhouse Figma 177/open, Lever Palantir 100 paginated/open, Ashby Linear 24/open,
+- Real providers: Greenhouse Figma 176/open, Lever Palantir 100 paginated/open, Ashby Linear 25/open,
   Recruitee amperecloud 5/open and xneelo 3/open, Pinpoint workwithus 3/open and wealthwizards
   3/open. An oversized TransPerfect response was safely rejected by the byte limit rather than
   partially accepted.
-- Brave-only discovery smoke returned seven candidates and six directly resolvable official URLs;
+- Brave-only discovery smoke returned six candidates and six directly resolvable official URLs;
   the disabled Adzuna provider was not instantiated or contacted. OpenAI explicit Luna evidence
-  validation passed (1,204 input/1,340 output tokens). The labelled Slack check returned HTTP 200.
+  validation passed (1,204 input/1,139 output tokens). The labelled Slack check returned HTTP 200.
 - Real app plus Inngest run finalized 176 official Figma listings successfully. Redelivery of the
   identical occurrence kept exactly one scan row and produced no unresolved dead letter.
 
 ## Production release evidence
 
-- The eleven additive Daily-Driver migrations through `20260804162400` applied to guarded dedicated
-  FirstSeen ref `tlhwxayhjamopnnlroke`. The read-only verifier reports 52 backfilled organizations/
-  global sources, zero private workflow tables without RLS, no browser read privilege on global raw
-  observations, and the latest migration present. New rollout flags remain opt-in.
+- The additive Daily-Driver migrations through
+  `20260804162800_notification_preference_integrity.sql` applied to guarded dedicated FirstSeen ref
+  `tlhwxayhjamopnnlroke`. The read-only verifier reports 55 organizations, 56 global sources, zero
+  private workflow tables without RLS, no browser read privilege on global raw observations or the
+  global outbox, and the latest migration and integrity indexes present.
 - A protected logical backup was created outside the repository and its roles, schema, and data
   artifacts were verified non-empty before migration. All five migrations are present on dedicated
   FirstSeen Supabase ref `tlhwxayhjamopnnlroke`; the ProofCheck project was not touched.
-- GitHub `main` and the Vercel production deployment contain the freshness, company, Slack, skills
-  matching, missing-board quarantine, and foreign-only location fixes. Company scope, feed, and
-  Slack rollout flags were enabled and deployed independently.
-- A current-policy replay completed 45/45 active official-source runs successfully. The obsolete
-  Evenup Ashby board returned an externally confirmed 404, was quarantined, and its two prior dead
-  letters were resolved. Production now shows 45 active sources, zero unresolved dead letters, zero
-  active source errors, zero failed notifications, and no future official dates.
-- The authenticated production feed contains eight current visible jobs; all eight official pages
-  and application URLs were fetched directly and their posted instants matched persisted data. An
-  explicit Sweden-only remote listing found during rollout is now deterministically excluded.
+- GitHub `main` and the canonical Vercel deployment at
+  `https://firstseen-job-discovery-tau.vercel.app` contain the Daily-Driver release. Inngest accepted
+  the production app registration after its total concurrency was bounded to the Hobby-plan limit.
+- Current-policy targeted rematching accepted 72 active open queue occurrences. At the final release
+  check, production had 52 active official sources, 2,933 open global jobs, 2,681 open private jobs,
+  57 successful global scans in the prior two hours, and zero active-source errors, unresolved dead
+  letters, recent worker failures, failed deliveries, or global/private outbox backlog.
+- The authenticated default seven-day feed contains nine verified, current-policy jobs. Production
+  includes separate New and Recent sections and never derives posting freshness from sensor text.
+  The earlier foreign-only Sweden regression remains deterministically excluded.
 - Authenticated browser validation confirmed a seven-day/newest-official default, age sections,
   URL-restored filters/sorts, separate My/Discovered company scopes, explicit date provenance, and
   explainable dimensions. No production browser warning or error remained.
 - The 2026-08-04 morning Slack digest delivered once at 8:00:04 AM Eastern with eight jobs. There
   were no duplicate idempotency groups and no qualifying under-24-hour Hot/Strong job requiring an
   immediate production alert.
-- Vercel's only two errors in the inspected timeline were the pre-fix Evenup 404 at 10:17 AM. No
-  post-fix runtime error, HTTP 5xx, unresolved worker failure, or active-source error remained.
+- The final canonical remote-build deployment returned no HTTP 5xx log entries in the inspected
+  45-minute window. Authenticated browser inspection produced no console errors or warnings.
 
 ## Release constraints and follow-up
 

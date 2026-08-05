@@ -1,6 +1,6 @@
 # FirstSeen test report
 
-Daily-Driver local release tested 2026-08-04 on macOS with Node 24.14.0, pnpm 11.9.0,
+Daily-Driver local release tested 2026-08-04 on macOS with Node 22.23.2, pnpm 11.9.0,
 local Supabase PostgreSQL/Auth in Docker, Next.js 16.2.12, React 19.2.8, and Inngest CLI 1.40.0.
 
 ## Local release gate
@@ -83,15 +83,15 @@ follow-up scheduling, and reload persistence. No page failure or Axe violation r
 
 | Provider/path | 2026-08-04 result                                                              |
 | ------------- | ------------------------------------------------------------------------------ |
-| Greenhouse    | 177 public Figma listings; sample officially verified open                     |
+| Greenhouse    | 176 public Figma listings; sample officially verified open                     |
 | Lever         | 100 public Palantir listings; pagination present; sample verified open         |
-| Ashby         | 24 public Linear listings; sample verified open                                |
+| Ashby         | 25 public Linear listings; sample verified open                                |
 | Recruitee     | amperecloud 5/open and xneelo 3/open                                           |
 | Pinpoint      | workwithus 3/open and wealthwizards 3/open                                     |
 | Safety bound  | TransPerfect's >8 MiB response rejected with `RESPONSE_TOO_LARGE`              |
-| Brave Search  | 7 candidates; 6 directly resolvable supported official URLs                    |
+| Brave Search  | 6 candidates; all 6 directly resolvable supported official URLs                |
 | Adzuna        | Disabled provider was not instantiated or contacted                            |
-| OpenAI        | `gpt-5.6-luna` structured evidence passed; 1,204 input and 1,340 output tokens |
+| OpenAI        | `gpt-5.6-luna` structured evidence passed; 1,204 input and 1,139 output tokens |
 | Slack         | Labelled setup check delivered, HTTP 200                                       |
 | Inngest       | Prior real Figma source run succeeded; duplicate delivery safe                 |
 
@@ -109,22 +109,24 @@ database was then deleted; the protected backup remained unchanged.
 
 ## Production status
 
-- Additive Daily-Driver migrations through `20260804162400` applied to the guarded FirstSeen
-  database URL. `pnpm verify:production-schema` returned `ok: true`: 52 backfilled organizations and
-  global sources, zero listed private tables without RLS, no Auth/anon read privilege on global raw
-  observations, and latest migration present.
+- Additive Daily-Driver migrations through `20260804162800_notification_preference_integrity.sql`
+  applied to the guarded FirstSeen database URL. `pnpm verify:production-schema` returned `ok: true`:
+  55 organizations, 56 global sources, zero listed private tables without RLS, no Auth/anon read
+  privilege on global raw observations or the global outbox, and the latest migration/indexes present.
 - Protected non-empty roles/schema/data backup artifacts were created outside the repository before
   applying the backward-compatible migration to dedicated FirstSeen ref `tlhwxayhjamopnnlroke`.
-- Company, feed, and Slack rollout flags were enabled independently. The current Vercel production
-  deployment is Ready and serves the GitHub `main` release.
-- Current-policy replay succeeded for all 45 active official sources. The unsupported Evenup board
-  was externally confirmed closed, quarantined, and its prior dead letters resolved. Operations show
-  zero unresolved dead letters and every active source Ready.
-- All eight visible production matches passed direct official-page verification, including exact
-  persisted official posted instants and HTTPS application URLs. The foreign-only Sweden regression
-  is absent from the queue.
-- Authenticated Chrome inspection found no warning/error console output. The inspected Vercel errors
-  were only two pre-fix Evenup 404 traces; none occurred after quarantine deployment.
+- Company, feed, Slack, shared supply, CRM, application, PWA, and Web Push rollout flags were deployed
+  to the Ready canonical remote build. Inngest successfully registered the release after total
+  concurrency was bounded to the active plan limit.
+- Current-policy targeted replay accepted 72 active queue occurrences. Final aggregate health showed
+  52 active official sources, 2,933 open global jobs, 2,681 open private jobs, 57 successful global
+  scans in two hours, and zero active-source errors, unresolved dead letters, recent worker failures,
+  failed deliveries, or global/private outbox backlog.
+- The authenticated default seven-day feed showed nine current-policy jobs in New and Recent sections.
+  The foreign-only Sweden regression is absent from the queue.
+- Authenticated browser inspection at all four required viewports found no overflow or warning/error
+  console output. The final canonical remote deployment had no HTTP 5xx log entries in the inspected
+  45-minute window.
 - Slack delivered the 2026-08-04 digest once at 8:00:04 AM Eastern with eight jobs, with no duplicate
   idempotency groups or failed notifications.
 
