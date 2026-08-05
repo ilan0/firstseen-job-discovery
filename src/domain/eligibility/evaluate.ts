@@ -77,7 +77,7 @@ export function evaluateEligibility(
   if ((policy.rejectPublicTrust ?? true) && facts.publicTrust.value === "required") {
     reasons.push({
       code: "PUBLIC_TRUST_REQUIRED",
-      message: "The role requires Public Trust or an equivalent suitability determination.",
+      message: "The role requires a clearance or equivalent federal suitability determination.",
       hard: true,
       evidence: facts.publicTrust.evidence,
     });

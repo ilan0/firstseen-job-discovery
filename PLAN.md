@@ -119,6 +119,10 @@ physical-device work.
 18. Synthetic browser-fixture sources are explicitly network-disabled. Manual and scheduled local
     scans record an observable successful skip instead of contacting invented ATS tenants, creating
     false source failures, or producing dead letters.
+19. Candidate settings and job details present one clearance requirement rather than a separate
+    Public Trust preference. Saving that control synchronizes both persisted exclusion flags, while
+    dedicated clearance and federal-suitability detectors remain independent internally so neither
+    wording can bypass the hard filter.
 
 ## Local release evidence
 

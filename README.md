@@ -28,9 +28,8 @@ CAPTCHA, or turns an aggregator result directly into a recommendation.
   urgency sorts are server-backed and URL-restorable.
 - Independent company interest and referrals with 15-minute Priority, hourly Standard/Warm, and
   four-hour Cold monitoring. Automatic provenance survives Follow; Not relevant is sticky.
-- Database-driven candidate preferences and deterministic full-time, experience,
-  clearance/Public Trust, sponsorship, role, and location rules before schema-constrained OpenAI
-  analysis.
+- Database-driven candidate preferences and deterministic full-time, experience, clearance,
+  sponsorship, role, and location rules before schema-constrained OpenAI analysis.
 - Ten visible ranking dimensions rather than an opaque match score.
 - Additive shared canonical-supply tables and a fair oldest-due global source scheduler, with
   private per-user overlays and legacy dual-write/read comparison during rollout.

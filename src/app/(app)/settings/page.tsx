@@ -131,21 +131,16 @@ export default async function SettingsPage({
         </div>
         <fieldset className="mt-5">
           <legend className="text-sm font-black">Hard constraints</legend>
-          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
             <Check
               label="Full-time only"
               name="fullTimeOnly"
               checked={prefs?.fullTimeOnly ?? true}
             />
             <Check
-              label="Exclude clearance"
+              label="Exclude jobs requiring clearance"
               name="rejectClearance"
-              checked={prefs?.rejectClearance ?? true}
-            />
-            <Check
-              label="Exclude Public Trust"
-              name="rejectPublicTrust"
-              checked={prefs?.rejectPublicTrust ?? true}
+              checked={(prefs?.rejectClearance ?? true) || (prefs?.rejectPublicTrust ?? true)}
             />
           </div>
         </fieldset>

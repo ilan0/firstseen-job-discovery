@@ -93,7 +93,7 @@ test("sign-in, explainable match, filters, and persistent queue transitions", as
   await expect(fixtureTitle).toBeVisible();
   await fixtureTitle.click();
   await expect(page.getByRole("heading", { name: "Explainable dimensions" })).toBeVisible();
-  await expect(page.getByText("Security clearance", { exact: true })).toBeVisible();
+  await expect(page.getByText("Clearance requirement", { exact: true })).toBeVisible();
   await expect(page.getByText("not required", { exact: true }).first()).toBeVisible();
   await page.getByRole("button", { name: "Save for later", exact: true }).click();
   await expect(page.getByRole("button", { name: "Restore to active", exact: true })).toBeVisible();
@@ -248,6 +248,10 @@ test("watchlist validation is recoverable and core pages are accessible", async 
   expect(exported).toMatchObject({ status: 200, version: 2, hasCompanies: true });
   expect(exported.disposition).toContain("firstseen-export-");
   await page.goto("/settings");
+  await expect(
+    page.getByRole("checkbox", { name: "Exclude jobs requiring clearance" }),
+  ).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "Exclude Public Trust" })).toHaveCount(0);
   await page.getByRole("checkbox", { name: "Morning digest" }).uncheck();
   await page.getByRole("combobox", { name: "Digest hour (Eastern)" }).selectOption("9");
   await page.getByRole("button", { name: "Save notification settings" }).click();

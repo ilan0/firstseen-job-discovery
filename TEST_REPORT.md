@@ -37,7 +37,8 @@ tests.
   with zero active source errors and zero unresolved dead letters.
 - Independent interest/referral/scope combinations; 15/60/240-minute cadence; recent-viable Warm
   promotion; stale/ineligible/Review rejection; sticky quarantine; adaptive Cold-only slowdown.
-- Full-time, required versus preferred experience, two-year maximum, clearance/Public Trust,
+- Full-time, required versus preferred experience, two-year maximum, clearance and equivalent
+  federal suitability language,
   sponsorship, accepted-location/remote, explicit foreign-only remote, NYC-versus-NJ, and role-family
   hard rules. AI cannot override deterministic exclusion; stale policy versions cannot enter Active.
 - Connector pagination, 304, malformed data, rate pacing, retries/backoff, official verification,

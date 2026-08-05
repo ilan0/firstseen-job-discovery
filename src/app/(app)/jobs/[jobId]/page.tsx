@@ -54,14 +54,40 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
         : `${requirement.minimumYears ?? 0}+ years`,
     );
   const eligibilityReasons = Array.isArray(job.eligibilityReasons)
-    ? (job.eligibilityReasons as Array<{ message?: string }>).filter(
-        (reason) => typeof reason.message === "string",
-      )
+    ? (job.eligibilityReasons as Array<{ message?: string }>)
+        .filter((reason) => typeof reason.message === "string")
+        .map((reason) => ({
+          ...reason,
+          message:
+            reason.message ===
+            "The role requires Public Trust or an equivalent suitability determination."
+              ? "The role requires a clearance or equivalent federal suitability determination."
+              : reason.message,
+        }))
     : [];
   const routingReasons = Array.isArray(job.routingReasons)
     ? job.routingReasons.filter((reason): reason is string => typeof reason === "string")
     : [];
   const uncertainFields = job.uncertainFields ?? [];
+  const clearanceFacts = [facts?.clearance?.value, facts?.publicTrust?.value].filter(
+    (value): value is string => typeof value === "string",
+  );
+  const clearanceRequirement = clearanceFacts.includes("required")
+    ? "required"
+    : clearanceFacts.includes("uncertain")
+      ? "uncertain"
+      : clearanceFacts.includes("not_required")
+        ? "not required"
+        : "not mentioned";
+  const displayedUncertainFields = [
+    ...new Set(
+      uncertainFields.map((field) =>
+        field === "public_trust" || field === "security_clearance"
+          ? "clearance_requirement"
+          : field,
+      ),
+    ),
+  ];
   const sourceHostname = new URL(job.officialUrl).hostname;
   return (
     <div className="mx-auto max-w-5xl">
@@ -240,20 +266,8 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
               </dd>
             </div>
             <div>
-              <dt className="font-black">Security clearance</dt>
-              <dd className="mt-1 text-[var(--muted)]">
-                {typeof facts?.clearance?.value === "string"
-                  ? facts.clearance.value.replaceAll("_", " ")
-                  : "Unknown"}
-              </dd>
-            </div>
-            <div>
-              <dt className="font-black">Public Trust</dt>
-              <dd className="mt-1 text-[var(--muted)]">
-                {typeof facts?.publicTrust?.value === "string"
-                  ? facts.publicTrust.value.replaceAll("_", " ")
-                  : "Unknown"}
-              </dd>
+              <dt className="font-black">Clearance requirement</dt>
+              <dd className="mt-1 text-[var(--muted)]">{clearanceRequirement}</dd>
             </div>
             <div>
               <dt className="font-black">Sponsorship compatibility</dt>
@@ -352,7 +366,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
           ))}
         </div>
       </section>
-      {eligibilityReasons.length || routingReasons.length || uncertainFields.length ? (
+      {eligibilityReasons.length || routingReasons.length || displayedUncertainFields.length ? (
         <section className="mt-6 rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-6">
           <h2 className="text-lg font-black">Decision notes</h2>
           <ul className="mt-4 space-y-2 text-sm leading-6 text-[var(--muted)]">
@@ -362,7 +376,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
             {routingReasons.map((reason) => (
               <li key={reason}>• {reason}</li>
             ))}
-            {uncertainFields.map((field) => (
+            {displayedUncertainFields.map((field) => (
               <li key={field}>• Needs review: {field.replaceAll("_", " ")}</li>
             ))}
           </ul>

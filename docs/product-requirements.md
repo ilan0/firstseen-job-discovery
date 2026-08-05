@@ -20,8 +20,8 @@ not artificially capped.
 - Full-time employment only. Any salary and industry are acceptable.
 - Required experience of zero to one year is ideal; more than two required years is ineligible.
   Preferred experience does not become a hard exclusion.
-- Any current clearance, ability/eligibility to obtain a clearance, Public Trust, or equivalent
-  federal suitability requirement is ineligible. An ordinary background check is not a clearance.
+- Any current clearance, ability/eligibility to obtain one, or equivalent federal suitability
+  requirement is ineligible. An ordinary background check is not a clearance.
 - Onsite/hybrid eligibility: within approximately one hour of Miami in South Florida; within
   approximately one hour of Fairfax, Virginia in the DMV; or inside New York City's five boroughs.
   New Jersey is excluded from the NYC rule.
