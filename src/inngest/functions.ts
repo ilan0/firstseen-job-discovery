@@ -1007,7 +1007,7 @@ export const pushDelivery = inngest.createFunction(
     id: "web-push-device-delivery-v2",
     triggers: [{ event: "firstseen/push.delivery.requested" }],
     retries: 0,
-    concurrency: [{ limit: 1, key: "event.data.deliveryId" }, { limit: 20 }],
+    concurrency: [{ limit: 1, key: "event.data.deliveryId" }, { limit: 5 }],
   },
   async ({ event, step }) => {
     const data = pushDeliveryEventSchema.parse(event.data);
