@@ -26,10 +26,10 @@ import { rolloutFlags } from "@/config/rollout";
 import {
   deliverDeferredAlerts,
   deliverMorningDigest,
-  queueExceptionalAlert,
+  queueRecommendationAlert,
 } from "@/lib/notifications/orchestrate";
 import { retryFailedNotifications } from "@/lib/notifications/slack";
-import { deliverDueWebPush } from "@/lib/notifications/web-push";
+import { deliverDueWebPush, deliverWebPush } from "@/lib/notifications/web-push";
 import { processStorageCleanupRecords } from "@/lib/maintenance/storage-cleanup";
 import {
   finalizeStagedSource,
@@ -78,6 +78,11 @@ const globalSourceEventSchema = z.object({
 const notificationUserEventSchema = z.object({
   userId: z.string().uuid(),
   scheduledFor: eventDateTime,
+});
+
+const pushDeliveryEventSchema = z.object({
+  userId: z.string().uuid(),
+  deliveryId: z.string().uuid(),
 });
 
 const attachGlobalSourcesEventSchema = z.object({
@@ -320,10 +325,10 @@ export const globalUserPersonalization = inngest.createFunction(
         new Date(data.observedAt),
       ),
     );
-    const exceptional = result.exceptional;
-    if (exceptional)
-      await step.run("queue-exceptional-user-alert", () =>
-        queueExceptionalAlert({ userId: data.userId, ...exceptional }),
+    const alertCandidate = result.alertCandidate;
+    if (alertCandidate)
+      await step.run("queue-user-job-alert", () =>
+        queueRecommendationAlert({ userId: data.userId, ...alertCandidate }),
       );
     return result;
   },
@@ -593,9 +598,9 @@ export const sourceScan = inngest.createFunction(
     const result = await step.run("finalize-source", () =>
       finalizeStagedSource(source, staged, processed, observedAt),
     );
-    for (const alert of "exceptional" in result ? result.exceptional : [])
+    for (const alert of "alertCandidates" in result ? result.alertCandidates : [])
       await step.run(`alert-${alert.jobId}`, () =>
-        queueExceptionalAlert({ userId: data.userId, ...alert }),
+        queueRecommendationAlert({ userId: data.userId, ...alert }),
       );
     await step.run("record-success", async () => {
       const now = new Date();
@@ -897,6 +902,53 @@ export const rematchOutboxScheduler = inngest.createFunction(
   },
 );
 
+export const pushDeliveryOutboxScheduler = inngest.createFunction(
+  {
+    id: "push-delivery-outbox-scheduler-v2",
+    triggers: [{ cron: "* * * * *" }],
+    retries: 4,
+    concurrency: { limit: 1 },
+  },
+  async ({ step }) => {
+    const pending = await step.run("load-pending-push-deliveries", () =>
+      db
+        .select({ id: outboxEvents.id, payload: outboxEvents.payload })
+        .from(outboxEvents)
+        .where(
+          and(
+            eq(outboxEvents.status, "pending"),
+            eq(outboxEvents.eventName, "firstseen/push.delivery.requested"),
+            lte(outboxEvents.availableAt, new Date()),
+          ),
+        )
+        .orderBy(asc(outboxEvents.availableAt), asc(outboxEvents.id))
+        .limit(200),
+    );
+    if (pending.length) {
+      await step.sendEvent(
+        "dispatch-push-deliveries",
+        pending.map((record) => ({
+          id: record.id,
+          name: "firstseen/push.delivery.requested" as const,
+          data: pushDeliveryEventSchema.parse(record.payload),
+        })),
+      );
+      await step.run("mark-push-deliveries-dispatched", () =>
+        db
+          .update(outboxEvents)
+          .set({ status: "dispatched", dispatchedAt: new Date(), updatedAt: new Date() })
+          .where(
+            inArray(
+              outboxEvents.id,
+              pending.map((record) => record.id),
+            ),
+          ),
+      );
+    }
+    return { dispatched: pending.length };
+  },
+);
+
 export const notificationSchedule = inngest.createFunction(
   { id: "notification-schedule", triggers: [{ cron: "0 * * * *" }], retries: 3 },
   async ({ step }) => {
@@ -926,11 +978,16 @@ export const userNotificationDelivery = inngest.createFunction(
   },
   async ({ event, step }) => {
     const data = notificationUserEventSchema.parse(event.data);
-    const digest = await step.run("morning-digest", () => deliverMorningDigest(data.userId));
-    const deferred = await step.run("deferred-alerts", () => deliverDeferredAlerts(data.userId));
-    const slackRetries = await step.run("failed-slack-retries", () =>
-      retryFailedNotifications(data.userId),
-    );
+    const pushV2 = rolloutFlags().pushPolicyV2;
+    const digest = pushV2
+      ? { state: "disabled_push_first" as const }
+      : await step.run("morning-digest", () => deliverMorningDigest(data.userId));
+    const deferred = pushV2
+      ? { state: "disabled_push_first" as const }
+      : await step.run("deferred-alerts", () => deliverDeferredAlerts(data.userId));
+    const slackRetries = pushV2
+      ? { state: "disabled_push_first" as const }
+      : await step.run("failed-slack-retries", () => retryFailedNotifications(data.userId));
     const push = rolloutFlags().webPush
       ? await step.run("due-web-push", () => deliverDueWebPush(data.userId))
       : { disabled: true };
@@ -942,6 +999,19 @@ export const userNotificationDelivery = inngest.createFunction(
       slackRetries,
       push,
     };
+  },
+);
+
+export const pushDelivery = inngest.createFunction(
+  {
+    id: "web-push-device-delivery-v2",
+    triggers: [{ event: "firstseen/push.delivery.requested" }],
+    retries: 0,
+    concurrency: [{ limit: 1, key: "event.data.deliveryId" }, { limit: 20 }],
+  },
+  async ({ event, step }) => {
+    const data = pushDeliveryEventSchema.parse(event.data);
+    return step.run("deliver-device-push", () => deliverWebPush(data.deliveryId));
   },
 );
 
@@ -1001,7 +1071,9 @@ export const functions = [
   globalUserRematch,
   legacyUserJobRematch,
   rematchOutboxScheduler,
+  pushDeliveryOutboxScheduler,
   notificationSchedule,
+  pushDelivery,
   userNotificationDelivery,
   cleanupSchedule,
 ];

@@ -92,6 +92,7 @@ const output: Record<string, string> = {
   APPLICATION_WORKFLOW_ENABLED: "true",
   PWA_ENABLED: "true",
   WEB_PUSH_ENABLED: "true",
+  PUSH_POLICY_V2_ENABLED: "false",
   INDIVIDUAL_AUTH_ENABLED: "false",
   OWNER_CODE_AUTH_ENABLED: "true",
 };

@@ -298,7 +298,7 @@ export async function stageStoredSource(
   };
 }
 
-export type ExceptionalAlert = {
+export type JobAlertCandidatePayload = {
   jobId: string;
   snapshotId: string;
   title: string;
@@ -306,10 +306,13 @@ export type ExceptionalAlert = {
   headline: string;
   urgency: number;
   hasReferral: boolean;
-  band: "hot" | "strong";
+  band: "hot" | "strong" | "possible" | "review" | "not_recommended";
+  roleFamily: import("@/domain/eligibility/types").RoleFamily;
+  eligibilityOutcome: "eligible" | "ineligible" | "review";
+  uncertainFields: string[];
   officialUrl: string;
   freshnessAgeHours: number;
-  freshnessBasis: "posted_at" | "reopened_at";
+  freshnessBasis: "posted_at" | "reopened_at" | "first_seen";
   primaryConcern: string;
   occurrenceId: string;
 };
@@ -318,7 +321,7 @@ export type ProcessedListingResult = {
   changed: number;
   analyzed: number;
   recentViable: boolean;
-  exceptional: ExceptionalAlert[];
+  alertCandidates: JobAlertCandidatePayload[];
 };
 
 export async function processStagedListing(
@@ -405,14 +408,8 @@ export async function processStagedListing(
       eligibilityOutcome: result.decision.outcome,
       ageHours: currentFreshness.ageHours,
     });
-  const exceptional: ExceptionalAlert[] =
-    result.state === "analyzed" &&
-    (result.recommendation.band === "hot" || result.recommendation.band === "strong") &&
-    result.recommendation.urgency >= 85 &&
-    currentFreshness.ageHours <= 24 &&
-    currentFreshness.basis !== "first_seen" &&
-    queue?.status === "active" &&
-    latestSnapshot?.id
+  const alertCandidates: JobAlertCandidatePayload[] =
+    result.state === "analyzed" && queue?.status === "active" && latestSnapshot?.id
       ? [
           {
             jobId: ingest.jobId,
@@ -423,6 +420,9 @@ export async function processStagedListing(
             urgency: result.recommendation.urgency,
             hasReferral: referralRows.length > 0,
             band: result.recommendation.band,
+            roleFamily: result.decision.facts.roleFamily.value,
+            eligibilityOutcome: result.decision.outcome,
+            uncertainFields: result.decision.uncertainFields,
             officialUrl: listing.officialUrl,
             freshnessAgeHours: currentFreshness.ageHours,
             freshnessBasis: currentFreshness.basis,
@@ -431,7 +431,7 @@ export async function processStagedListing(
             occurrenceId:
               ingest.reopened && ingest.reopenedAt
                 ? `reopened:${ingest.reopenedAt.toISOString()}`
-                : `snapshot:${latestSnapshot.id}`,
+                : "opening:initial",
           },
         ]
       : [];
@@ -439,7 +439,7 @@ export async function processStagedListing(
     changed: ingest.changed ? 1 : 0,
     analyzed: result.state === "analyzed" ? 1 : 0,
     recentViable,
-    exceptional,
+    alertCandidates,
   };
 }
 
@@ -451,7 +451,7 @@ export async function finalizeStagedSource(
 ) {
   const changed = processed.reduce((sum, item) => sum + item.changed, 0);
   const analyzed = processed.reduce((sum, item) => sum + item.analyzed, 0);
-  const exceptional = processed.flatMap((item) => item.exceptional);
+  const alertCandidates = processed.flatMap((item) => item.alertCandidates);
   const hasRecentViable = processed.some((item) => item.recentViable);
   await db
     .update(companies)
@@ -528,7 +528,7 @@ export async function finalizeStagedSource(
     discovered: staged.discovered,
     changed,
     analyzed,
-    exceptional,
+    alertCandidates,
     hasRecentViable,
     notModified: staged.notModified,
   };

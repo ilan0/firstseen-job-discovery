@@ -4,8 +4,8 @@
 
 FirstSeen minimizes the time between a suitable entry-level software-engineering vacancy becoming
 public on an official employer site and Ilan seeing and applying to it. The default experience is a
-never-ending, fresh queue that is easy to clear with Apply, Save, and Dismiss; exceptional matches
-arrive immediately in Slack and the best remaining work arrives in a morning digest.
+never-ending, fresh queue that is easy to clear with Apply, Save, and Dismiss. Select fresh,
+verified matches arrive as event-driven phone notifications; the app remains the complete queue.
 
 The release remains a private personal product. Its data model and authentication foundations are
 commercial-ready and per-user, but external invitations and public signup stay disabled until the
@@ -77,11 +77,14 @@ not artificially capped.
 - Apply opens the verified official application for manual completion with Simplify. Save and
   Dismiss remove the item from Active and persist it in the corresponding category. Applied,
   Saved, and Dismissed records remain visible if a job later closes.
-- Immediate Slack alerts are reserved for verified Hot or Strong matches under 24 hours old, or a
-  newly verified reopening, with urgency at least 85 and reliable time provenance. Morning digest
-  includes only unacted jobs detected since the prior digest and no older than seven days, grouped
-  by age; an empty digest is skipped. Delivery uses an exact configured hour and IANA time zone, is
-  idempotent, and respects quiet hours.
+- Web Push uses one versioned deterministic policy. Balanced includes Hot/Strong at most 24 hours
+  old, priority-role Possible at most six hours old, and eligible Interested/referral-company
+  Hot/Strong/Possible occurrences at most 24 hours old. Every alert requires an open verified
+  official occurrence, reliable official/reopening time, deterministic eligibility, and an Active
+  unacted queue state. Review, low-confidence time, detection-only freshness, and hard exclusions
+  never alert. Selective, All Viable, Off, Custom, per-company Always/Mute, quiet hours, and
+  per-device privacy are configurable. A rolling six-alert device cap coalesces overflow without
+  removing jobs from the feed.
 
 ## Daily-driver workflows
 
@@ -102,9 +105,11 @@ not artificially capped.
   Continue Later/Desktop bridges mobile to a user-controlled desktop application flow.
 - FirstSeen is installable as a PWA. Its service worker caches only the public static shell and an
   offline fallback, never authenticated HTML/API data, contacts, resumes, or application records.
-- A logical notification can deliver independently through Slack and standards-based Web Push.
-  Push subscriptions are encrypted; generic lock-screen text is the default; device/channel
-  deliveries are independently idempotent and retryable.
+- A logical notification delivers independently to each standards-based Web Push device. Push
+  subscriptions are encrypted; generic lock-screen text is the per-device default; device
+  deliveries are independently idempotent and retryable. Quiet-hour work is durably deferred and
+  re-evaluated against lifecycle, actions, and current preferences before delivery. Slack/digest is
+  disabled and retained only as a temporary rollback path through Push acceptance and soak.
 - Routine AI extraction uses explicit Luna without candidate/contact/application PII. Selective
   Terra escalation handles validated hard-field ambiguity within a deterministic budget cap. Hard
   decisions, queue routing, lifecycle, and notification eligibility remain code-owned.
@@ -152,8 +157,8 @@ applicant tracking. The application workflow remains a small explicit stage/hist
   under 300 ms.
 - Priority source discovery-to-feed p95 under 20 minutes; standard monitoring under 75 minutes under
   normal provider conditions.
-- Exceptional enabled-channel alert within five minutes after recommendation; morning digest by
-  08:02 local.
+- Recommendation-to-Push-provider acceptance p95 under 60 seconds; deferred work wakes at quiet-hour
+  end and is re-evaluated before delivery.
 - Each durable listing step remains below the host's 60-second Hobby invocation ceiling; network
   calls have explicit shorter timeouts.
 - Filtering 1,000 normalized roles in deterministic code under 250 ms in isolation.

@@ -364,14 +364,8 @@ export async function personalizeGlobalListing(
     projectedIngest.firstSeenAt,
     projectedIngest.reopenedAt,
   );
-  const exceptional =
-    result.state === "analyzed" &&
-    (result.recommendation.band === "hot" || result.recommendation.band === "strong") &&
-    result.recommendation.urgency >= 85 &&
-    currentFreshness.ageHours <= 24 &&
-    currentFreshness.basis !== "first_seen" &&
-    queue?.status === "active" &&
-    latestSnapshot?.id
+  const alertCandidate =
+    result.state === "analyzed" && queue?.status === "active" && latestSnapshot?.id
       ? {
           jobId: legacy.jobId,
           snapshotId: latestSnapshot.id,
@@ -381,6 +375,9 @@ export async function personalizeGlobalListing(
           urgency: result.recommendation.urgency,
           hasReferral: Boolean(referral),
           band: result.recommendation.band,
+          roleFamily: result.decision.facts.roleFamily.value,
+          eligibilityOutcome: result.decision.outcome,
+          uncertainFields: result.decision.uncertainFields,
           officialUrl: listing.officialUrl,
           freshnessAgeHours: currentFreshness.ageHours,
           freshnessBasis: currentFreshness.basis,
@@ -389,7 +386,7 @@ export async function personalizeGlobalListing(
           occurrenceId:
             projectedIngest.reopened && projectedIngest.reopenedAt
               ? `reopened:${projectedIngest.reopenedAt.toISOString()}`
-              : `snapshot:${latestSnapshot.id}`,
+              : "opening:initial",
         }
       : null;
   return {
@@ -397,7 +394,7 @@ export async function personalizeGlobalListing(
     legacyJobId: legacy.jobId,
     state: result.state,
     changed: legacy.changed,
-    exceptional,
+    alertCandidate,
   };
 }
 

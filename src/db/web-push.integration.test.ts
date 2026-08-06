@@ -101,6 +101,47 @@ describe.runIf(enabled)("Web Push delivery persistence", () => {
     return { subscriptionId: subscription.data.id, deliveryId: delivery.data.id };
   }
 
+  async function subscription(suffix: string, detailedLockScreen: boolean) {
+    const { encryptCapability } = await import("@/lib/security/encrypted-capability");
+    const created = await admin
+      .from("push_subscriptions")
+      .insert({
+        user_id: user.id,
+        channel_id: channelId,
+        endpoint_hash: randomUUID(),
+        encrypted_capability: encryptCapability(
+          {
+            endpoint: `https://fcm.googleapis.com/fcm/send/${suffix}`,
+            expirationTime: null,
+            keys: { p256dh: "A".repeat(44), auth: "B".repeat(22) },
+          },
+          process.env.PUSH_SUBSCRIPTION_ENCRYPTION_KEY ?? "",
+        ),
+        detailed_lock_screen: detailedLockScreen,
+      })
+      .select("id")
+      .single();
+    if (created.error) throw created.error;
+    return created.data.id;
+  }
+
+  async function logicalJobAlert() {
+    const created = await admin
+      .from("notifications")
+      .insert({
+        user_id: user.id,
+        kind: "job_alert",
+        status: "pending",
+        idempotency_key: `job-alert-test-${randomUUID()}`,
+        payload_hash: randomUUID(),
+        payload: {},
+      })
+      .select("id")
+      .single();
+    if (created.error) throw created.error;
+    return created.data.id;
+  }
+
   it("marks an accepted device delivery exactly once", async () => {
     const row = await fixture("accepted");
     const { deliverWebPush } = await import("@/lib/notifications/web-push");
@@ -110,12 +151,107 @@ describe.runIf(enabled)("Web Push delivery persistence", () => {
       state: "already_claimed",
     });
     expect(sender).toHaveBeenCalledTimes(1);
+    const [stored, logical, channel] = await Promise.all([
+      admin
+        .from("notification_deliveries")
+        .select("status,attempt_count")
+        .eq("id", row.deliveryId)
+        .single(),
+      admin
+        .from("notifications")
+        .select("status,delivered_at")
+        .eq("id", logicalNotificationId)
+        .single(),
+      admin.from("notification_channels").select("last_success_at").eq("id", channelId).single(),
+    ]);
+    expect(stored.data).toMatchObject({ status: "delivered", attempt_count: 1 });
+    expect(logical.data).toMatchObject({ status: "delivered" });
+    expect(logical.data?.delivered_at).toBeTruthy();
+    expect(channel.data?.last_success_at).toBeTruthy();
+  });
+
+  it("uses per-device lock-screen privacy and stable delivery idempotency", async () => {
+    const genericId = await subscription("generic-device", false);
+    const detailedId = await subscription("detailed-device", true);
+    const notificationId = await logicalJobAlert();
+    const { queueWebPushDeliveries } = await import("@/lib/notifications/web-push");
+    const options = {
+      userId: user.id,
+      logicalNotificationId: notificationId,
+      reason: "possible",
+      message: {
+        path: "/jobs/example",
+        tag: "firstseen-example",
+        urgency: 88,
+        detailedTitle: "Strong match · Example",
+        detailedBody: "Software Engineer I",
+      },
+      notBefore: new Date(),
+      subscriptionIds: [genericId, detailedId],
+    };
+    const deliveries = await queueWebPushDeliveries(options);
+    expect(deliveries).toHaveLength(2);
+    expect(await queueWebPushDeliveries(options)).toEqual([]);
     const stored = await admin
       .from("notification_deliveries")
-      .select("status,attempt_count")
-      .eq("id", row.deliveryId)
+      .select("push_subscription_id,provider_response_safe")
+      .in("id", deliveries);
+    expect(stored.error).toBeNull();
+    const byDevice = new Map(
+      stored.data?.map((row) => [row.push_subscription_id, row.provider_response_safe]) ?? [],
+    );
+    expect(byDevice.get(genericId)).toMatchObject({
+      payload: { title: "New FirstSeen match", path: "/jobs/example" },
+    });
+    expect(byDevice.get(detailedId)).toMatchObject({
+      payload: { title: "Strong match · Example", body: "Software Engineer I" },
+    });
+  });
+
+  it("coalesces individually displayed alerts after the six-per-hour cap", async () => {
+    const deviceId = await subscription("overflow-device", false);
+    for (let index = 0; index < 6; index += 1) {
+      const priorNotificationId = await logicalJobAlert();
+      const prior = await admin.from("notification_deliveries").insert({
+        user_id: user.id,
+        logical_notification_id: priorNotificationId,
+        channel_id: channelId,
+        push_subscription_id: deviceId,
+        reason: "hot",
+        policy_version: "test",
+        idempotency_key: randomUUID(),
+        status: "delivered",
+        next_attempt_at: new Date().toISOString(),
+      });
+      if (prior.error) throw prior.error;
+    }
+    const notificationId = await logicalJobAlert();
+    const { queueWebPushDeliveries } = await import("@/lib/notifications/web-push");
+    const [deliveryId] = await queueWebPushDeliveries({
+      userId: user.id,
+      logicalNotificationId: notificationId,
+      reason: "strong",
+      message: {
+        path: "/jobs/overflow",
+        tag: "firstseen-overflow-source",
+        urgency: 95,
+        detailedTitle: "Strong match · Overflow",
+        detailedBody: "Software Engineer I",
+      },
+      notBefore: new Date(),
+      subscriptionIds: [deviceId],
+    });
+    const stored = await admin
+      .from("notification_deliveries")
+      .select("reason,provider_response_safe")
+      .eq("id", deliveryId)
       .single();
-    expect(stored.data).toMatchObject({ status: "delivered", attempt_count: 1 });
+    expect(stored.data).toMatchObject({
+      reason: "strong:overflow",
+      provider_response_safe: {
+        payload: { title: "More fresh FirstSeen matches", tag: "firstseen-fresh-overflow" },
+      },
+    });
   });
 
   it("revokes subscriptions after a 410 response", async () => {

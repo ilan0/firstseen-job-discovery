@@ -20,28 +20,19 @@ import { RESUME_BUCKET } from "@/domain/applications/resume";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { processStorageCleanupRecords } from "@/lib/maintenance/storage-cleanup";
-const schema = z.object({
-  digestEnabled: z.enum(["on"]).optional(),
-  alertsEnabled: z.enum(["on"]).optional(),
-  digestHour: z.coerce.number().int().min(0).max(23),
+const feedPreferenceSchema = z.object({
   defaultPostedWindow: z.enum(["6h", "24h", "3d", "7d", "30d", "all"]),
   defaultFeedSort: z.enum(["posted_newest", "detected_newest", "urgency"]),
 });
-export async function updateNotifications(formData: FormData) {
+export async function updateFeedPreferences(formData: FormData) {
   const owner = await requireOwner();
-  const value = schema.parse({
-    digestEnabled: formData.get("digestEnabled") ?? undefined,
-    alertsEnabled: formData.get("alertsEnabled") ?? undefined,
-    digestHour: formData.get("digestHour"),
+  const value = feedPreferenceSchema.parse({
     defaultPostedWindow: formData.get("defaultPostedWindow"),
     defaultFeedSort: formData.get("defaultFeedSort"),
   });
   await db
     .update(searchPreferences)
     .set({
-      digestEnabled: Boolean(value.digestEnabled),
-      exceptionalAlertsEnabled: Boolean(value.alertsEnabled),
-      digestHourLocal: value.digestHour,
       defaultPostedWindow: value.defaultPostedWindow,
       defaultFeedSort: value.defaultFeedSort,
       preferencesVersion: sql`${searchPreferences.preferencesVersion} + 1`,
@@ -49,7 +40,7 @@ export async function updateNotifications(formData: FormData) {
     })
     .where(eq(searchPreferences.userId, owner.id));
   revalidatePath("/settings");
-  redirect("/settings?saved=1");
+  redirect("/settings?saved=feed");
 }
 
 const roleFamilies = [

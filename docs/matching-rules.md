@@ -100,10 +100,13 @@ explanation, and ranking version:
   capped as a job ages.
 
 Recommendation bands are Hot, Strong, Possible, Review, or Not Recommended. There is no displayed
-opaque match score. A Hot or Strong alert additionally requires open/reopened lifecycle, urgency at
-least 85, age under 24 hours from a reliable official posting or verified reopening, an Active queue
-state, a current snapshot, and occurrence-level notification idempotency. Closed/uncertain jobs
-cannot open through Apply or restore to Active.
+opaque match score. The versioned Push policy requires open/reopened lifecycle, reliable official
+posting/reopening time, deterministic eligibility, Active/unacted state, and occurrence-level
+idempotency. Balanced alerts Hot/Strong through 24 hours; preferred-role Possible through six hours;
+and eligible Interested/referral-company Hot/Strong/Possible through 24 hours. Company Always may
+broaden only to those viable bands and age limit; Mute wins. Neither preferences nor AI can bypass a
+hard exclusion. Review and detection-time-only freshness never alert. Closed/uncertain jobs cannot
+open through Apply or restore to Active.
 
 ## Freshness and lifecycle
 

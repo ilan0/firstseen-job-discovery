@@ -163,7 +163,9 @@ describe.runIf(enabled)("canonical ingestion persistence", () => {
       employment_type: "contract",
       requisition_id: "REQ-UPDATED",
       official_url: "https://jobs.lever.co/integration/alternate-url",
-      posted_at: "2026-08-04T12:00:00+00:00",
+      // Reopening freshness is anchored to reopened_at; the original official
+      // posting date remains available for honest display and lifecycle history.
+      posted_at: "2026-08-03T12:00:00+00:00",
       posted_at_confidence: "high",
       lifecycle_status: "reopened",
       reopened_at: "2026-08-04T13:00:00+00:00",

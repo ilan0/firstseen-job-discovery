@@ -4,19 +4,28 @@ import { and, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import webPush, { type PushSubscription as WebPushSubscription } from "web-push";
 import { db } from "@/db/client";
 import {
+  canonicalJobs,
+  companies,
+  eligibilityDecisions,
   notificationChannels,
   notificationDeliveries,
-  notificationPreferences,
   notificationReads,
   notifications,
   pushSubscriptions,
+  queueStates,
+  recommendations,
+  referralRequests,
+  referrals,
 } from "@/db/schema";
 import { serverEnv } from "@/lib/env/server";
 import { decryptCapability } from "@/lib/security/encrypted-capability";
 import { recordNotificationDeadLetter, resolveNotificationDeadLetter } from "./dead-letter";
 import type { PushCapability } from "./push-capability";
-
-export const PUSH_POLICY_VERSION = "2026-08-04.1";
+import { PUSH_POLICY_VERSION } from "@/domain/notifications/policy";
+import { evaluateNotificationPolicy } from "@/domain/notifications/policy";
+import type { RoleFamily } from "@/domain/eligibility/types";
+import { freshness } from "@/domain/jobs";
+import { loadEffectivePushPolicy } from "./preferences";
 
 export type PushMessage = {
   path: string;
@@ -31,6 +40,126 @@ type PushSender = (
   payload: string,
   options: webPush.RequestOptions,
 ) => Promise<webPush.SendResult>;
+
+async function revalidateJobAlertDelivery(deliveryId: string, now: Date) {
+  const [row] = await db
+    .select({
+      userId: notificationDeliveries.userId,
+      notificationId: notifications.id,
+      notificationKind: notifications.kind,
+      notificationPayload: notifications.payload,
+      jobId: canonicalJobs.id,
+      lifecycleStatus: canonicalJobs.lifecycleStatus,
+      verifiedAt: canonicalJobs.verifiedAt,
+      postedAt: canonicalJobs.postedAt,
+      postedAtConfidence: canonicalJobs.postedAtConfidence,
+      firstSeenAt: canonicalJobs.firstSeenAt,
+      reopenedAt: canonicalJobs.reopenedAt,
+      queueStatus: queueStates.status,
+      companyId: companies.id,
+      organizationId: companies.organizationId,
+      interested: companies.interested,
+      eligibilityOutcome: eligibilityDecisions.outcome,
+      uncertainFields: eligibilityDecisions.uncertainFields,
+    })
+    .from(notificationDeliveries)
+    .innerJoin(notifications, eq(notificationDeliveries.logicalNotificationId, notifications.id))
+    .leftJoin(canonicalJobs, eq(notifications.jobId, canonicalJobs.id))
+    .leftJoin(companies, eq(canonicalJobs.companyId, companies.id))
+    .leftJoin(
+      queueStates,
+      and(
+        eq(queueStates.userId, notificationDeliveries.userId),
+        eq(queueStates.jobId, canonicalJobs.id),
+      ),
+    )
+    .leftJoin(
+      recommendations,
+      and(
+        eq(recommendations.userId, notificationDeliveries.userId),
+        eq(recommendations.snapshotId, notifications.snapshotId),
+      ),
+    )
+    .leftJoin(
+      eligibilityDecisions,
+      eq(recommendations.eligibilityDecisionId, eligibilityDecisions.id),
+    )
+    .where(eq(notificationDeliveries.id, deliveryId))
+    .limit(1);
+  if (!row || row.notificationKind !== "job_alert") return { allowed: true as const };
+  if (
+    !row.jobId ||
+    !row.organizationId ||
+    !row.postedAtConfidence ||
+    !row.firstSeenAt ||
+    !row.lifecycleStatus ||
+    !row.verifiedAt
+  )
+    return { allowed: false as const, reason: "job_unavailable" };
+  const payload = row.notificationPayload as {
+    band?: "hot" | "strong" | "possible" | "review" | "not_recommended";
+    policyFacts?: {
+      roleFamily?: RoleFamily;
+      eligibilityOutcome?: "eligible" | "ineligible" | "review";
+      uncertainFields?: string[];
+    };
+  };
+  if (!payload.band || !payload.policyFacts?.roleFamily)
+    return { allowed: false as const, reason: "policy_context_unavailable" };
+  const [legacyReferral, crmReferral] = await Promise.all([
+    db
+      .select({ id: referrals.id })
+      .from(referrals)
+      .where(and(eq(referrals.userId, row.userId), eq(referrals.companyId, row.companyId!)))
+      .limit(1),
+    db
+      .select({ id: referralRequests.id })
+      .from(referralRequests)
+      .where(
+        and(
+          eq(referralRequests.userId, row.userId),
+          eq(referralRequests.organizationId, row.organizationId),
+          inArray(referralRequests.status, ["available", "requested", "agreed", "submitted"]),
+        ),
+      )
+      .limit(1),
+  ]);
+  const { policy, companyOverrideMode } = await loadEffectivePushPolicy(
+    row.userId,
+    row.organizationId,
+  );
+  const current = freshness(
+    now,
+    row.postedAt,
+    row.postedAtConfidence,
+    row.firstSeenAt,
+    row.reopenedAt,
+  );
+  const decision = evaluateNotificationPolicy(
+    {
+      officiallyVerified: Boolean(row.verifiedAt),
+      lifecycleStatus: row.lifecycleStatus,
+      eligibilityOutcome:
+        row.eligibilityOutcome ?? payload.policyFacts.eligibilityOutcome ?? "review",
+      uncertainFields: row.uncertainFields ?? payload.policyFacts.uncertainFields ?? [],
+      queueStatus: row.queueStatus ?? "dismissed",
+      band: payload.band,
+      roleFamily: payload.policyFacts.roleFamily,
+      freshnessAgeHours: current.ageHours,
+      freshnessBasis: current.basis,
+      timestampReliable: current.basis !== "first_seen",
+      hasActiveReferral: legacyReferral.length > 0 || crmReferral.length > 0,
+      interestedCompany: Boolean(row.interested),
+      companyOverrideMode,
+      alreadyAlerted: false,
+    },
+    policy,
+    now,
+  );
+  return decision.eligible
+    ? { allowed: true as const }
+    : { allowed: false as const, reason: decision.reason };
+}
 
 function statusCode(error: unknown): number | null {
   if (!error || typeof error !== "object" || !("statusCode" in error)) return null;
@@ -76,26 +205,23 @@ export async function queueWebPushDeliveries(options: {
   reason: string;
   message: PushMessage;
   notBefore: Date;
+  subscriptionIds?: string[];
 }) {
   const subscriptions = await db
     .select({
       id: pushSubscriptions.id,
       channelId: pushSubscriptions.channelId,
-      detailed: notificationPreferences.detailedLockScreen,
+      detailed: pushSubscriptions.detailedLockScreen,
     })
     .from(pushSubscriptions)
     .innerJoin(notificationChannels, eq(pushSubscriptions.channelId, notificationChannels.id))
-    .leftJoin(
-      notificationPreferences,
-      and(
-        eq(notificationPreferences.channelId, notificationChannels.id),
-        isNull(notificationPreferences.organizationId),
-      ),
-    )
     .where(
       and(
         eq(pushSubscriptions.userId, options.userId),
         eq(notificationChannels.enabled, true),
+        ...(options.subscriptionIds?.length
+          ? [inArray(pushSubscriptions.id, options.subscriptionIds)]
+          : []),
         isNull(pushSubscriptions.revokedAt),
         or(
           isNull(pushSubscriptions.expirationTime),
@@ -104,6 +230,33 @@ export async function queueWebPushDeliveries(options: {
       ),
     );
   const now = new Date();
+  if (!subscriptions.length) return [];
+  const recentAlertCounts = await db
+    .select({
+      subscriptionId: notificationDeliveries.pushSubscriptionId,
+      count: sql<number>`count(*)`,
+    })
+    .from(notificationDeliveries)
+    .innerJoin(notifications, eq(notificationDeliveries.logicalNotificationId, notifications.id))
+    .where(
+      and(
+        eq(notificationDeliveries.userId, options.userId),
+        inArray(
+          notificationDeliveries.pushSubscriptionId,
+          subscriptions.map((subscription) => subscription.id),
+        ),
+        eq(notifications.kind, "job_alert"),
+        gte(notificationDeliveries.createdAt, new Date(now.getTime() - 3_600_000)),
+        inArray(notificationDeliveries.status, ["pending", "sending", "delivered", "deferred"]),
+      ),
+    )
+    .groupBy(notificationDeliveries.pushSubscriptionId);
+  const recentBySubscription = new Map(
+    recentAlertCounts.flatMap((row) =>
+      row.subscriptionId ? [[row.subscriptionId, Number(row.count)] as const] : [],
+    ),
+  );
+  const deliveryIds: string[] = [];
   const [unread] = await db
     .select({ count: sql<number>`count(*)` })
     .from(notifications)
@@ -118,24 +271,34 @@ export async function queueWebPushDeliveries(options: {
       ),
     );
   for (const subscription of subscriptions) {
-    const payload = subscription.detailed
+    const overflow = (recentBySubscription.get(subscription.id) ?? 0) >= 6;
+    const payload = overflow
       ? {
-          title: options.message.detailedTitle,
-          body: options.message.detailedBody,
-          path: options.message.path,
-          tag: options.message.tag,
+          title: "More fresh FirstSeen matches",
+          body: "Several verified jobs are ready to review.",
+          path: "/",
+          tag: "firstseen-fresh-overflow",
           notificationId: options.logicalNotificationId,
           unreadCount: Number(unread?.count ?? 0),
         }
-      : {
-          title: "New FirstSeen match",
-          body: `Urgency ${options.message.urgency} · Open FirstSeen to review it.`,
-          path: options.message.path,
-          tag: options.message.tag,
-          notificationId: options.logicalNotificationId,
-          unreadCount: Number(unread?.count ?? 0),
-        };
-    await db
+      : subscription.detailed
+        ? {
+            title: options.message.detailedTitle,
+            body: options.message.detailedBody,
+            path: options.message.path,
+            tag: options.message.tag,
+            notificationId: options.logicalNotificationId,
+            unreadCount: Number(unread?.count ?? 0),
+          }
+        : {
+            title: "New FirstSeen match",
+            body: `Urgency ${options.message.urgency} · Open FirstSeen to review it.`,
+            path: options.message.path,
+            tag: options.message.tag,
+            notificationId: options.logicalNotificationId,
+            unreadCount: Number(unread?.count ?? 0),
+          };
+    const [delivery] = await db
       .insert(notificationDeliveries)
       .values({
         userId: options.userId,
@@ -143,16 +306,18 @@ export async function queueWebPushDeliveries(options: {
         globalJobId: options.globalJobId ?? null,
         channelId: subscription.channelId,
         pushSubscriptionId: subscription.id,
-        reason: options.reason,
+        reason: overflow ? `${options.reason}:overflow` : options.reason,
         policyVersion: PUSH_POLICY_VERSION,
-        idempotencyKey: `push:${options.logicalNotificationId}:${subscription.id}:${PUSH_POLICY_VERSION}`,
+        idempotencyKey: `push:${options.logicalNotificationId}:${subscription.id}`,
         status: options.notBefore > now ? "deferred" : "pending",
         nextAttemptAt: options.notBefore,
         providerResponseSafe: { payload },
       })
-      .onConflictDoNothing();
+      .onConflictDoNothing()
+      .returning({ id: notificationDeliveries.id });
+    if (delivery) deliveryIds.push(delivery.id);
   }
-  return subscriptions.length;
+  return deliveryIds;
 }
 
 export async function deliverWebPush(
@@ -168,6 +333,31 @@ export async function deliverWebPush(
   )
     return { state: "not_configured" as const };
   const now = new Date();
+  const revalidated = await revalidateJobAlertDelivery(deliveryId, now);
+  if (!revalidated.allowed) {
+    const [delivery] = await db
+      .update(notificationDeliveries)
+      .set({
+        status: "suppressed",
+        nextAttemptAt: null,
+        lastErrorCode: `PUSH_SUPPRESSED_${revalidated.reason.toUpperCase()}`,
+        providerResponseSafe: { suppressedReason: revalidated.reason },
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(notificationDeliveries.id, deliveryId),
+          inArray(notificationDeliveries.status, ["pending", "failed", "deferred"]),
+        ),
+      )
+      .returning({ logicalNotificationId: notificationDeliveries.logicalNotificationId });
+    if (delivery?.logicalNotificationId)
+      await db
+        .update(notifications)
+        .set({ status: "suppressed", updatedAt: now })
+        .where(eq(notifications.id, delivery.logicalNotificationId));
+    return { state: "suppressed" as const, reason: revalidated.reason };
+  }
   const [claimed] = await db
     .update(notificationDeliveries)
     .set({
@@ -187,6 +377,8 @@ export async function deliverWebPush(
       id: notificationDeliveries.id,
       userId: notificationDeliveries.userId,
       subscriptionId: notificationDeliveries.pushSubscriptionId,
+      channelId: notificationDeliveries.channelId,
+      logicalNotificationId: notificationDeliveries.logicalNotificationId,
       attemptCount: notificationDeliveries.attemptCount,
       response: notificationDeliveries.providerResponseSafe,
     });
@@ -308,6 +500,15 @@ export async function deliverWebPush(
       .update(pushSubscriptions)
       .set({ lastUsedAt: acceptedAt, failureCount: 0, updatedAt: acceptedAt })
       .where(eq(pushSubscriptions.id, subscriptionId));
+    await tx
+      .update(notificationChannels)
+      .set({ lastSuccessAt: acceptedAt, lastErrorCode: null, updatedAt: acceptedAt })
+      .where(eq(notificationChannels.id, claimed.channelId));
+    if (claimed.logicalNotificationId)
+      await tx
+        .update(notifications)
+        .set({ status: "delivered", deliveredAt: acceptedAt, updatedAt: acceptedAt })
+        .where(eq(notifications.id, claimed.logicalNotificationId));
   });
   await resolveNotificationDeadLetter({
     userId: claimed.userId,

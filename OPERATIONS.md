@@ -151,47 +151,53 @@ license/attribution review.
 - A source with no priority success inside its target window is an operations warning. Check provider
   health and trace state before replay; lack of a fresh job is not itself failure.
 
-## Slack, Web Push, or duplicate-delivery failure
+## Web Push or duplicate-delivery failure
 
-- `notifications.idempotency_key` includes job plus snapshot/reopening occurrence, and digest
-  `(user, local date)` uniqueness prevents duplicates.
-- Quiet-hour exceptional alerts retain their exact stored payload until the deferred send.
-- Failed deliveries retain safe codes/attempt counts; the hourly notification workflow retries them.
-- Slack stops after five attempts and Web Push after six. Exhaustion and permanent non-expiry push
-  failures create an owner-scoped recovery record without storing message bodies, webhook values,
-  endpoints, or browser keys.
+- `notifications.idempotency_key` includes user, canonical job, and posting/reopening occurrence.
+  Policy changes do not change identity, so enabling a broader policy cannot retroactively blast an
+  already-observed occurrence.
+- Recommendation processing emits Push work immediately. The hourly notification workflow is
+  recovery-only for due, deferred, or failed device deliveries.
+- Quiet-hour alerts wake at the configured end time and re-run the production evaluator. Closure,
+  action, stale age, preference changes, or a company Mute cancels the delivery.
+- Web Push stops after six bounded attempts over 24 hours. Exhaustion and permanent non-expiry
+  failures create an owner-scoped recovery record without storing message bodies, endpoints, or
+  browser keys.
 - A delivery left `sending` for more than ten minutes has an ambiguous provider outcome. FirstSeen
   does not automatically send it again; it records `*_DELIVERY_OUTCOME_UNKNOWN` for explicit review
   and replay so a persistence failure after provider acceptance cannot silently duplicate an alert.
-- A digest selects only unacted jobs first detected since the prior delivered digest and no older
-  than seven days, grouped Just posted/New/Recent. It skips empty output and does not resurrect Save/
-  Apply/Dismiss actions. Immediate alerts require reliable official/reopening freshness, Hot/Strong,
-  urgency ≥85, age ≤24h, and Active queue state.
-- Verify webhook/channel configuration using the explicitly labelled setup message:
+- Six individual alerts may display per device in a rolling hour. Additional eligible occurrences
+  use one replaceable “More fresh matches” notification without removing or downgrading feed rows.
+- Slack alerts and the morning digest are skipped while `PUSH_POLICY_V2_ENABLED=true`. Their code,
+  secret, and historical rows remain only as a rollback path until physical iPhone acceptance and
+  the seven-day Push soak pass. An explicitly authorized rollback-path smoke uses:
 
 ```bash
 pnpm smoke:slack
 ```
 
-This command sends a real Slack message. Never print or inspect the webhook value.
+This command sends a real Slack message. Do not run it as routine Push verification and never print
+or inspect the webhook value.
 
 Web Push delivery is channel/device-specific beneath the same logical notification. A 404/410
-expires the encrypted subscription; 429 and 5xx retry with bounded exponential backoff. Permission
-denial does not fail Slack. Raw endpoints and browser encryption keys are encrypted at rest and
-redacted from logs. The default lock-screen payload is generic; detailed company/title text is an
-explicit user opt-in.
+expires the encrypted subscription; 429 and 5xx retry with bounded exponential backoff. One device
+cannot fail another or recommendation creation. Raw endpoints and browser encryption keys are
+encrypted at rest and redacted from logs. The default lock-screen payload is generic; detailed
+band/company/title text is an explicit per-device opt-in.
 
 For a push incident, confirm the logical notification exists, inspect only safe delivery status/
 attempt/error fields, verify the device subscription is active, and test exact relative-path click
 routing. Do not copy the endpoint or browser key material into a ticket, log, screenshot, or report.
 The Operations recovery queue can replay notification dead letters after owner authorization. Replay
-resets only the exact failed Slack notification or device delivery; a later success resolves that
-record. HTTP 404/410 subscription expiry is normal cleanup and does not create a dead letter.
+resets only the exact failed device delivery; a later success resolves that record. HTTP 404/410
+subscription expiry is normal cleanup and does not create a dead letter.
 
-`PWA_ENABLED` and `WEB_PUSH_ENABLED` are separate rollout controls. Disabling PWA removes discovery
+`PWA_ENABLED`, `WEB_PUSH_ENABLED`, and `PUSH_POLICY_V2_ENABLED` are separate rollout controls.
+Disabling PWA removes discovery
 metadata, blocks manifest/service-worker/offline routes, unregisters existing workers when the app
 is next opened, and clears only versioned `firstseen-static-*` caches. Disabling Web Push blocks
-subscription, preference, and read APIs and prevents worker delivery without affecting Slack.
+subscription, preference, and read APIs. Disabling Push Policy V2 preserves the additive schema and
+returns notification scheduling to the temporary legacy rollback behavior.
 Relationship CRM and application workflow routes/actions are similarly server-blocked unless their
 exact opt-in flags are `true`; `/applied` falls back to the legacy queue when application workflow is
 off.

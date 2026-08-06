@@ -12,8 +12,8 @@ flowchart LR
   I --> O["Official employer and ATS sources"]
   I --> B["Transient Brave URL sensor"]
   I --> M["Luna and selective Terra extraction"]
-  I --> S["Slack webhook"]
   I --> W["Browser Web Push services"]
+  I -. "disabled rollback path" .-> S["Slack webhook"]
   V -. "redacted errors" .-> E["Optional Sentry"]
 ```
 
@@ -37,7 +37,7 @@ sequenceDiagram
   participant ATS as Official source
   participant AI as Shared requirement extraction
   participant Match as Per-user deterministic matching
-  participant Delivery as Slack or Web Push
+  participant Delivery as Web Push orchestration
   C->>DB: Claim oldest-due global sources and outbox
   C->>C: Fan out one event per claimed source
   C->>ATS: Conditional bounded request and pagination
@@ -80,8 +80,9 @@ job, decision, recommendation, closure, or notification.
 - `src/ai`: candidate-neutral prompts, Responses schema/evidence checks, Luna/Terra routing,
   evaluation metrics, and versioned prices.
 - `src/lib/supply`: global ingest, source scheduling/outbox, fan-out, and legacy dual-write.
-- `src/lib/notifications`: logical/channel/device orchestration, Slack, encrypted Web Push,
-  digest selection, quiet deferral, retry, and expiry.
+- `src/domain/notifications` and `src/lib/notifications`: shared deterministic alert policy,
+  preferences/preview, logical/channel/device orchestration, encrypted Web Push, quiet deferral,
+  re-evaluation, retry, overflow coalescing, and expiry. Slack/digest code is disabled rollback-only.
 - `src/connectors/http.ts`, `src/lib/security`, and `next.config.ts`: SSRF/redirect/content-type/size
   defenses, rate limits, capability encryption, sanitization, and security headers.
 
@@ -92,7 +93,8 @@ job, decision, recommendation, closure, or notification.
 | Supply scheduler      | Every 15 minutes           | Claim oldest-due sources and durable outbox; reserve priority capacity                  | Lease/outbox prevents loss and duplication |
 | Source scan           | Event                      | Official fetch/stage, changed extraction, user fan-out, closure/finalize, logical alert | One global source per event                |
 | Broad discovery       | Minute 17 every four hours | Twelve cohorts, transient sensor, independent official verification                     | Two retries; singleton                     |
-| Notification schedule | Minute 0 hourly            | Digest, deferred Slack/push, failed delivery retry                                      | Per logical/channel/device identity        |
+| Push request          | Recommendation event       | Evaluate occurrence and dispatch each device immediately                                | Per logical/channel/device identity        |
+| Notification recovery | Minute 0 hourly            | Recover due/failed/deferred Push; legacy Slack/digest skipped under V2                  | Per logical/channel/device identity        |
 | Retention cleanup     | 03:43 UTC daily            | Expired observations, security counters, and bounded cleanup                            | Independently retryable                    |
 
 Workflow identity derives from source/scheduled time, snapshot/rule/prompt versions, logical

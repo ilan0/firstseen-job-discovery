@@ -252,23 +252,12 @@ test("watchlist validation is recoverable and core pages are accessible", async 
     page.getByRole("checkbox", { name: "Exclude jobs requiring clearance" }),
   ).toBeChecked();
   await expect(page.getByRole("checkbox", { name: "Exclude Public Trust" })).toHaveCount(0);
-  await page.getByRole("checkbox", { name: "Morning digest" }).uncheck();
-  await page.getByRole("combobox", { name: "Digest hour (Eastern)" }).selectOption("9");
-  await page.getByRole("button", { name: "Save notification settings" }).click();
-  await expect(page.getByRole("status")).toHaveText("Notification settings saved.");
-  await expect(page.getByRole("checkbox", { name: "Morning digest" })).not.toBeChecked();
-  await expect(page.getByRole("combobox", { name: "Digest hour (Eastern)" })).toHaveValue("9");
-  await page.reload();
-  await expect(page.getByRole("checkbox", { name: "Morning digest" })).not.toBeChecked();
-  await expect(page.getByRole("combobox", { name: "Digest hour (Eastern)" })).toHaveValue("9");
-  await page.getByRole("checkbox", { name: "Morning digest" }).check();
-  await page.getByRole("combobox", { name: "Digest hour (Eastern)" }).selectOption("8");
   await page.getByRole("combobox", { name: "Default posted-date window" }).selectOption("24h");
   await page
     .getByRole("combobox", { name: "Default match ordering" })
     .selectOption("detected_newest");
-  await page.getByRole("button", { name: "Save notification settings" }).click();
-  await expect(page.getByRole("status")).toHaveText("Notification settings saved.");
+  await page.getByRole("button", { name: "Save feed preferences" }).click();
+  await expect(page.getByRole("status")).toHaveText("Feed preferences saved.");
   await page.goto("/");
   await expect(page.getByRole("combobox", { name: "Posted within" })).toHaveValue("24h");
   await expect(page.getByRole("combobox", { name: "Sort jobs" })).toHaveValue("detected_newest");
@@ -283,8 +272,8 @@ test("watchlist validation is recoverable and core pages are accessible", async 
   await page
     .getByRole("combobox", { name: "Default match ordering" })
     .selectOption("posted_newest");
-  await page.getByRole("button", { name: "Save notification settings" }).click();
-  await expect(page.getByRole("status")).toHaveText("Notification settings saved.");
+  await page.getByRole("button", { name: "Save feed preferences" }).click();
+  await expect(page.getByRole("status")).toHaveText("Feed preferences saved.");
 
   await page.getByRole("button", { name: "Permanently delete account" }).click();
   const accountDialog = page.getByRole("dialog", { name: "Are you sure?" });

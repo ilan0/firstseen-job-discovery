@@ -16,6 +16,7 @@ const admin = createClient(
 describe.runIf(enabled)("notification preference integrity", () => {
   let user: User | null = null;
   let channelId: string;
+  let organizationId: string;
 
   beforeAll(async () => {
     const created = await admin.auth.admin.createUser({
@@ -32,10 +33,18 @@ describe.runIf(enabled)("notification preference integrity", () => {
       .single();
     if (channel.error) throw channel.error;
     channelId = channel.data.id;
+    const organization = await admin
+      .from("organizations")
+      .insert({ name: `Preference ${randomUUID()}`, normalized_name: randomUUID() })
+      .select("id")
+      .single();
+    if (organization.error) throw organization.error;
+    organizationId = organization.data.id;
   });
 
   afterAll(async () => {
     if (user) await admin.auth.admin.deleteUser(user.id);
+    if (organizationId) await admin.from("organizations").delete().eq("id", organizationId);
   });
 
   it("permits exactly one null-organization preference per channel", async () => {
@@ -54,5 +63,31 @@ describe.runIf(enabled)("notification preference integrity", () => {
       .is("organization_id", null);
     expect(rows.error).toBeNull();
     expect(rows.data).toHaveLength(1);
+  });
+
+  it("enforces freshness, quiet-hour, and organization override constraints", async () => {
+    const invalidAge = await admin.from("notification_preferences").insert({
+      user_id: user!.id,
+      channel_id: channelId,
+      organization_id: organizationId,
+      company_override_mode: "always",
+      possible_max_age_hours: 25,
+    });
+    expect(invalidAge.error?.code).toBe("23514");
+    const missingMode = await admin.from("notification_preferences").insert({
+      user_id: user!.id,
+      channel_id: channelId,
+      organization_id: organizationId,
+    });
+    expect(missingMode.error?.code).toBe("23514");
+    const valid = await admin.from("notification_preferences").insert({
+      user_id: user!.id,
+      channel_id: channelId,
+      organization_id: organizationId,
+      company_override_mode: "mute",
+      quiet_hours_start: 23,
+      quiet_hours_end: 7,
+    });
+    expect(valid.error).toBeNull();
   });
 });

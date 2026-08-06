@@ -127,6 +127,8 @@ export const notificationKind = pgEnum("notification_kind", [
   "exceptional_match",
   "morning_digest",
   "operational_alert",
+  "job_alert",
+  "test",
 ]);
 export const deliveryStatus = pgEnum("delivery_status", [
   "pending",
@@ -169,3 +171,11 @@ export const notificationChannelKind = pgEnum("notification_channel_kind", [
   "web_push",
   "digest",
 ]);
+export const notificationAlertPreset = pgEnum("notification_alert_preset", [
+  "off",
+  "selective",
+  "balanced",
+  "all_viable",
+  "custom",
+]);
+export const companyAlertMode = pgEnum("company_alert_mode", ["always", "mute"]);

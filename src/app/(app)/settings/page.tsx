@@ -1,14 +1,19 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import Link from "next/link";
-import { deleteAccount, updateCandidateSettings, updateNotifications } from "./actions";
+import { deleteAccount, updateCandidateSettings, updateFeedPreferences } from "./actions";
 import { ConfirmSubmit } from "@/components/forms/confirm-submit";
 import { SubmitButton } from "@/components/forms/submit-button";
 import { db } from "@/db/client";
 import { candidateProfiles, searchPreferences } from "@/db/schema";
 import { requireOwner } from "@/lib/auth/owner";
-import { PushSettings } from "@/components/notifications/push-settings";
-import { notificationChannels, notificationPreferences } from "@/db/schema";
+import { NotificationSettings } from "@/components/notifications/notification-settings";
 import { rolloutFlags } from "@/config/rollout";
+import {
+  listCompanyNotificationOverrides,
+  listPushDevices,
+  loadGlobalPushPreference,
+  preferenceRecordToInput,
+} from "@/lib/notifications/preferences";
 export default async function SettingsPage({
   searchParams,
 }: {
@@ -27,23 +32,24 @@ export default async function SettingsPage({
     .from(searchPreferences)
     .where(eq(searchPreferences.userId, owner.id))
     .limit(1);
-  const [pushPreference] = flags.webPush
-    ? await db
-        .select({ detailed: notificationPreferences.detailedLockScreen })
-        .from(notificationPreferences)
-        .innerJoin(
-          notificationChannels,
-          eq(notificationPreferences.channelId, notificationChannels.id),
-        )
-        .where(
-          and(
-            eq(notificationPreferences.userId, owner.id),
-            eq(notificationChannels.kind, "web_push"),
-            isNull(notificationPreferences.organizationId),
-          ),
-        )
-        .limit(1)
-    : [];
+  const notificationData = flags.webPush
+    ? await (async () => {
+        const { channel, preference } = await loadGlobalPushPreference(owner.id);
+        const [devices, companies] = await Promise.all([
+          listPushDevices(owner.id),
+          listCompanyNotificationOverrides(owner.id, channel.id),
+        ]);
+        return {
+          preference: preferenceRecordToInput(preference),
+          devices: devices.map((device) => ({
+            ...device,
+            lastUsedAt: device.lastUsedAt?.toISOString() ?? null,
+            createdAt: device.createdAt.toISOString(),
+          })),
+          companies,
+        };
+      })()
+    : null;
   const acceptedAreas = Array.isArray(prefs?.acceptedAreas)
     ? (prefs.acceptedAreas as Array<{ id?: string }>).map((area) => area.id)
     : [];
@@ -75,7 +81,7 @@ export default async function SettingsPage({
           className="mt-5 rounded-xl border border-[var(--green)] bg-[var(--surface)] p-3 text-sm font-bold text-[var(--green)]"
           role="status"
         >
-          {query.saved === "profile" ? "Candidate settings saved." : "Notification settings saved."}
+          {query.saved === "profile" ? "Candidate settings saved." : "Feed preferences saved."}
         </p>
       ) : null}
       <form
@@ -220,37 +226,14 @@ export default async function SettingsPage({
         </SubmitButton>
       </form>
       <form
-        action={updateNotifications}
+        action={updateFeedPreferences}
         className="mt-6 rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-6"
       >
-        <h2 className="text-lg font-black">Slack notifications</h2>
+        <h2 className="text-lg font-black">Feed preferences</h2>
+        <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+          These control the full Matches queue. Phone-alert rules are configured separately below.
+        </p>
         <div className="mt-5 space-y-4">
-          <label className="flex items-center justify-between gap-4 rounded-xl bg-[var(--paper)] p-4 text-sm font-black">
-            Morning digest
-            <input defaultChecked={prefs?.digestEnabled} name="digestEnabled" type="checkbox" />
-          </label>
-          <label className="flex items-center justify-between gap-4 rounded-xl bg-[var(--paper)] p-4 text-sm font-black">
-            Exceptional-match alerts
-            <input
-              defaultChecked={prefs?.exceptionalAlertsEnabled}
-              name="alertsEnabled"
-              type="checkbox"
-            />
-          </label>
-          <label className="block text-sm font-black">
-            Digest hour (Eastern)
-            <select
-              className="mt-2 min-h-11 w-full rounded-xl border border-[var(--line)] bg-white px-3"
-              defaultValue={prefs?.digestHourLocal}
-              name="digestHour"
-            >
-              {Array.from({ length: 24 }, (_, hour) => (
-                <option key={hour} value={hour}>
-                  {hour.toString().padStart(2, "0")}:00
-                </option>
-              ))}
-            </select>
-          </label>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block text-sm font-black">
               Default posted-date window
@@ -286,12 +269,12 @@ export default async function SettingsPage({
           pendingLabel="Saving…"
           type="submit"
         >
-          Save notification settings
+          Save feed preferences
         </SubmitButton>
       </form>
-      {flags.webPush ? (
-        <PushSettings
-          detailedByDefault={pushPreference?.detailed ?? false}
+      {flags.webPush && notificationData ? (
+        <NotificationSettings
+          initialData={notificationData}
           publicKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? null}
         />
       ) : null}

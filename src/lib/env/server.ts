@@ -25,6 +25,7 @@ const serverEnvSchema = z.object({
   VAPID_PRIVATE_KEY: z.string().min(40).optional(),
   VAPID_SUBJECT: z.string().startsWith("mailto:").optional(),
   PUSH_SUBSCRIPTION_ENCRYPTION_KEY: z.string().min(40).optional(),
+  PUSH_POLICY_V2_ENABLED: z.enum(["true", "false"]).optional(),
   SENTRY_DSN: z.string().url().optional(),
 });
 

@@ -10,7 +10,12 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { deliveryStatus, notificationChannelKind } from "./enums";
+import {
+  companyAlertMode,
+  deliveryStatus,
+  notificationAlertPreset,
+  notificationChannelKind,
+} from "./enums";
 import { globalJobs, organizations } from "./global-supply";
 import { notifications } from "./operations";
 
@@ -52,9 +57,22 @@ export const notificationPreferences = pgTable(
     organizationId: uuid("organization_id").references(() => organizations.id, {
       onDelete: "cascade",
     }),
+    enabled: boolean("enabled").default(true).notNull(),
+    alertPreset: notificationAlertPreset("alert_preset").default("balanced").notNull(),
     immediateHot: boolean("immediate_hot").default(true).notNull(),
     immediateStrong: boolean("immediate_strong").default(true).notNull(),
+    immediatePossible: boolean("immediate_possible").default(true).notNull(),
     referralCompany: boolean("referral_company").default(true).notNull(),
+    interestedCompany: boolean("interested_company").default(true).notNull(),
+    hotStrongMaxAgeHours: integer("hot_strong_max_age_hours").default(24).notNull(),
+    possibleMaxAgeHours: integer("possible_max_age_hours").default(6).notNull(),
+    roleFamilies: text("role_families")
+      .array()
+      .default(sql`ARRAY['general_swe','full_stack','backend','frontend','ai_engineering']::text[]`)
+      .notNull(),
+    quietHoursEnabled: boolean("quiet_hours_enabled").default(true).notNull(),
+    companyOverrideMode: companyAlertMode("company_override_mode"),
+    policyVersion: text("policy_version").default("2026-08-05.1").notNull(),
     digest: boolean("digest").default(true).notNull(),
     detailedLockScreen: boolean("detailed_lock_screen").default(false).notNull(),
     quietHoursStart: integer("quiet_hours_start").default(22).notNull(),
@@ -88,6 +106,7 @@ export const pushSubscriptions = pgTable(
     lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     failureCount: integer("failure_count").default(0).notNull(),
+    detailedLockScreen: boolean("detailed_lock_screen").default(false).notNull(),
     ...timestamps,
   },
   (table) => [

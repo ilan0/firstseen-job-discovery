@@ -26,6 +26,7 @@ try {
       duplicate_user_organizations: string;
       identity_indexes_present: boolean;
       notification_preference_indexes_present: boolean;
+      push_policy_indexes_present: boolean;
       latest_migration_present: boolean;
     }>
   >`
@@ -85,9 +86,18 @@ try {
             'notification_preferences_channel_org_unique'
           ])
       ) as notification_preference_indexes_present,
+      (
+        select count(*) = 2
+        from pg_indexes
+        where schemaname = 'public'
+          and indexname = any(array[
+            'notification_preferences_user_channel_idx',
+            'notifications_user_occurrence_idx'
+          ])
+      ) as push_policy_indexes_present,
       exists(
         select 1 from supabase_migrations.schema_migrations
-        where version = '20260804162800'
+        where version = '20260805120000'
       ) as latest_migration_present
   `;
 
@@ -101,6 +111,7 @@ try {
         result.duplicate_user_organizations === "0" &&
         result.identity_indexes_present &&
         result.notification_preference_indexes_present &&
+        result.push_policy_indexes_present &&
         result.latest_migration_present,
       target: "dedicated-firstseen",
       ...result,

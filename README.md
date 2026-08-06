@@ -3,7 +3,7 @@
 FirstSeen is a private freshness-first job-search portal. It finds software-engineering roles at
 official employer sites, verifies every recommendation at the employer or ATS, applies the
 candidate's deterministic eligibility rules, and presents a mobile-friendly queue with referral,
-application, Slack, and Web Push workflows.
+application, and Push-first mobile workflows.
 
 FirstSeen never auto-applies, reads email, contacts referrals, scrapes LinkedIn/Indeed, bypasses a
 CAPTCHA, or turns an aggregator result directly into a recommendation.
@@ -42,8 +42,8 @@ CAPTCHA, or turns an aggregator result directly into a recommendation.
 - Explicit `gpt-5.6-luna` candidate-neutral extraction with evidence validation and capped,
   selective `gpt-5.6-terra` escalation.
 - Inngest schedules for priority scanning, broad discovery, per-listing durable processing,
-  notifications, retries/dead letters, and retention. Slack alerts and the morning digest remain
-  enabled for the owner.
+  event-driven Web Push, recovery-only retries, dead letters, and retention. Slack/digest delivery
+  is disabled while its historical rows and rollback implementation are temporarily preserved.
 - Database-backed scan diagnostics, worker attempts, provider usage/cost ledger, and optional
   privacy-redacted Sentry reporting.
 
@@ -104,7 +104,8 @@ pnpm test:security
 pnpm test:load
 ```
 
-Provider checks are explicit because they consume real quotas or send a labelled Slack message:
+Provider checks are explicit because they consume real quotas. The Slack command is retained only
+for an authorized rollback-path check during Push acceptance:
 
 ```bash
 pnpm smoke:connectors
@@ -125,9 +126,10 @@ failure recovery.
 - OpenAI runs only for new/materially changed plausible software roles after deterministic hard
   filtering and a durable monthly budget reservation. Candidate-neutral extraction can be shared
   by all private user overlays.
-- Slack receives exceptional alerts and the digest. Web Push is independently deliverable when its
-  rollout flag is enabled. Brave supplies transient official-URL candidates only. Sentry is
-  optional; Vercel, Inngest, and database diagnostics remain available if it is disabled.
+- Web Push is the event-driven job-alert channel. The hourly notification worker is recovery-only;
+  Slack/digest delivery stays disabled during physical-device acceptance and is removed after the
+  required soak. Brave supplies transient official-URL candidates only. Sentry is optional;
+  Vercel, Inngest, and database diagnostics remain available if it is disabled.
 
 The private production portal is live at
 [firstseen-job-discovery-tau.vercel.app](https://firstseen-job-discovery-tau.vercel.app). It uses the
@@ -152,18 +154,19 @@ Runtime credentials:
 | Inngest           | event key, signing key                                      | Durable events and authenticated callbacks    |
 | OpenAI            | project key, Luna/Terra models, $25 app budget              | Shared extraction of changed roles            |
 | Brave             | Search API key                                              | Transient broad discovery sensor              |
-| Slack             | incoming webhook URL                                        | Alerts and morning digest                     |
+| Slack (temporary) | incoming webhook URL                                        | Disabled rollback path until Push soak        |
 | Web Push          | VAPID keys, subject, subscription encryption key            | Device alerts without a managed push vendor   |
 | Sentry (optional) | DSN; auth token/org/project only at build                   | Redacted errors and source maps               |
 | Vercel/GitHub     | deployment token or authenticated CLI                       | Bootstrap/deployment, never app runtime       |
 
 Daily-Driver additions are independently deactivatable. `GLOBAL_SUPPLY_V2_ENABLED`,
-`RELATIONSHIP_CRM_ENABLED`, `APPLICATION_WORKFLOW_ENABLED`, `PWA_ENABLED`, `WEB_PUSH_ENABLED`, and
-`INDIVIDUAL_AUTH_ENABLED` require the exact value `true` and otherwise remain off. A disabled
+`RELATIONSHIP_CRM_ENABLED`, `APPLICATION_WORKFLOW_ENABLED`, `PWA_ENABLED`, `WEB_PUSH_ENABLED`,
+`PUSH_POLICY_V2_ENABLED`, and `INDIVIDUAL_AUTH_ENABLED` require the exact value `true` and otherwise
+remain off. A disabled
 feature is blocked at navigation, direct-page, server-action, API, worker, and service-worker
 boundaries; it is not merely hidden in the interface. Local browser certification enables CRM,
-applications, PWA, and push through the ignored `.env.local`, while production activation remains
-staged.
+applications, PWA, and Push Policy V2 through the ignored `.env.local`. Production Push Policy V2
+activation remains gated on physical iPhone acceptance.
 
 All provider secrets must be stored in Vercel encrypted environment variables and the applicable
 Inngest/Supabase secret store, not in the browser or repository.

@@ -33,6 +33,12 @@ export const notifications = pgTable(
     idempotencyKey: text("idempotency_key").notNull(),
     payloadHash: text("payload_hash").notNull(),
     payload: jsonb("payload").default({}).notNull(),
+    occurrenceId: text("occurrence_id"),
+    reasonCodes: text("reason_codes")
+      .array()
+      .default(sql`ARRAY[]::text[]`)
+      .notNull(),
+    policyVersion: text("policy_version"),
     attemptCount: integer("attempt_count").default(0).notNull(),
     deferredUntil: timestamp("deferred_until", { withTimezone: true }),
     deliveredAt: timestamp("delivered_at", { withTimezone: true }),

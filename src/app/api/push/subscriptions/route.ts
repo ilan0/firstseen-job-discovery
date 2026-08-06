@@ -2,7 +2,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/db/client";
-import { notificationChannels, notificationPreferences, pushSubscriptions } from "@/db/schema";
+import { pushSubscriptions } from "@/db/schema";
 import { currentOwner } from "@/lib/auth/owner";
 import { serverEnv } from "@/lib/env/server";
 import {
@@ -14,6 +14,7 @@ import { encryptCapability } from "@/lib/security/encrypted-capability";
 import { consumeRateLimit } from "@/lib/security/rate-limit";
 import { hasTrustedMutationOrigin } from "@/lib/security/request-origin";
 import { rolloutFlags } from "@/config/rollout";
+import { ensureWebPushChannel } from "@/lib/notifications/preferences";
 
 function unauthorized() {
   return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -39,33 +40,14 @@ async function enforceMutationRateLimit(userId: string) {
       );
 }
 
-async function webPushChannel(userId: string) {
-  const [channel] = await db
-    .insert(notificationChannels)
-    .values({ userId, kind: "web_push", label: "Browser push", enabled: true })
-    .onConflictDoUpdate({
-      target: [notificationChannels.userId, notificationChannels.kind, notificationChannels.label],
-      set: { enabled: true, updatedAt: new Date() },
-    })
-    .returning({ id: notificationChannels.id });
-  if (!channel) throw new Error("Push channel could not be configured.");
-  const [preference] = await db
-    .select({ id: notificationPreferences.id })
-    .from(notificationPreferences)
-    .where(
-      and(
-        eq(notificationPreferences.userId, userId),
-        eq(notificationPreferences.channelId, channel.id),
-        isNull(notificationPreferences.organizationId),
-      ),
-    )
-    .limit(1);
-  if (!preference)
-    await db
-      .insert(notificationPreferences)
-      .values({ userId, channelId: channel.id })
-      .onConflictDoNothing();
-  return channel.id;
+function safeDeviceLabel(userAgent: string | null) {
+  if (!userAgent) return "Browser device";
+  if (/iPhone/i.test(userAgent)) return "iPhone";
+  if (/iPad/i.test(userAgent)) return "iPad";
+  if (/Android/i.test(userAgent)) return "Android device";
+  if (/Macintosh/i.test(userAgent)) return "Mac";
+  if (/Windows/i.test(userAgent)) return "Windows device";
+  return "Browser device";
 }
 
 export async function POST(request: Request) {
@@ -88,17 +70,23 @@ export async function POST(request: Request) {
   }
   const endpointHash = pushEndpointHash(endpoint);
   const [existing] = await db
-    .select({ id: pushSubscriptions.id, userId: pushSubscriptions.userId })
+    .select({
+      id: pushSubscriptions.id,
+      userId: pushSubscriptions.userId,
+      detailedLockScreen: pushSubscriptions.detailedLockScreen,
+    })
     .from(pushSubscriptions)
     .where(eq(pushSubscriptions.endpointHash, endpointHash))
     .limit(1);
   if (existing && existing.userId !== owner.id) return untrusted();
-  const channelId = await webPushChannel(owner.id);
+  const channelId = (await ensureWebPushChannel(owner.id)).id;
   const encryptedCapability = encryptCapability(
     { ...parsed.data, endpoint },
     env.PUSH_SUBSCRIPTION_ENCRYPTION_KEY,
   );
   const expirationTime = parsed.data.expirationTime ? new Date(parsed.data.expirationTime) : null;
+  let subscriptionId = existing?.id ?? null;
+  let detailedLockScreen = existing?.detailedLockScreen ?? false;
   if (existing)
     await db
       .update(pushSubscriptions)
@@ -109,6 +97,7 @@ export async function POST(request: Request) {
         revokedAt: null,
         failureCount: 0,
         userAgentSafe: request.headers.get("user-agent")?.slice(0, 160) ?? null,
+        deviceLabel: safeDeviceLabel(request.headers.get("user-agent")),
         updatedAt: new Date(),
       })
       .where(and(eq(pushSubscriptions.userId, owner.id), eq(pushSubscriptions.id, existing.id)));
@@ -122,16 +111,24 @@ export async function POST(request: Request) {
         encryptedCapability,
         expirationTime,
         userAgentSafe: request.headers.get("user-agent")?.slice(0, 160) ?? null,
+        deviceLabel: safeDeviceLabel(request.headers.get("user-agent")),
       })
       .onConflictDoNothing()
       .returning({ id: pushSubscriptions.id });
+    subscriptionId = inserted?.id ?? null;
     if (!inserted) {
       const [raced] = await db
-        .select({ id: pushSubscriptions.id, userId: pushSubscriptions.userId })
+        .select({
+          id: pushSubscriptions.id,
+          userId: pushSubscriptions.userId,
+          detailedLockScreen: pushSubscriptions.detailedLockScreen,
+        })
         .from(pushSubscriptions)
         .where(eq(pushSubscriptions.endpointHash, endpointHash))
         .limit(1);
       if (!raced || raced.userId !== owner.id) return untrusted();
+      subscriptionId = raced.id;
+      detailedLockScreen = raced.detailedLockScreen;
       await db
         .update(pushSubscriptions)
         .set({
@@ -141,15 +138,22 @@ export async function POST(request: Request) {
           revokedAt: null,
           failureCount: 0,
           userAgentSafe: request.headers.get("user-agent")?.slice(0, 160) ?? null,
+          deviceLabel: safeDeviceLabel(request.headers.get("user-agent")),
           updatedAt: new Date(),
         })
         .where(and(eq(pushSubscriptions.userId, owner.id), eq(pushSubscriptions.id, raced.id)));
     }
   }
-  return NextResponse.json({ ok: true }, { status: existing ? 200 : 201 });
+  return NextResponse.json(
+    { ok: true, subscriptionId, detailedLockScreen },
+    { status: existing ? 200 : 201 },
+  );
 }
 
-const deleteSchema = z.object({ endpoint: z.url({ protocol: /^https$/ }).max(2_000) });
+const deleteSchema = z.union([
+  z.object({ endpoint: z.url({ protocol: /^https$/ }).max(2_000) }),
+  z.object({ subscriptionId: z.string().uuid() }),
+]);
 
 export async function DELETE(request: Request) {
   if (!rolloutFlags().webPush) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -161,17 +165,24 @@ export async function DELETE(request: Request) {
   if (limited) return limited;
   const parsed = deleteSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid endpoint" }, { status: 400 });
-  const endpointHash = pushEndpointHash(parsed.data.endpoint);
   await db
     .update(pushSubscriptions)
     .set({ revokedAt: new Date(), updatedAt: new Date() })
     .where(
-      and(eq(pushSubscriptions.userId, owner.id), eq(pushSubscriptions.endpointHash, endpointHash)),
+      and(
+        eq(pushSubscriptions.userId, owner.id),
+        "endpoint" in parsed.data
+          ? eq(pushSubscriptions.endpointHash, pushEndpointHash(parsed.data.endpoint))
+          : eq(pushSubscriptions.id, parsed.data.subscriptionId),
+      ),
     );
   return NextResponse.json({ ok: true });
 }
 
-const preferenceSchema = z.object({ detailedLockScreen: z.boolean() });
+const preferenceSchema = z.object({
+  endpoint: z.url({ protocol: /^https$/ }).max(2_000),
+  detailedLockScreen: z.boolean(),
+});
 
 export async function PATCH(request: Request) {
   if (!rolloutFlags().webPush) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -183,27 +194,18 @@ export async function PATCH(request: Request) {
   if (limited) return limited;
   const parsed = preferenceSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid preference" }, { status: 400 });
-  const [channel] = await db
-    .select({ id: notificationChannels.id })
-    .from(notificationChannels)
-    .where(
-      and(
-        eq(notificationChannels.userId, owner.id),
-        eq(notificationChannels.kind, "web_push"),
-        eq(notificationChannels.label, "Browser push"),
-      ),
-    )
-    .limit(1);
-  if (!channel) return NextResponse.json({ error: "Push channel not found" }, { status: 404 });
-  await db
-    .update(notificationPreferences)
+  const endpointHash = pushEndpointHash(parsed.data.endpoint);
+  const [updated] = await db
+    .update(pushSubscriptions)
     .set({ detailedLockScreen: parsed.data.detailedLockScreen, updatedAt: new Date() })
     .where(
       and(
-        eq(notificationPreferences.userId, owner.id),
-        eq(notificationPreferences.channelId, channel.id),
-        isNull(notificationPreferences.organizationId),
+        eq(pushSubscriptions.userId, owner.id),
+        eq(pushSubscriptions.endpointHash, endpointHash),
+        isNull(pushSubscriptions.revokedAt),
       ),
-    );
+    )
+    .returning({ id: pushSubscriptions.id });
+  if (!updated) return NextResponse.json({ error: "Push device not found" }, { status: 404 });
   return NextResponse.json({ ok: true });
 }

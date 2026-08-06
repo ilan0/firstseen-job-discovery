@@ -18,7 +18,7 @@ export type DigestJob = {
   primaryConcern: string;
 };
 
-export function payloadHash(payload: SlackPayload): string {
+export function payloadHash(payload: unknown): string {
   return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
 

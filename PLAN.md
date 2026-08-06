@@ -5,41 +5,58 @@ Daily-Driver expansion approved and implemented locally 2026-08-04. This living 
 distinguishes verified evidence from pending production, temporal, licensed-provider, and
 physical-device work.
 
+Push-first notification overhaul approved and implemented locally 2026-08-05. Its production
+activation remains staged behind physical iPhone acceptance; prior Slack/digest delivery is
+disabled under the new policy and retained temporarily only for rollback.
+
 ## Daily-Driver master-plan milestones
 
-|   # | Milestone                                       | Status           | Objective evidence or remaining gate                                                                                                                                                               |
-| --: | ----------------------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-|   0 | Baseline/compliance containment                 | Complete locally | Brave result fields removed from persistence; Adzuna promotion disabled by provider policy; backup/token discrepancies documented                                                                  |
-|   1 | Policy, contracts, and benchmark foundation     | Complete locally | Versioned provider capabilities/licenses and minimized URL-hash coverage benchmarks implemented; no fabricated independent recall claim                                                            |
-|   2 | Detection, redirects, authority, query overhaul | Complete locally | Twelve stable cohorts; DNS-pinned, per-hop SSRF-safe redirects; organization authority contracts; custom JSON-LD independently verified                                                            |
-|   3 | Public ATS connectors                           | Complete locally | Greenhouse, Lever, Ashby, Recruitee, and Pinpoint contract and live bounded smoke checks pass                                                                                                      |
-|   4 | Reviewed structured/licensed sensor foundation  | Partial          | Reviewed JSON-LD/RSS/Atom/sitemap contracts implemented; licensed-vendor bakeoff awaits a user-authorized account/contract                                                                         |
-|   5 | Shared supply and private overlays              | Complete locally | Additive global schema/backfill/dual write; fair scheduler/outbox; strictest shared watcher cadence; per-snapshot extraction and per-user ranking events; DB-driven profiles                       |
-|   6 | Relationship CRM                                | Complete locally | Contacts, methods, company links, interactions, reminders, referral requests, best-contact rules, migration compatibility, UI and RLS coverage                                                     |
-|   7 | Applications and packet                         | Complete locally | Sessions, private resume metadata/storage policy, packet, application/stage/follow-up records, return prompt and outcome analytics; Apply never marks Applied                                      |
-|   8 | Installable PWA                                 | Complete locally | Manifest/icons, narrow service worker, no private response caching, offline/update UI, install and lifecycle tests                                                                                 |
-|   9 | Channel orchestration and Web Push              | Complete locally | Encrypted per-device subscriptions, channel/device idempotency, bounded retries, unknown-outcome dead letters, replay, and 404/410 cleanup; device rollout pending                                 |
-|  10 | Mobile detail and Simplify handoff              | Complete locally | Deep-link recovery, mobile action parity, referral/application packet context, Continue Later/Desktop behavior; physical extension/device checks pending                                           |
-|  11 | Shared AI extraction and escalation             | Complete locally | Explicit Luna, strict evidence, durable paid-call steps, selective capped Terra, current pricing, cost/budget ledgers and regression evaluator; 300-item corpus remains a human-labeling gate      |
-|  12 | Invite-only multi-user foundations              | Complete locally | Individual email route/onboarding and per-user runtime preferences implemented behind disabled flags; custom SMTP/public signup remain out of scope                                                |
-|  13 | Integrated local certification                  | Complete         | From-zero migration/bootstrap, 386 tests, strengthened coverage floor, focused suites, zero-vulnerability audit, build, and retry-free four-viewport browser suite pass                            |
-|  14 | Production rollout and seven-day soak           | Soak in progress | FirstSeen-only migration/deployment, worker registration, current-policy replay, provider/Slack smokes, and production browser audit pass; seven-day temporal gate and physical iPhone Push remain |
-|  15 | Final evidence audit                            | In progress      | Release evidence is reconciled below; the final temporal certification runs after the seven-day soak                                                                                               |
+|   # | Milestone                                       | Status           | Objective evidence or remaining gate                                                                                                                                                          |
+| --: | ----------------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|   0 | Baseline/compliance containment                 | Complete locally | Brave result fields removed from persistence; Adzuna promotion disabled by provider policy; backup/token discrepancies documented                                                             |
+|   1 | Policy, contracts, and benchmark foundation     | Complete locally | Versioned provider capabilities/licenses and minimized URL-hash coverage benchmarks implemented; no fabricated independent recall claim                                                       |
+|   2 | Detection, redirects, authority, query overhaul | Complete locally | Twelve stable cohorts; DNS-pinned, per-hop SSRF-safe redirects; organization authority contracts; custom JSON-LD independently verified                                                       |
+|   3 | Public ATS connectors                           | Complete locally | Greenhouse, Lever, Ashby, Recruitee, and Pinpoint contract and live bounded smoke checks pass                                                                                                 |
+|   4 | Reviewed structured/licensed sensor foundation  | Partial          | Reviewed JSON-LD/RSS/Atom/sitemap contracts implemented; licensed-vendor bakeoff awaits a user-authorized account/contract                                                                    |
+|   5 | Shared supply and private overlays              | Complete locally | Additive global schema/backfill/dual write; fair scheduler/outbox; strictest shared watcher cadence; per-snapshot extraction and per-user ranking events; DB-driven profiles                  |
+|   6 | Relationship CRM                                | Complete locally | Contacts, methods, company links, interactions, reminders, referral requests, best-contact rules, migration compatibility, UI and RLS coverage                                                |
+|   7 | Applications and packet                         | Complete locally | Sessions, private resume metadata/storage policy, packet, application/stage/follow-up records, return prompt and outcome analytics; Apply never marks Applied                                 |
+|   8 | Installable PWA                                 | Complete locally | Manifest/icons, narrow service worker, no private response caching, offline/update UI, install and lifecycle tests                                                                            |
+|   9 | Channel orchestration and Web Push              | Complete locally | Encrypted per-device subscriptions, channel/device idempotency, bounded retries, unknown-outcome dead letters, replay, and 404/410 cleanup; device rollout pending                            |
+|  10 | Mobile detail and Simplify handoff              | Complete locally | Deep-link recovery, mobile action parity, referral/application packet context, Continue Later/Desktop behavior; physical extension/device checks pending                                      |
+|  11 | Shared AI extraction and escalation             | Complete locally | Explicit Luna, strict evidence, durable paid-call steps, selective capped Terra, current pricing, cost/budget ledgers and regression evaluator; 300-item corpus remains a human-labeling gate |
+|  12 | Invite-only multi-user foundations              | Complete locally | Individual email route/onboarding and per-user runtime preferences implemented behind disabled flags; custom SMTP/public signup remain out of scope                                           |
+|  13 | Integrated local certification                  | Complete         | From-zero migration/bootstrap, 408 tests, strengthened coverage floor, focused suites, zero-vulnerability audit, build, and retry-free four-viewport browser suite pass                       |
+|  14 | Production rollout and seven-day soak           | Staged           | Daily-Driver baseline is deployed; Push-first migration/deployment, physical iPhone acceptance, and seven Push-only production days remain                                                    |
+|  15 | Final evidence audit                            | In progress      | Release evidence is reconciled below; the final temporal certification runs after the seven-day soak                                                                                          |
 
 ## Freshness-first milestones
 
-|   # | Milestone                         | Status   | Objective evidence                                                                                                                     |
-| --: | --------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-|   1 | Baseline and policy specification | Complete | Production baseline captured; shared deterministic freshness/company policy and independent rollout flags implemented                  |
-|   2 | Backward-compatible persistence   | Complete | Idempotent migration passed empty-local rebuild, production apply/backfill, checks/indexes, Auth/RLS, export and deletion tests        |
-|   3 | Company domain/lifecycle          | Complete | Interest/referral/scope independent; Follow preserves origin; dismissal quarantine sticky; cadence combinations tested                 |
-|   4 | Freshness policy/server feed      | Complete | Dynamic official/reopen/fallback policy, age sections, server windows/sorts, URL restoration, ancient-date prevention tested           |
-|   5 | Matches UX                        | Complete | Explicit three-time provenance, responsive controls/sections/states/actions; four-viewport visual/Axe/browser pass                     |
-|   6 | Company UX                        | Complete | My/Discovered/All views, automatic provenance, interest/referral/follow/dismiss controls and persisted cadence exercised               |
-|   7 | Discovery/scheduling              | Complete | 15/60/240 tiers, provisional verification, Warm/Cold transitions, current-version replay and missing-board quarantine verified         |
-|   8 | Slack overhaul                    | Complete | Fresh Hot/Strong occurrence alerts, grouped since-prior digest, empty skip, safe Block Kit and idempotency; production digest verified |
-|   9 | Observability/cost/docs           | Complete | Tier/cadence/date-confidence/detection-latency/capacity diagnostics, cost ledger, test/operations/product/source docs                  |
-|  10 | Production rollout and iteration  | Complete | Backup, migration, staged flags, GitHub/Vercel release, source replay, Slack, cloud state, logs and authenticated browser verified     |
+|   # | Milestone                         | Status     | Objective evidence                                                                                                                 |
+| --: | --------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+|   1 | Baseline and policy specification | Complete   | Production baseline captured; shared deterministic freshness/company policy and independent rollout flags implemented              |
+|   2 | Backward-compatible persistence   | Complete   | Idempotent migration passed empty-local rebuild, production apply/backfill, checks/indexes, Auth/RLS, export and deletion tests    |
+|   3 | Company domain/lifecycle          | Complete   | Interest/referral/scope independent; Follow preserves origin; dismissal quarantine sticky; cadence combinations tested             |
+|   4 | Freshness policy/server feed      | Complete   | Dynamic official/reopen/fallback policy, age sections, server windows/sorts, URL restoration, ancient-date prevention tested       |
+|   5 | Matches UX                        | Complete   | Explicit three-time provenance, responsive controls/sections/states/actions; four-viewport visual/Axe/browser pass                 |
+|   6 | Company UX                        | Complete   | My/Discovered/All views, automatic provenance, interest/referral/follow/dismiss controls and persisted cadence exercised           |
+|   7 | Discovery/scheduling              | Complete   | 15/60/240 tiers, provisional verification, Warm/Cold transitions, current-version replay and missing-board quarantine verified     |
+|   8 | Slack overhaul                    | Superseded | Historical implementation and delivery evidence retained; Push-first policy replaces it and disables runtime scheduling            |
+|   9 | Observability/cost/docs           | Complete   | Tier/cadence/date-confidence/detection-latency/capacity diagnostics, cost ledger, test/operations/product/source docs              |
+|  10 | Production rollout and iteration  | Complete   | Backup, migration, staged flags, GitHub/Vercel release, source replay, Slack, cloud state, logs and authenticated browser verified |
+
+## Push-first notification milestones
+
+|   # | Milestone                             | Status           | Objective evidence or remaining gate                                                                                    |
+| --: | ------------------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------- |
+|   1 | Shared deterministic policy           | Complete locally | Versioned presets/custom rules, universal hard gates, official/reopen time, relationship promotion, Always/Mute tested  |
+|   2 | Additive persistence and APIs         | Complete locally | Idempotent migration, constraints/RLS, preferences, preview, company override, device privacy, test-Push APIs           |
+|   3 | Durable event-driven delivery         | Complete locally | Stable occurrence identity, transactional rows/outbox, per-device work, re-evaluation, retries, expiry and dead letters |
+|   4 | Notification settings UX              | Complete locally | Phone/device status, presets, advanced rules, overrides, quiet hours, privacy and seven-day preview                     |
+|   5 | Noise/privacy controls                | Complete locally | Six-per-device rolling cap, replaceable overflow, generic default, detailed per-device opt-in                           |
+|   6 | Integrated local certification        | Complete         | 408 DB-backed tests; focused suites; 21 browser passes at four viewports; clean Axe/console/network gates               |
+|   7 | FirstSeen-only production staging     | Pending          | Backup, migration, disabled-V2 deployment, production schema/browser/log verification                                   |
+|   8 | Physical acceptance and Slack removal | External/time    | iPhone Home Screen Push checklist and seven consecutive Push-only production days required                              |
 
 ## Captured baseline
 
@@ -123,22 +140,31 @@ physical-device work.
     Public Trust preference. Saving that control synchronizes both persisted exclusion flags, while
     dedicated clearance and federal-suitability detectors remain independent internally so neither
     wording can bypass the hard filter.
+20. `src/domain/notifications/policy.ts` is the single Push policy used by recommendation creation,
+    deferred/retry delivery, previews, and diagnostics. It requires deterministic eligibility,
+    reliable official/reopening time, Active/unacted state, and a verified open occurrence. Logical
+    identity is user/job/occurrence and never policy version, so replay or later preference changes
+    cannot duplicate or retroactively blast an existing occurrence. Each device has independent
+    privacy and delivery health; six displayed alerts per rolling hour coalesce overflow.
 
 ## Local release evidence
 
-- A clean `supabase db reset --local` applied every migration through
+- The additive Push migration `20260805120000_push_policy_v2.sql` applied and re-applied safely to
+  local Supabase after the existing from-zero bootstrap; it backfilled a Balanced Web Push policy
+  without overwriting later settings and preserved all historical notification/digest rows.
+- A clean `supabase db reset --local` previously applied every Daily-Driver migration through
   `20260804162800_notification_preference_integrity.sql`; `pnpm db:bootstrap` then created the local owner,
   database-backed candidate profile/preferences, and browser fixture from zero.
-- Formatting, zero-warning lint, strict types, all 386 tests in 65 files, coverage, focused
+- Formatting, zero-warning lint, strict types, all 408 tests in 68 files, coverage, focused
   connector/evaluation/worker/PWA/security/load suites, zero-vulnerability audit, and optimized
   build pass.
-- Coverage: 89.31% statements, 78.43% branches, 90.44% functions, and 91.02% lines. Configuration
+- Coverage: 89.49% statements, 78.91% branches, 90.22% functions, and 91.36% lines. Configuration
   now enforces at least the prior-release baseline (87.15/77.45/88.98/89.21) so future expansion
   cannot silently lower it.
 - A real local Next.js/Inngest run exercised both manual and scheduled synthetic source scans. Each
   completed as a zero-observation `network_disabled` success with zero active source errors and zero
   unresolved dead letters.
-- Playwright: 17 passed and three intentional viewport-independent skips in approximately three
+- Playwright: 21 passed and three intentional viewport-independent skips in approximately three
   minutes, with retries disabled at 390×844, 768×1024, 1440×900, and 1920×1080. Console, page,
   unexpected response, persistence, application, relationship, and Axe observers remained clean.
 - Real providers: Greenhouse Figma 176/open, Lever Palantir 100 paginated/open, Ashby Linear 25/open,
@@ -204,6 +230,9 @@ physical-device work.
   earlier source replay are baseline evidence, not a substitute for the required soak.
 - Real iPhone Home Screen installation and Apple Push delivery require the owner's physical iPhone;
   Chromium service-worker tests cannot prove Apple delivery.
+- Push Policy V2 cannot claim its required seven consecutive production days until deployment,
+  physical acceptance, and elapsed scheduled operation complete. Slack/digest code and its secret
+  remain a disabled rollback surface until that gate passes.
 - The 300-listing human-labeled AI corpus and 85% independent accepted-market recall target require
   genuine independent labels/observations. Tooling is implemented, but no labels are fabricated.
 - Licensed Coresignal/Lightcast testing, Brave commercial storage rights, written Adzuna permission,

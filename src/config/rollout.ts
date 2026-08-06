@@ -16,6 +16,7 @@ export function rolloutFlags() {
     applicationWorkflow: explicitlyEnabled(process.env.APPLICATION_WORKFLOW_ENABLED),
     pwa: explicitlyEnabled(process.env.PWA_ENABLED),
     webPush: explicitlyEnabled(process.env.WEB_PUSH_ENABLED),
+    pushPolicyV2: explicitlyEnabled(process.env.PUSH_POLICY_V2_ENABLED),
     individualAuth: explicitlyEnabled(process.env.INDIVIDUAL_AUTH_ENABLED),
     ownerCodeAuth: enabled(process.env.OWNER_CODE_AUTH_ENABLED),
   };

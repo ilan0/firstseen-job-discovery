@@ -242,7 +242,12 @@ describe("global source scan orchestration", () => {
     });
     mocks.analyzeAndRankListing.mockResolvedValue({
       state: "analyzed",
-      decision: { outcome: "eligible", reasons: [], uncertainFields: [] },
+      decision: {
+        outcome: "eligible",
+        reasons: [],
+        uncertainFields: [],
+        facts: { roleFamily: { value: "general_swe" } },
+      },
       recommendation: {
         band: "strong",
         urgency: 92,
@@ -280,7 +285,7 @@ describe("global source scan orchestration", () => {
       ),
     ).resolves.toMatchObject({
       state: "analyzed",
-      exceptional: {
+      alertCandidate: {
         band: "strong",
         urgency: 92,
         hasReferral: true,

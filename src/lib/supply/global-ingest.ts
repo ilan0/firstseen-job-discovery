@@ -125,9 +125,11 @@ export async function ingestGlobalListing(
             normalizedOfficialUrl: normalizedUrl,
             applyUrl: listing.applyUrl,
             lifecycleStatus: nextStatus,
-            postedAt: postedAt ?? globalJobs.postedAt,
+            postedAt: postedAt
+              ? sql`case when ${globalJobs.postedAt} is null or ${globalJobs.postedAtConfidence} = 'low' then ${postedAt.toISOString()}::timestamptz else ${globalJobs.postedAt} end`
+              : globalJobs.postedAt,
             postedAtConfidence: postedAt
-              ? normalizedPosted.confidence
+              ? sql`case when ${globalJobs.postedAt} is null or ${globalJobs.postedAtConfidence} = 'low' then ${normalizedPosted.confidence}::confidence_level else ${globalJobs.postedAtConfidence} end`
               : globalJobs.postedAtConfidence,
             verifiedAt: context.observedAt,
             lastSeenAt: context.observedAt,

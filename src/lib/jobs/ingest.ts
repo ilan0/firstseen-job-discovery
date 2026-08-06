@@ -147,9 +147,11 @@ export async function ingestListing(
             lifecycleStatus: sql`case when ${canonicalJobs.lifecycleStatus} in ('closed', 'possibly_closed') then 'reopened'::job_lifecycle_status when ${canonicalJobs.lifecycleStatus} = 'reopened' then 'reopened'::job_lifecycle_status else 'open'::job_lifecycle_status end`,
             externalJobId: listing.externalId,
             requisitionId: listing.requisitionId,
-            postedAt: persistedPostedAt ?? canonicalJobs.postedAt,
+            postedAt: persistedPostedAt
+              ? sql`case when ${canonicalJobs.postedAt} is null or ${canonicalJobs.postedAtConfidence} = 'low' then ${persistedPostedAt.toISOString()}::timestamptz else ${canonicalJobs.postedAt} end`
+              : canonicalJobs.postedAt,
             postedAtConfidence: persistedPostedAt
-              ? persistedPostedAtConfidence
+              ? sql`case when ${canonicalJobs.postedAt} is null or ${canonicalJobs.postedAtConfidence} = 'low' then ${persistedPostedAtConfidence}::confidence_level else ${canonicalJobs.postedAtConfidence} end`
               : canonicalJobs.postedAtConfidence,
             reopenedAt: sql`case when ${canonicalJobs.lifecycleStatus} in ('closed', 'possibly_closed') then ${context.observedAt.toISOString()} else ${canonicalJobs.reopenedAt} end`,
             verifiedAt: context.observedAt,
@@ -182,9 +184,11 @@ export async function ingestListing(
           lifecycleStatus: sql`case when ${canonicalJobs.lifecycleStatus} in ('closed', 'possibly_closed') then 'reopened'::job_lifecycle_status when ${canonicalJobs.lifecycleStatus} = 'reopened' then 'reopened'::job_lifecycle_status else 'open'::job_lifecycle_status end`,
           externalJobId: listing.externalId,
           requisitionId: listing.requisitionId,
-          postedAt: persistedPostedAt ?? canonicalJobs.postedAt,
+          postedAt: persistedPostedAt
+            ? sql`case when ${canonicalJobs.postedAt} is null or ${canonicalJobs.postedAtConfidence} = 'low' then ${persistedPostedAt.toISOString()}::timestamptz else ${canonicalJobs.postedAt} end`
+            : canonicalJobs.postedAt,
           postedAtConfidence: persistedPostedAt
-            ? persistedPostedAtConfidence
+            ? sql`case when ${canonicalJobs.postedAt} is null or ${canonicalJobs.postedAtConfidence} = 'low' then ${persistedPostedAtConfidence}::confidence_level else ${canonicalJobs.postedAtConfidence} end`
             : canonicalJobs.postedAtConfidence,
           reopenedAt: sql`case when ${canonicalJobs.lifecycleStatus} in ('closed', 'possibly_closed') then ${context.observedAt.toISOString()} else ${canonicalJobs.reopenedAt} end`,
           verifiedAt: context.observedAt,

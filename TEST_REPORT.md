@@ -1,6 +1,6 @@
 # FirstSeen test report
 
-Daily-Driver local release tested 2026-08-04 on macOS with Node 22.23.2, pnpm 11.9.0,
+Push-first local release tested 2026-08-05 on macOS with Node 22.23.2, pnpm 11.9.0,
 local Supabase PostgreSQL/Auth in Docker, Next.js 16.2.12, React 19.2.8, and Inngest CLI 1.40.0.
 
 ## Local release gate
@@ -11,17 +11,17 @@ local Supabase PostgreSQL/Auth in Docker, Next.js 16.2.12, React 19.2.8, and Inn
 | Lint                    | `pnpm lint`                                  | Pass; zero warnings                                                |
 | Strict TypeScript       | `pnpm typecheck`                             | Pass                                                               |
 | Unit/component/contract | `pnpm test`                                  | Pass                                                               |
-| PostgreSQL/Auth/RLS     | `RUN_DATABASE_TESTS=true pnpm test`          | 386 passed in 65 files                                             |
-| Coverage                | `RUN_DATABASE_TESTS=true pnpm test:coverage` | 89.31% statements, 78.43% branches, 90.44% functions, 91.02% lines |
+| PostgreSQL/Auth/RLS     | `RUN_DATABASE_TESTS=true pnpm test`          | 408 passed in 68 files                                             |
+| Coverage                | `RUN_DATABASE_TESTS=true pnpm test:coverage` | 89.49% statements, 78.91% branches, 90.22% functions, 91.36% lines |
 | Dependency security     | `pnpm audit --audit-level=low`               | Pass; zero known vulnerabilities                                   |
-| Production compile      | `pnpm build`                                 | Pass; 20 routes plus Proxy                                         |
-| Real browser/Axe        | `pnpm test:e2e`                              | 17 passed, 3 intentional skips; retries disabled                   |
+| Production compile      | `pnpm build`                                 | Pass                                                               |
+| Real browser/Axe        | `pnpm test:e2e`                              | 21 passed, 3 intentional skips; retries disabled                   |
 
 Coverage enforces at least the prior-release baseline: 87.15% statements, 77.45% branches, 88.98%
 functions, and 89.21% lines. New AI escalation, global supply, CRM, application, Web Push, PWA,
 discovery-security, and scheduler paths are included. Focused commands also passed: 91 connector
-tests, 85 AI/eligibility tests, 55 worker/database tests, three PWA tests, 30 security tests, and two load
-tests.
+tests, 85 AI/eligibility tests, 59 worker/database tests, three PWA tests, 31 security tests, and two
+load tests.
 
 ## Risk coverage
 
@@ -49,8 +49,10 @@ tests.
 - Paid Luna/Terra calls are memoized independently from database persistence. A replay after a
   simulated persistence outage reuses the provider result, and usage from an accepted but
   schema-invalid first response remains included when validation succeeds on the second response.
-- Slack reliable-time Hot/Strong selection, age grouping, safe untrusted text, quiet hours, DST,
-  retry and alert/digest idempotency, empty-digest suppression, and prior-action exclusion.
+- Push Policy V2 presets, exact six/24-hour boundaries, role/relationship promotion, company
+  Always/Mute, official/reopening time, Review and action suppression, quiet-hour/DST deferral and
+  wake-up re-evaluation, stable occurrence identity, replay safety, per-device privacy, six-per-hour
+  overflow coalescing, retry/exhaustion/404/410 cleanup, and preview/evaluator equivalence.
 - Four-digit sign-in failure/success/sign-out, durable throttling, owner authorization, anon and
   cross-user RLS denial, CSRF/input validation, export, settings, and queue persistence after reload.
 - Shared global source fetch/fan-out, oldest-due scheduling, candidate-neutral extraction reuse,
@@ -77,8 +79,9 @@ Observers fail on page exceptions, browser console errors, unexpected failed res
 5xx responses. The suite
 exercised URL-restored filters, official-apply redirect, Save/Applied/Dismiss/Restore persistence,
 interest/referral cadence changes, add/remove company recovery, confirmation focus, every core
-route, settings, account export, relationship capture, application-session return, stage changes,
-follow-up scheduling, and reload persistence. No page failure or Axe violation remained.
+route, notification presets/customization/preview/company overrides, feed settings, account export,
+relationship capture, application-session return, stage changes, follow-up scheduling, and reload
+persistence. No page failure or Axe violation remained.
 
 ## Real runtime and provider evidence
 
@@ -135,7 +138,7 @@ The unrelated ProofCheck project remained out of scope and was not mutated.
 
 ## Certification limits
 
-This report does not claim a seven-day Daily-Driver production soak, physical iPhone Web Push,
+This report does not claim a seven-day Push-only production soak, physical iPhone Web Push,
 300 human-labeled AI evaluations, an 85% independent-market recall result, a licensed-sensor
 bakeoff, or external multi-user launch. Those remain explicit gates in
 `PLAN.md`; automated Chromium and fixture tests are not represented as substitutes.

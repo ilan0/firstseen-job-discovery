@@ -119,6 +119,52 @@ describe.runIf(enabled)("global-to-private lifecycle projection", () => {
     if (organizationId) await admin.from("organizations").delete().eq("id", organizationId);
   });
 
+  it("preserves the original reliable posted date across material updates", async () => {
+    const oldPostedAt = "2026-08-01T12:00:00.000Z";
+    await admin
+      .from("global_jobs")
+      .update({ posted_at: oldPostedAt, posted_at_confidence: "high" })
+      .eq("id", globalJobId);
+    const { ingestGlobalListing } = await import("@/lib/supply/global-ingest");
+    const listing = {
+      externalId: "1",
+      requisitionId: null,
+      title: "Software Engineer I",
+      descriptionText: "Materially updated description without a lifecycle reopening.",
+      officialUrl: `https://boards.greenhouse.io/lifecycle-${suffix}/jobs/1`,
+      applyUrl: `https://boards.greenhouse.io/lifecycle-${suffix}/jobs/1`,
+      locations: ["Miami, FL"],
+      workplaceType: "onsite",
+      employmentType: "full_time",
+      postedAt: "2026-08-05T12:00:00.000Z",
+      postedAtConfidence: "high" as const,
+      salaryText: null,
+      sourceConfidence: "high" as const,
+      rawMetadata: {},
+    };
+    await ingestGlobalListing(
+      {
+        organizationId,
+        organizationDomain: `lifecycle-${suffix}.example`,
+        sourceId: globalSourceId,
+        connectorKind: "greenhouse",
+        tenantId: `lifecycle-${suffix}`,
+        observedAt: new Date("2026-08-05T13:00:00.000Z"),
+      },
+      listing,
+    );
+    const stored = await admin
+      .from("global_jobs")
+      .select("posted_at,posted_at_confidence,reopened_at")
+      .eq("id", globalJobId)
+      .single();
+    expect(new Date(stored.data?.posted_at ?? 0).toISOString()).toBe(oldPostedAt);
+    expect(stored.data).toMatchObject({
+      posted_at_confidence: "high",
+      reopened_at: null,
+    });
+  });
+
   it("projects possibly-closed and closed transitions to every private linked job", async () => {
     const { applyGlobalClosure } = await import("@/lib/supply/global-source");
     const source = {
