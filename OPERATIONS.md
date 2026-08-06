@@ -259,9 +259,10 @@ described as deleted, copied into the worktree, or removed without explicit owne
 
 Before promoting a deployment, require formatting, lint, strict types, default and database tests,
 coverage, focused connector/evaluation/worker/PWA/security/load suites, audit, production build, all
-four Playwright projects/Axe, credentialed connector/model/sensor checks where changed, a labelled
-Slack check where notifications changed, and inspection of browser console/network, server logs,
-Inngest traces, delivery status, cost ledgers, and persisted rows.
+four Playwright projects/Axe, credentialed connector/model/sensor checks where changed, a controlled
+Push test on an explicitly subscribed device when Push changes, and inspection of browser console/
+network, server logs, Inngest traces, delivery status, cost ledgers, and persisted rows. A labelled
+Slack check is rollback-path evidence only and must not be sent during routine Push certification.
 
 Rollback uses the previous immutable Vercel deployment only after production exists and the action
 has been verified. Migrations must be backward compatible for at least one app release; never roll

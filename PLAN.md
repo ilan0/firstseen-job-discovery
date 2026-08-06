@@ -55,7 +55,7 @@ disabled under the new policy and retained temporarily only for rollback.
 |   4 | Notification settings UX              | Complete locally | Phone/device status, presets, advanced rules, overrides, quiet hours, privacy and seven-day preview                     |
 |   5 | Noise/privacy controls                | Complete locally | Six-per-device rolling cap, replaceable overflow, generic default, detailed per-device opt-in                           |
 |   6 | Integrated local certification        | Complete         | 408 DB-backed tests; focused suites; 21 browser passes at four viewports; clean Axe/console/network gates               |
-|   7 | FirstSeen-only production staging     | Pending          | Backup, migration, disabled-V2 deployment, production schema/browser/log verification                                   |
+|   7 | FirstSeen-only production staging     | Complete         | Protected backup, additive migration, disabled-V2 deployment, schema/Inngest/browser/log verification pass              |
 |   8 | Physical acceptance and Slack removal | External/time    | iPhone Home Screen Push checklist and seven consecutive Push-only production days required                              |
 
 ## Captured baseline
@@ -178,6 +178,25 @@ disabled under the new policy and retained temporarily only for rollback.
   identical occurrence kept exactly one scan row and produced no unresolved dead letter.
 
 ## Production release evidence
+
+- Before the Push-first migration, a new protected mode-700 backup directory was created outside
+  the repository with non-empty mode-600 roles, schema, and data artifacts. The guarded additive
+  `20260805120000_push_policy_v2.sql` migration then applied only to dedicated FirstSeen ref
+  `tlhwxayhjamopnnlroke`.
+- The updated production verifier returned `ok: true`: 57 organizations, 61 global sources, zero
+  private tables without RLS, no browser privilege on global raw/outbox tables, both Push indexes,
+  and the new migration present. ProofCheck remained untouched.
+- GitHub `main` at `cb9fd93` and Ready Vercel deployment
+  `firstseen-job-discovery-nd1ruwcqt-ilan13.vercel.app` contain the Push-first implementation; the
+  canonical alias remains `https://firstseen-job-discovery-tau.vercel.app`. Inngest registration
+  returned HTTP 200 after the device worker was bounded to the plan limit of five.
+- Production `PUSH_POLICY_V2_ENABLED` is deliberately `false` pending physical iPhone acceptance.
+  The owner has one Balanced global Push preference, zero active devices, and legacy Slack/digest
+  preferences are disabled. Aggregate health is zero unhealthy deliveries, unresolved dead letters,
+  or pending Push outbox rows.
+- Authenticated production browser inspection verified the complete Notifications UI, Balanced and
+  quiet-hour defaults, separate Feed Preferences, no warning/error console output, and a live preview
+  of 79 recent evaluated jobs. Vercel reported no production 5xx entries in the inspected window.
 
 - The additive Daily-Driver migrations through
   `20260804162800_notification_preference_integrity.sql` applied to guarded dedicated FirstSeen ref

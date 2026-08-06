@@ -113,6 +113,20 @@ database was then deleted; the protected backup remained unchanged.
 
 ## Production status
 
+- A fresh protected non-empty roles/schema/data backup was created outside the repository before the
+  Push migration. `20260805120000_push_policy_v2.sql` applied only to guarded FirstSeen ref
+  `tlhwxayhjamopnnlroke`; the updated verifier returned `ok: true` with Push indexes and migration
+  history present, zero private tables without RLS, and no browser access to global raw/outbox data.
+- GitHub `main` at `cb9fd93` is deployed Ready at the canonical production URL. Inngest registration
+  returned HTTP 200 with device-delivery concurrency bounded to the plan limit of five.
+- Push Policy V2 remains deliberately disabled pending physical iPhone acceptance. The production
+  owner has Balanced/11 PM–7 AM Eastern defaults, zero active Push devices, legacy Slack/digest
+  preferences disabled, and zero unhealthy deliveries, unresolved dead letters, or pending Push
+  outbox rows.
+- Authenticated production inspection exercised the live seven-day policy preview against 79 recent
+  recommendations and found no browser warning/error output. No production HTTP 5xx log entry was
+  present in the inspected window.
+
 - Additive Daily-Driver migrations through `20260804162800_notification_preference_integrity.sql`
   applied to the guarded FirstSeen database URL. `pnpm verify:production-schema` returned `ok: true`:
   55 organizations, 56 global sources, zero listed private tables without RLS, no Auth/anon read
