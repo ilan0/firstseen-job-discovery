@@ -281,8 +281,21 @@ It refuses any project/database URL other than `tlhwxayhjamopnnlroke`. Require t
 zero listed private tables without RLS, and no authenticated/anonymous read privilege on global raw
 observations.
 
-The canonical private portal is `https://firstseen-job-discovery-tau.vercel.app`. After each remote
-build, register `/api/inngest`, confirm an HTTP 200 registration response, inspect only the canonical
-deployment for new HTTP 5xx logs, and verify zero active-source errors, unresolved dead letters,
-recent worker failures, failed notification deliveries, and pending outbox events. The active Inngest
-plan permits a total concurrency limit of five; function declarations must not exceed that limit.
+The canonical private portal is `https://ilannab.com`; `https://www.ilannab.com` must remain a
+permanent redirect to the apex. The fallback `firstseen-job-discovery-tau.vercel.app` alias is not the
+public application origin. After each remote build, register `https://ilannab.com/api/inngest`,
+confirm an HTTP 200 registration response, inspect only the canonical deployment for new HTTP 5xx
+logs, and verify zero active-source errors, unresolved dead letters, recent worker failures, failed
+notification deliveries, and pending outbox events. The active Inngest plan permits a total
+concurrency limit of five; function declarations must not exceed that limit.
+
+The custom domain belongs only to the dedicated `firstseen-job-discovery` Vercel project. The
+`ilannab-portfolio` project retains its source and deployment history but no `ilannab.com` hostname.
+Do not recreate `rugdesk.ilannab.com` or `demo.rugdesk.ilannab.com`; both DNS records and Vercel
+assignments are intentionally retired.
+
+Set `AUTOMATION_PAUSED=true` and redeploy to register only the inert, event-only
+`automation-paused-guard` Inngest function. This is the emergency cost stop: scheduled scans, broad
+discovery, AI analysis, notifications, retries, and cleanup remain inactive while the web portal and
+stored data stay available. Resume only through an intentional deployment with the flag set to
+`false`, followed by a successful Inngest registration check.

@@ -179,6 +179,16 @@ disabled under the new policy and retained temporarily only for rollback.
 
 ## Production release evidence
 
+- On 2026-08-06, the certified FirstSeen build was deployed to the dedicated
+  `firstseen-job-discovery` Vercel project with `NEXT_PUBLIC_APP_URL=https://ilannab.com`.
+  `ilannab.com` and the permanent `www` redirect moved off `ilannab-portfolio`; the portfolio
+  project, repository, and deployment history were preserved. Both RugDesk custom-domain
+  assignments were retired. The apex served authenticated FirstSeen, its PWA assets, and the Inngest
+  endpoint over HTTPS after cutover.
+- A dedicated Sentry `firstseen` project was created in the existing owner organization. Server and
+  browser DSNs plus build-only release credentials were configured in encrypted Vercel production
+  variables; no monitoring credential is browser-exposed except the intentionally public DSN.
+
 - Before the Push-first migration, a new protected mode-700 backup directory was created outside
   the repository with non-empty mode-600 roles, schema, and data artifacts. The guarded additive
   `20260805120000_push_policy_v2.sql` migration then applied only to dedicated FirstSeen ref

@@ -131,12 +131,12 @@ failure recovery.
   required soak. Brave supplies transient official-URL candidates only. Sentry is optional;
   Vercel, Inngest, and database diagnostics remain available if it is disabled.
 
-The private production portal is live at
-[firstseen-job-discovery-tau.vercel.app](https://firstseen-job-discovery-tau.vercel.app). It uses the
-dedicated FirstSeen Supabase project, a unique Inngest app, and the private GitHub repository;
-unrelated existing projects are deliberately not reused. The Daily-Driver expansion is deployed and
-under scheduled production soak, but physical iPhone acceptance and seven consecutive scheduled
-production days remain explicit final certification gates in `PLAN.md`.
+The private production portal is live at [ilannab.com](https://ilannab.com). `www.ilannab.com`
+permanently redirects to the apex. It uses the dedicated FirstSeen Vercel and Supabase projects, a
+unique Inngest app, a dedicated Sentry project, and the private GitHub repository; unrelated existing
+projects are deliberately not reused. The Daily-Driver expansion is deployed and under scheduled
+production soak, but physical iPhone acceptance and seven consecutive scheduled production days
+remain explicit final certification gates in `PLAN.md`.
 
 ## Configuration
 

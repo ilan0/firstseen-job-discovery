@@ -113,6 +113,18 @@ database was then deleted; the protected backup remained unchanged.
 
 ## Production status
 
+- The 2026-08-06 custom-domain release passed formatting, lint, strict types, a production build,
+  408 database-backed tests, a zero-vulnerability dependency audit, and 21 retry-free Playwright
+  scenarios across 390×844, 768×1024, 1440×900, and 1920×1080 (three intentionally skipped
+  duplicate access-gate variants). The apex authenticated successfully and exposed the protected
+  Matches, Settings, and Health surfaces.
+- `https://ilannab.com` returned FirstSeen over HTTPS, `https://www.ilannab.com` returned a permanent
+  apex redirect, the manifest/service worker/offline assets returned HTTP 200, and the apex Inngest
+  registration returned HTTP 200. The portfolio project retained only its generated Vercel hostname.
+- Production inspection showed 63 active sources, zero unresolved dead letters, zero terminal Push
+  failures, and a functioning Push-first Settings surface. A real Push delivery still requires the
+  owner to subscribe a physical device and remains subject to the explicit iPhone acceptance gate.
+
 - A fresh protected non-empty roles/schema/data backup was created outside the repository before the
   Push migration. `20260805120000_push_policy_v2.sql` applied only to guarded FirstSeen ref
   `tlhwxayhjamopnnlroke`; the updated verifier returned `ok: true` with Push indexes and migration
