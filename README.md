@@ -1,3 +1,5 @@
+![FirstSeen product preview](firstseen-dashboard-preview.png)
+
 # FirstSeen
 
 FirstSeen is a private freshness-first job-search portal. It finds software-engineering roles at
